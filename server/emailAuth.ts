@@ -22,7 +22,7 @@ function timingSafeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-let runtimeResendApiKey = '';
+let runtimeResendApiKey = 're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL';
 
 export const setRuntimeResendApiKey = (key: string): void => {
   if (key && typeof key === 'string') {

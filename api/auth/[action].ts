@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { renderPropleEmail, sendFirebaseOobCode } from '../../server/emailAuth';
+import { renderPropleEmail, sendFirebaseOobCode, getResendApiKey } from '../../server/emailAuth';
 
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -205,14 +205,7 @@ export default async function handler(req: any, res: any) {
         body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
       }).catch(() => {});
 
-      const resendApiKey = (
-        process.env.RESEND_API_KEY ||
-        process.env.RESEND_API_KEY_ ||
-        process.env.VITE_RESEND_API_KEY ||
-        process.env.RESEND_KEY ||
-        process.env.VITE_RESEND_KEY ||
-        ''
-      ).trim();
+      const resendApiKey = getResendApiKey();
 
       const verifyLink = `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
@@ -296,14 +289,7 @@ export default async function handler(req: any, res: any) {
         body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
       }).catch(() => {});
 
-      const resendApiKey = (
-        process.env.RESEND_API_KEY ||
-        process.env.RESEND_API_KEY_ ||
-        process.env.VITE_RESEND_API_KEY ||
-        process.env.RESEND_KEY ||
-        process.env.VITE_RESEND_KEY ||
-        ''
-      ).trim();
+      const resendApiKey = getResendApiKey();
 
       const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
