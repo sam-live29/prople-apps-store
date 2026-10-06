@@ -51,7 +51,7 @@ const LOGIN_FAIL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_LOGIN_FAILS = 5;                        // 5 failed attempts per 24hr
 
 const OTP_WINDOW_MS = 2 * 60 * 60 * 1000;         // 2 hours
-const MAX_OTPS = 10;                              // 10 OTPs in 2 hr
+const MAX_OTPS = 100;                             // Generous limit for Resend enterprise throughput
 
 const MAX_IP_STRIKES_BEFORE_LOCK = 20;             // Lock IP if > 20 failed attempts
 
@@ -225,7 +225,7 @@ export function canRequestOtp(email: string, ip: string): SecurityStatusResult {
     const minutesLeft = Math.ceil((OTP_WINDOW_MS - (now - oldestOtp)) / (60 * 1000));
     return {
       allowed: false,
-      reason: `OTP request limit reached: Maximum 10 verification codes allowed in 2 hours. Please try again in ${minutesLeft} minute(s).`,
+      reason: `OTP request limit reached: Maximum ${MAX_OTPS} verification codes allowed in 2 hours. Please try again in ${minutesLeft} minute(s).`,
       remainingAttempts: 0,
     };
   }
@@ -239,7 +239,7 @@ export function canRequestOtp(email: string, ip: string): SecurityStatusResult {
   if (ipTimes.length >= MAX_OTPS) {
     return {
       allowed: false,
-      reason: 'OTP request limit reached: Maximum 10 verification codes per 2 hours from this network. Please try again later.',
+      reason: `OTP request limit reached: Maximum ${MAX_OTPS} verification codes per 2 hours from this network. Please try again later.`,
       remainingAttempts: 0,
     };
   }

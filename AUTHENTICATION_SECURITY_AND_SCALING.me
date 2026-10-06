@@ -18,12 +18,16 @@ This blueprint documents the production-grade authentication security engine for
   - On 5 failed attempts, login is locked for 24 hours with an informative toast notification.
   - On a successful login with valid credentials, the account's failed login attempt history is automatically cleared.
 
-### B. 2-Hour OTP Rate Limiter (Email/SMS Flood Defense)
-- **Threshold**: Maximum 10 OTP dispatches per 2-hour rolling window.
+### B. Resend.com Primary Email Delivery Engine & High-Capacity OTP Architecture
+- **Provider Architecture**:
+  - Resend.com (`resend`) is the dedicated, unconstrained transactional email authority for all 6-digit OTP codes, email verification tokens, and password reset links.
+  - Custom domain delivery configured for `The Prople Team <auth@prople.co.in>` (with fallback to verified sender domains).
+  - Firebase is strictly decoupled from email delivery: Firebase Auth client `sendPasswordResetEmail` and Identity Toolkit `sendOobCode` are eliminated from the email pipeline, preventing Firebase Spark quota exhaustion (100 emails/day cap) and artificial OTP blocks.
+- **Threshold**: Scaled to 100 OTP dispatches per 2-hour rolling window to leverage Resend's high enterprise throughput while blocking malicious automated bot floods.
 - **Scope**: Applied to both `/api/auth/send-otp` (sign-in / registration) and `/api/auth/forgot-password` (password reset).
 - **Protection**:
-  - Prevents Resend API quota exhaustion, mailbox flooding, and social engineering attacks.
-  - Returns HTTP 429 Too Many Requests once 10 OTP requests occur within 120 minutes.
+  - Full delivery via Resend API (`client.emails.send`) with CSPRNG codes (`crypto.randomInt`) and constant-time HMAC verification (`crypto.timingSafeEqual`).
+  - Returns HTTP 429 Too Many Requests only if malicious burst floods exceed 100 OTPs per 120 minutes.
 
 ### C. Persistent Audit Logging & IP Lockout for Active Attacks
 - **Audit Registry**:

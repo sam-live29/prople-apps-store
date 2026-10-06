@@ -7,8 +7,7 @@ import {
   signOut, 
   signInWithPopup, 
   GoogleAuthProvider,
-  updateProfile,
-  sendPasswordResetEmail
+  updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -995,18 +994,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
       } catch {}
 
-      // 1. Direct Firebase Auth password reset dispatch using authorized prople.co.in domain
-      try {
-        const actionCodeSettings = {
-          url: 'https://www.prople.co.in/?auth=reset-password',
-          handleCodeInApp: true,
-        };
-        await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
-      } catch (fbErr: any) {
-        console.warn('[Firebase Auth] sendPasswordResetEmail notice:', fbErr?.message);
-      }
-
-      // 2. Dispatch server-authoritative branded HTML email with 6-digit OTP & direct reset link button
+      // Dispatch server-authoritative branded HTML email with 6-digit OTP & direct reset link via Resend.com
       const { ok, data } = await safeFetchJson<{
         success: boolean;
         delivered?: boolean;

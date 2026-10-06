@@ -513,15 +513,20 @@ export async function sendOtpEmail(
         });
 
         if (!sendResult.error) {
+          console.log(`[Resend] Successfully dispatched OTP verification email to ${cleanEmail} via ${sender}`);
           return {
             success: true,
             message: `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
           };
+        } else {
+          console.warn(`[Resend] Dispatch notice with sender '${sender}':`, sendResult.error?.message || sendResult.error);
         }
       }
     } catch (resendErr: any) {
       console.warn('[Resend] Dispatch warning:', resendErr.message);
     }
+  } else {
+    console.warn('[Resend] RESEND_API_KEY is not configured in environment variables. Resend client is inactive.');
   }
 
   // Dual Fallback: Dispatch through Firebase Identity Toolkit email service
@@ -588,15 +593,20 @@ export async function sendPasswordResetEmailTemplate(
         });
 
         if (!sendResult.error) {
+          console.log(`[Resend] Successfully dispatched password reset email to ${cleanEmail} via ${sender}`);
           return {
             success: true,
             message: `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
           };
+        } else {
+          console.warn(`[Resend] Password reset dispatch notice with sender '${sender}':`, sendResult.error?.message || sendResult.error);
         }
       }
     } catch (resendErr: any) {
       console.warn('[Resend] Password reset dispatch warning:', resendErr.message);
     }
+  } else {
+    console.warn('[Resend] RESEND_API_KEY is not configured in environment variables. Resend client is inactive.');
   }
 
   // Dual Fallback: Dispatch through Firebase Identity Toolkit email service
