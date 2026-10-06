@@ -161,13 +161,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     } catch {}
   }, []);
 
-  // Dismiss any active toast notifications (such as developer notices) when on password reset pages
-  useEffect(() => {
-    if (step === 'forgot-email' || step === 'reset-otp' || step === 'reset-new-password') {
-      dismissToast();
-    }
-  }, [step, dismissToast]);
-
   // Real-time synchronization: automatically log in if password was reset or OTP was verified in another window (like Gmail)
   useEffect(() => {
     const targetEmail = email.trim().toLowerCase();
@@ -284,15 +277,13 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     }
   };
 
-  // Handle Forgot Password Click - direct dispatch without needing intermediate screen
+  // Handle Forgot Password Click - direct dispatch if email already entered, otherwise open dedicated forgot-email view
   const handleForgotPasswordClick = () => {
     setFieldErrors({});
     if (email && email.includes('@')) {
       handleSendResetCode(email.trim());
     } else {
-      setFieldErrors({ email: 'Please enter your email address above to reset your password.' });
-      const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
-      emailInput?.focus({ preventScroll: true });
+      setStep('forgot-email');
     }
   };
 
@@ -309,11 +300,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       setEmail(targetEmail.trim());
       setStep('reset-otp');
       setResendCooldown(60);
-      showToast(res.message || 'Password reset code sent to your email.');
+      showToast(res.message || 'Password reset code sent to your email.', { duration: 6000 });
     } catch (err: any) {
       const msg = sanitizeErrorMessage(err, 'Failed to send password reset code. Please try again.');
       setFieldErrors({ email: msg });
-      showToast(msg);
+      showToast(msg, { duration: 6000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -361,15 +352,15 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setIsSubmitting(true);
     setOtpPurpose('signup');
     try {
-      const res = await sendEmailOtp(email.trim());
+      const res = await sendEmailOtp(email.trim(), cleanName);
       setStep('verify-otp');
       setResendCooldown(60);
-      showToast(res.message || 'Verification code sent to your email.');
+      showToast(res.message || 'Verification code sent to your email.', { duration: 6000 });
     } catch {
       // Transition smoothly into verification step so user is never blocked
       setStep('verify-otp');
       setResendCooldown(60);
-      showToast('Verification code is ready.');
+      showToast('Verification code is ready. Check your inbox.', { duration: 6000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -936,7 +927,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                 Forgot your password?
               </h1>
               <p className="text-xs text-center text-theme-text-muted mb-5 leading-relaxed max-w-xs mx-auto">
-                Enter your account email address. We'll send you a 6-digit verification code and direct reset link.
+                Enter your account email address. We'll send you a 6-digit verification code to reset your password.
               </p>
 
               <form
@@ -986,7 +977,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                   disabled={isSubmitting || isLoading || !email || !email.includes('@')}
                   className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white rounded-full text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <span>Send Reset Link &amp; Code</span>
+                  <span>Send Verification Code</span>
                 </button>
 
                 <div className="flex items-center justify-center text-xs pt-2">
@@ -1012,9 +1003,13 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               <h1 className="text-2xl font-bold text-center text-theme-text mb-1 tracking-tight">
                 Check your inbox
               </h1>
-              <p className="text-xs text-center text-theme-text-muted mb-5 leading-relaxed max-w-xs mx-auto">
-                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>. Enter it below to activate your account.
+              <p className="text-xs text-center text-theme-text-muted mb-4 leading-relaxed max-w-xs mx-auto">
+                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>.
               </p>
+
+              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-400 text-center leading-relaxed">
+                A 6-digit code has been dispatched to <strong className="text-white font-semibold">{email}</strong>. Check your inbox and spam folder.
+              </div>
 
               <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full text-left space-y-4">
                 <div>
@@ -1126,8 +1121,12 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                 Reset your password
               </h1>
               <p className="text-xs text-center text-theme-text-muted mb-4 leading-relaxed max-w-xs mx-auto">
-                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>. Enter the code below to continue.
+                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>.
               </p>
+
+              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-400 text-center leading-relaxed">
+                A 6-digit code has been dispatched to <strong className="text-white font-semibold">{email}</strong>. Enter the code below or click the direct button in the email.
+              </div>
 
               <form onSubmit={handleVerifyResetOtp} className="w-full text-left space-y-4">
                 <div>

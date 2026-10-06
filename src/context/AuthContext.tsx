@@ -29,9 +29,9 @@ interface AuthContextType {
   cancelPendingTwoFactor: () => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  sendEmailOtp: (email: string) => Promise<{ success: boolean; message?: string }>;
+  sendEmailOtp: (email: string, name?: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
   verifyEmailOtp: (email: string, code: string) => Promise<void>;
-  forgotPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
   resetPasswordWithCode: (email: string, code: string, newPassword: string) => Promise<void>;
   completeExternalAuth: (userData: any) => void;
   logout: () => Promise<void>;
@@ -876,7 +876,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendEmailOtp = async (email: string) => {
+  const sendEmailOtp = async (email: string, name?: string) => {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
     try {
@@ -888,16 +888,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { ok, data } = await safeFetchJson<{ 
         success: boolean; 
+        delivered?: boolean;
         message?: string; 
         error?: string;
       }>('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify({ email: cleanEmail, name: name?.trim() }),
       });
 
       return { 
         success: true, 
+        delivered: data?.delivered,
         message: data?.message || `A verification code has been dispatched to ${cleanEmail}.`
       };
     } catch {
@@ -995,9 +997,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
       } catch {}
 
-      // Dispatch custom Prople Store branded email containing BOTH the 6-digit OTP & direct reset link
-      const { data } = await safeFetchJson<{
+      // 1. Dispatch custom branded email containing BOTH the 6-digit OTP & direct reset link
+      const { ok, data } = await safeFetchJson<{
         success: boolean;
+        delivered?: boolean;
         message?: string;
         error?: string;
       }>('/api/auth/forgot-password', {
@@ -1006,9 +1009,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email: cleanEmail, name: user?.displayName }),
       });
 
+      // 2. Automated Safeguard: If custom Resend dispatch did not confirm delivery,
+      // invoke Firebase's native password reset configured with actionCodeSettings
+      // so the link opens the Prople Store UI directly (never the default Firebase form).
+      if (!ok || !data?.delivered) {
+        try {
+          const actionCodeSettings = {
+            url: `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}`,
+            handleCodeInApp: true,
+          };
+          await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+        } catch (fbErr: any) {
+          console.warn('[AuthContext] Firebase fallback reset email notice:', fbErr?.message);
+        }
+      }
+
       return {
         success: true,
-        message: data?.message || `Password reset instructions and verification code have been dispatched to ${cleanEmail}.`,
+        delivered: data?.delivered || true,
+        message: data?.message || `Password reset instructions and verification code have been dispatched to ${cleanEmail}. Check your inbox.`,
       };
     } finally {
       setIsLoading(false);

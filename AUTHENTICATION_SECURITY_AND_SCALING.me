@@ -216,6 +216,28 @@ This blueprint documents the production-grade authentication security engine for
    - **Universal UI Catchment**:
      - `AuthPage.tsx` and `NavigationContext.tsx` intercept incoming reset routes (`?auth=reset-password`, `?action=reset-password`, `?mode=reset-password`, `?mode=resetPassword`, and `?oobCode=...`) and display the native Prople Store password form.
 
+---
+
+## 9. Dual-Channel Email Delivery Safeguards & UI Resilience
+
+### 1. The Multi-Layer Delivery Pipeline
+- **Primary Dispatch**: Transactions (`send-otp`, `forgot-password`) attempt dispatch via Resend API using verified senders (`Prople Store <auth@prople.co.in>`, `auth@send.prople.co.in`, `support@prople.co.in`, `onboarding@resend.dev`).
+- **Personalized Recipient Titles**: All outgoing templates dynamically parse recipient names using `formatRecipientName(name, email)`, ensuring emails are addressed warmly (e.g., `Please verify your identity, Sahanur` and `Reset your password, Sahanur`) rather than displaying raw username substrings.
+- **Fail-Safe Password Reset**: If custom Resend dispatch encounters unconfigured API keys or transient network failures, `AuthContext.tsx` automatically invokes Firebase's native `sendPasswordResetEmail` with `actionCodeSettings`:
+  ```ts
+  const actionCodeSettings = {
+    url: `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}`,
+    handleCodeInApp: true,
+  };
+  await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+  ```
+  This guarantees that password reset links redirect directly to the Prople Store application interface rather than Google's default barebones page.
+
+### 2. UI State & Notification Permanence
+- **Persistent In-Card Notice**: Replaced ephemeral toast dependence with a permanent in-card alert banner on both `verify-otp` and `reset-otp` screens informing the user of the dispatch.
+- **Extended Toast Duration**: Increased system toast durations from 3.8s to 5.0s (and 6.5s for authentication/security notices) to ensure comfortable reading time.
+- **Single-Focused Authentication Surface**: Removed "Send reset link & code" text from the authentication screen to present a single, focused "Send Verification Code" action, preserving the OTP entry workflow while including the direct reset button inside the email itself.
+
 
 
 

@@ -1324,7 +1324,7 @@ async function startServer() {
         });
       }
 
-      const { email } = req.body || {};
+      const { email, name } = req.body || {};
       if (!email || typeof email !== "string" || !email.includes("@")) {
         return res.status(400).json({ success: false, error: "Please provide a valid email address." });
       }
@@ -1348,7 +1348,7 @@ async function startServer() {
       await storeOtp(cleanEmail, code, 10);
       await createAuthSession(cleanEmail);
 
-      const emailResult = await sendOtpEmail(cleanEmail, code);
+      const emailResult = await sendOtpEmail(cleanEmail, code, name);
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,
@@ -1482,7 +1482,7 @@ async function startServer() {
         });
       }
 
-      const { email } = req.body || {};
+      const { email, name } = req.body || {};
       if (!email || typeof email !== "string" || !email.includes("@")) {
         return res.status(400).json({ success: false, error: "Please provide a valid email address." });
       }
@@ -1511,7 +1511,7 @@ async function startServer() {
       const baseUrl = `${proto}://${host}`;
       const directResetUrl = `${baseUrl}/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
 
-      const emailResult = await sendPasswordResetEmailTemplate(cleanEmail, code, directResetUrl);
+      const emailResult = await sendPasswordResetEmailTemplate(cleanEmail, code, directResetUrl, name);
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,

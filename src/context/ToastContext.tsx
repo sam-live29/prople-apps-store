@@ -141,7 +141,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     toastRef.current = newToast;
     setToast(newToast);
 
-    const duration = options?.duration || (type === 'install' ? 10000 : 3800);
+    const duration = options?.duration || (type === 'install' ? 10000 : (type === 'error' || type === 'warning' ? 6500 : 5000));
     timerRef.current = setTimeout(() => {
       toastRef.current = null;
       setToast(null);

@@ -207,13 +207,13 @@ export default async function handler(req: any, res: any) {
       let lastDispatchError: string | undefined;
 
       if (resendApiKey) {
-        const username = escapeHtmlStr(email.split('@')[0]);
+        const recipientName = formatRecipientName(body.name || body.displayName, email);
         const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Please verify your identity, ${username}</title>
+  <title>Please verify your identity, ${recipientName}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
   <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
@@ -232,7 +232,7 @@ export default async function handler(req: any, res: any) {
 
         <!-- Heading -->
         <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
-          Please verify your identity, <strong style="font-weight: 600; color: #ffffff;">${username}</strong>
+          Please verify your identity, <strong style="font-weight: 600; color: #ffffff;">${recipientName}</strong>
         </h1>
 
         <!-- Card Container -->
@@ -311,8 +311,8 @@ export default async function handler(req: any, res: any) {
         delivered: emailSent,
         message: emailSent
           ? `A verification code has been dispatched to ${email}.`
-          : `Verification code generated for ${email}.`,
-        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : undefined,
+          : `Verification code generated for ${email}. Check your inbox or configure RESEND_API_KEY.`,
+        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : lastDispatchError,
       });
     }
 
@@ -452,7 +452,8 @@ export default async function handler(req: any, res: any) {
         delivered: emailSent,
         message: emailSent
           ? `Password reset instructions and verification code have been dispatched to ${email}.`
-          : `Password reset instructions generated for ${email}.`,
+          : `Password reset instructions prepared for ${email}.`,
+        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : lastDispatchError,
       });
     }
 
