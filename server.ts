@@ -1345,14 +1345,19 @@ async function startServer() {
       }
 
       const code = generateOtp();
-      await storeOtp(cleanEmail, code, 10);
+      await storeOtp(cleanEmail, code, 15);
       await createAuthSession(cleanEmail);
 
-      const emailResult = await sendOtpEmail(cleanEmail, code, name);
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "www.prople.co.in";
+      const proto = (req.headers["x-forwarded-proto"] as string) || (String(host).includes("localhost") ? "http" : "https");
+      const baseUrl = `${proto}://${host}`;
+      const directVerifyUrl = `${baseUrl}/?auth=verify-email&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
+
+      const emailResult = await sendOtpEmail(cleanEmail, code, name, directVerifyUrl);
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,
-          error: emailResult.error || "Failed to deliver email. Please verify domain settings in Resend.",
+          error: "Failed to deliver verification email. Please check your email address and try again.",
         });
       }
 
@@ -1361,7 +1366,7 @@ async function startServer() {
 
       return res.json({
         success: true,
-        message: emailResult.message || `A 6-digit verification code has been dispatched to ${cleanEmail}.`,
+        message: emailResult.message || `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
       console.error("[Auth API] send-otp error:", err.message);
@@ -1515,7 +1520,7 @@ async function startServer() {
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,
-          error: emailResult.error || "Failed to deliver password reset email. Please try again.",
+          error: "Failed to deliver password reset email. Please check your email address and try again.",
         });
       }
 
@@ -1524,7 +1529,7 @@ async function startServer() {
 
       return res.json({
         success: true,
-        message: emailResult.message || `A password reset code has been dispatched to ${cleanEmail}.`,
+        message: emailResult.message || `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
       console.warn("[Auth API] forgot-password notice:", err.message);

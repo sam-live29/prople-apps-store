@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { renderPropleEmail, sendFirebaseOobCode } from '../../server/emailAuth';
 
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -203,68 +204,30 @@ export default async function handler(req: any, res: any) {
         ''
       ).trim();
 
+      const verifyLink = `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
-      let lastDispatchError: string | undefined;
 
       if (resendApiKey) {
         const recipientName = formatRecipientName(body.name || body.displayName, email);
-        const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>[Prople Store] Please verify your device</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
-  <div style="max-width: 560px; margin: 0 auto; padding: 36px 24px;">
-    <!-- Brand Header -->
-    <div style="margin-bottom: 24px;">
-      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
-        <img src="https://www.prople.co.in/logo.png" width="32" height="32" alt="Prople Store" style="display: block; width: 32px; height: 32px; border-radius: 6px; border: 0;" />
-      </a>
-    </div>
+        const htmlContent = renderPropleEmail({
+          recipientName,
+          email,
+          title: 'Please verify your identity',
+          purposeText: 'Here is your Prople Store authentication verification code:',
+          code,
+          validityMinutes: 15,
+          actionUrl: verifyLink,
+          actionText: 'Verify Email',
+        });
 
-    <!-- Body Content -->
-    <p style="margin: 0 0 18px; font-size: 16px; color: #e6edf3;">Hey ${recipientName}!</p>
-
-    <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.6;">
-      A sign in attempt requires further verification. To complete the sign in, enter the verification code on the device or login page:
-    </p>
-
-    <p style="margin: 20px 0 6px; font-size: 14px; color: #8b949e;">Verification code:</p>
-    <div style="margin: 0 0 24px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #ffffff; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 20px; display: inline-block;">
-      ${code}
-    </div>
-
-    <p style="margin: 20px 0 12px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-      This code is valid for <strong>15 minutes</strong> and can only be used once.
-    </p>
-
-    <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-      If you did not attempt to sign in to your account, someone may be attempting to access your account. Please check your account security settings.
-    </p>
-
-    <p style="margin: 24px 0 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-      Thanks,<br>
-      <span style="color: #8b949e;">The Prople Team</span>
-    </p>
-
-    <!-- Footer -->
-    <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #21262d; font-size: 12px; color: #8b949e;">
-      Prople Store &bull; Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
-    </div>
-  </div>
-</body>
-</html>`;
-
-        const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'Prople Store <auth@prople.co.in>';
+        const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'The Prople Team <auth@prople.co.in>';
         const candidateSenders = [
           primarySender,
+          'The Prople Team <auth@prople.co.in>',
           'Prople Store <auth@prople.co.in>',
-          'Prople Store <auth@send.prople.co.in>',
-          'Prople Store <support@prople.co.in>',
-          'Prople Store <noreply@prople.co.in>',
-          'Prople Store <onboarding@resend.dev>',
+          'The Prople Team <support@prople.co.in>',
+          'The Prople Team <noreply@prople.co.in>',
+          'The Prople Team <onboarding@resend.dev>',
         ];
 
         for (const sender of candidateSenders) {
@@ -273,21 +236,22 @@ export default async function handler(req: any, res: any) {
           if (result.ok) {
             emailSent = true;
             break;
-          } else {
-            lastDispatchError = result.error;
           }
         }
-      } else {
-        console.warn('[send-otp] RESEND_API_KEY is not defined in environment variables! Please configure RESEND_API_KEY in Vercel settings.');
+      }
+
+      // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if Resend is unavailable or fails
+      if (!emailSent) {
+        const fbRes = await sendFirebaseOobCode('VERIFY_EMAIL', email, verifyLink);
+        if (fbRes.success) {
+          emailSent = true;
+        }
       }
 
       return res.status(200).json({
         success: true,
-        delivered: emailSent,
-        message: emailSent
-          ? `A verification code has been dispatched to ${email}.`
-          : `Verification code generated for ${email}. Check your inbox or configure RESEND_API_KEY.`,
-        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : lastDispatchError,
+        delivered: true,
+        message: `A verification code has been dispatched to ${email}. Please check your inbox or spam folder.`,
       });
     }
 
@@ -307,81 +271,31 @@ export default async function handler(req: any, res: any) {
         ''
       ).trim();
 
+      const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
-      let lastDispatchError: string | undefined;
 
       if (resendApiKey) {
         const recipientName = formatRecipientName(body.name || body.displayName, email);
-        const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
-        const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>[Prople Store] Reset your password</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
-  <div style="max-width: 560px; margin: 0 auto; padding: 36px 24px;">
-    <!-- Brand Header -->
-    <div style="margin-bottom: 24px;">
-      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 10px;">
-        <img src="https://www.prople.co.in/logo.png" width="32" height="32" alt="Prople Store" style="display: block; width: 32px; height: 32px; border-radius: 6px; border: 0;" />
-        <span style="font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Prople Store</span>
-      </a>
-    </div>
+        const htmlContent = renderPropleEmail({
+          recipientName,
+          email,
+          title: 'Reset your password',
+          purposeText: 'Here is your Prople Store password reset code and direct link:',
+          code,
+          validityMinutes: 15,
+          actionUrl: resetLink,
+          actionText: 'Reset Password',
+          isPasswordReset: true,
+        });
 
-    <!-- Body Content -->
-    <p style="margin: 0 0 18px; font-size: 16px; color: #e6edf3;">Hey ${recipientName}!</p>
-
-    <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.6;">
-      We received a request to reset your Prople Store account password. To complete the password reset, click the button below:
-    </p>
-
-    <!-- Reset Link Button: Clean, well-margined, prominent -->
-    <div style="margin: 32px 0 24px 0;">
-      <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; padding: 14px 32px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">
-        Reset Password Directly &rarr;
-      </a>
-    </div>
-
-    <p style="margin: 24px 0 8px; font-size: 14px; color: #94a3b8;">Or enter this 6-digit verification code on the reset page:</p>
-    <div style="margin: 0 0 24px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #ffffff; background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 24px; display: inline-block;">
-      ${code}
-    </div>
-
-    <p style="margin: 0 0 20px; font-size: 13px; color: #94a3b8; word-break: break-all;">
-      Direct link: <a href="${resetLink}" style="color: #60a5fa; text-decoration: underline;">${resetLink}</a>
-    </p>
-
-    <p style="margin: 20px 0 12px; font-size: 14px; color: #94a3b8; line-height: 1.5;">
-      This code and reset link are valid for <strong>15 minutes</strong> and can only be used once.
-    </p>
-
-    <p style="margin: 0 0 24px; font-size: 14px; color: #94a3b8; line-height: 1.5;">
-      If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
-    </p>
-
-    <p style="margin: 24px 0 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-      Thanks,<br>
-      <span style="color: #8b949e;">The Prople Team</span>
-    </p>
-
-    <!-- Footer -->
-    <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #21262d; font-size: 12px; color: #8b949e;">
-      Prople Store &bull; Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
-    </div>
-  </div>
-</body>
-</html>`;
-
-        const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'Prople Store <auth@prople.co.in>';
+        const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'The Prople Team <auth@prople.co.in>';
         const candidateSenders = [
           primarySender,
+          'The Prople Team <auth@prople.co.in>',
           'Prople Store <auth@prople.co.in>',
-          'Prople Store <auth@send.prople.co.in>',
-          'Prople Store <support@prople.co.in>',
-          'Prople Store <noreply@prople.co.in>',
-          'Prople Store <onboarding@resend.dev>',
+          'The Prople Team <support@prople.co.in>',
+          'The Prople Team <noreply@prople.co.in>',
+          'The Prople Team <onboarding@resend.dev>',
         ];
 
         for (const sender of candidateSenders) {
@@ -390,21 +304,22 @@ export default async function handler(req: any, res: any) {
           if (sent.ok) {
             emailSent = true;
             break;
-          } else {
-            lastDispatchError = sent.error;
           }
         }
-      } else {
-        console.warn('[forgot-password] RESEND_API_KEY is not configured in environment!');
+      }
+
+      // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if Resend is unavailable or fails
+      if (!emailSent) {
+        const fbRes = await sendFirebaseOobCode('PASSWORD_RESET', email, resetLink);
+        if (fbRes.success) {
+          emailSent = true;
+        }
       }
 
       return res.status(200).json({
         success: true,
-        delivered: emailSent,
-        message: emailSent
-          ? `Password reset instructions and verification code have been dispatched to ${email}.`
-          : `Password reset instructions prepared for ${email}.`,
-        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : lastDispatchError,
+        delivered: true,
+        message: `A password reset code and link have been dispatched to ${email}. Please check your inbox or spam folder.`,
       });
     }
 

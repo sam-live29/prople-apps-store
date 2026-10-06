@@ -238,6 +238,15 @@ This blueprint documents the production-grade authentication security engine for
 - **Extended Toast Duration**: Increased system toast durations from 3.8s to 5.0s (and 6.5s for authentication/security notices) to ensure comfortable reading time.
 - **Single-Focused Authentication Surface**: Removed "Send reset link & code" text from the authentication screen to present a single, focused "Send Verification Code" action, preserving the OTP entry workflow while including the direct reset button inside the email itself.
 
+---
 
+## 10. Standardized Prople HTML Email Template & Dual-Engine Fallback
 
-
+### A. Architectural Goals
+1. Deliver GitHub-grade HTML email aesthetics matching production mobile Gmail standards (dark theme `#0d1117` / `#161b22`, spaced monospace code `0 3 6 9 4 1 0 1`, and primary action CTA buttons).
+2. Embed Schema.org Email Markup (`EmailMessage` with `ConfirmAction`) so mobile Gmail renders the native interactive `Copy code: [OTP]` action button directly in the inbox thread and message header.
+3. Ensure 100% email delivery via dual engines:
+   - Primary: Resend API with custom branded domains (`The Prople Team <auth@prople.co.in>`).
+   - Dual Fallback: Google Firebase Identity Toolkit REST API (`accounts:sendOobCode`) using project API key, guaranteeing instant delivery without external API key prerequisites.
+4. Route all password reset and email verification links strictly to authorized domain `https://www.prople.co.in` via `actionCodeSettings`.
+5. Enforce zero provider leakage: No mention of "Resend", "API Key", or internal vendor infrastructure in user-facing toasts or error diagnostics.

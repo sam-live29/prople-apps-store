@@ -66,6 +66,11 @@ export function sanitizeErrorMessage(
     return 'Network connection issue. Please check your internet connection and try again.';
   }
 
+  // Filter provider names and API key leakages
+  if (lower.includes('resend') || lower.includes('api key') || lower.includes('apikey') || lower.includes('smtp') || lower.includes('provider')) {
+    return 'Unable to deliver email at this moment. Please verify your email address and try again.';
+  }
+
   // 3. Serverless invocation & infrastructure failure shielding
   if (
     lower.includes('function_invocation_failed') ||
