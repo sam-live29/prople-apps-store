@@ -30,32 +30,37 @@ export const setRuntimeResendApiKey = (key: string): void => {
   }
 };
 
-export const getResendApiKey = (): string => {
-  let key = (
-    runtimeResendApiKey ||
-    process.env.RESEND_API_KEY ||
-    process.env.RESEND_API_KEY_ ||
-    process.env.VITE_RESEND_API_KEY ||
-    process.env.RESEND_KEY ||
-    process.env.VITE_RESEND_KEY ||
-    ''
-  ).trim();
+export const getCandidateResendApiKeys = (): string[] => {
+  const envKeys = [
+    runtimeResendApiKey,
+    process.env.RESEND_API_KEY,
+    process.env.RESEND_API_KEY_,
+    process.env.VITE_RESEND_API_KEY,
+    process.env.RESEND_KEY,
+    process.env.VITE_RESEND_KEY,
+    're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL',
+  ];
 
-  if (!key) {
-    try {
-      const envPath = path.join(process.cwd(), '.env');
-      if (fs.existsSync(envPath)) {
-        const content = fs.readFileSync(envPath, 'utf8');
-        const match = content.match(/RESEND_API_KEY\s*=\s*([^\r\n]+)/);
-        if (match && match[1]) {
-          key = match[1].trim().replace(/^['"]|['"]$/g, '');
-          runtimeResendApiKey = key;
-        }
+  const candidateKeys: string[] = [];
+  for (const raw of envKeys) {
+    if (raw && typeof raw === 'string') {
+      const clean = raw.replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
+      if (clean && !candidateKeys.includes(clean)) {
+        candidateKeys.push(clean);
       }
-    } catch {}
+    }
   }
 
-  return key;
+  if (!candidateKeys.includes('re_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL')) {
+    candidateKeys.push('re_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL');
+  }
+
+  return candidateKeys;
+};
+
+export const getResendApiKey = (): string => {
+  const keys = getCandidateResendApiKeys();
+  return keys[0] || 're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL';
 };
 
 export const getResendClient = (): Resend | null => {
@@ -510,30 +515,31 @@ export async function sendOtpEmail(
   const cleanEmail = email.toLowerCase().trim();
   const directLink = verifyLink || `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
 
-  const client = getResendClient();
+  const htmlContent = renderPropleEmail({
+    recipientName,
+    email: cleanEmail,
+    title: 'Please verify your identity',
+    purposeText: 'Here is your Prople Store authentication verification code and direct link:',
+    code,
+    validityMinutes: 15,
+    actionUrl: directLink,
+    actionText: 'Verify Email',
+  });
+
+  const candidateKeys = getCandidateResendApiKeys();
+  const primarySender = getAuthEmailFrom();
+  const candidateSenders = Array.from(new Set([
+    primarySender,
+    'The Prople Team <auth@prople.co.in>',
+    'Prople Store <auth@prople.co.in>',
+    'Prople Store <onboarding@resend.dev>'
+  ].filter(Boolean)));
+
   let lastError = '';
 
-  if (client) {
+  for (const key of candidateKeys) {
     try {
-      const htmlContent = renderPropleEmail({
-        recipientName,
-        email: cleanEmail,
-        title: 'Please verify your identity',
-        purposeText: 'Here is your Prople Store authentication verification code and direct link:',
-        code,
-        validityMinutes: 15,
-        actionUrl: directLink,
-        actionText: 'Verify Email',
-      });
-
-      const primarySender = getAuthEmailFrom();
-      const candidateSenders = Array.from(new Set([
-        primarySender,
-        'The Prople Team <auth@prople.co.in>',
-        'Prople Store <auth@prople.co.in>',
-        'Prople Store <onboarding@resend.dev>'
-      ].filter(Boolean)));
-
+      const client = new Resend(key);
       for (const sender of candidateSenders) {
         const sendResult = await client.emails.send({
           from: sender,
@@ -554,20 +560,34 @@ export async function sendOtpEmail(
         } else {
           lastError = sendResult.error?.message || String(sendResult.error);
           console.warn(`[Resend] Dispatch notice with sender '${sender}':`, lastError);
+          const errLower = lastError.toLowerCase();
+          if (errLower.includes('api key is invalid') || errLower.includes('unauthorized') || (sendResult.error as any)?.statusCode === 401) {
+            break; // Try next candidate key
+          }
         }
       }
     } catch (resendErr: any) {
       lastError = resendErr?.message || String(resendErr);
-      console.warn('[Resend] Dispatch warning:', lastError);
+      console.warn('[Resend] Dispatch exception:', lastError);
     }
-  } else {
-    lastError = 'RESEND_API_KEY is not configured in the server environment. Please set RESEND_API_KEY to send emails via Resend.';
-    console.warn('[Resend] ' + lastError);
+  }
+
+  // Fallback to Firebase Identity Toolkit if Resend failed across all keys
+  console.warn('[Resend] Resend dispatch did not succeed, attempting Firebase Identity Toolkit fallback...');
+  const fbResult = await sendFirebaseOobCode('VERIFY_EMAIL', cleanEmail, directLink);
+  if (fbResult.success) {
+    console.log(`[Firebase] Successfully dispatched verification link to ${cleanEmail} via Firebase Auth`);
+    return {
+      success: true,
+      message: `A verification link has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
+    };
+  } else if (fbResult.error) {
+    lastError = fbResult.error;
   }
 
   return { 
     success: false, 
-    error: lastError || 'Failed to dispatch email via Resend. Please ensure your Resend API key is configured and sender domain is verified.'
+    error: lastError || 'Failed to dispatch verification email. Please check your email configuration.'
   };
 }
 
@@ -580,31 +600,32 @@ export async function sendPasswordResetEmailTemplate(
   const cleanEmail = email.toLowerCase().trim();
   const directLink = resetLink || `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
 
-  const client = getResendClient();
+  const htmlContent = renderPropleEmail({
+    recipientName,
+    email: cleanEmail,
+    title: 'Reset your password',
+    purposeText: 'Here is your Prople Store password reset code and direct link:',
+    code,
+    validityMinutes: 15,
+    actionUrl: directLink,
+    actionText: 'Reset Password',
+    isPasswordReset: true,
+  });
+
+  const candidateKeys = getCandidateResendApiKeys();
+  const primarySender = getAuthEmailFrom();
+  const candidateSenders = Array.from(new Set([
+    primarySender,
+    'The Prople Team <auth@prople.co.in>',
+    'Prople Store <auth@prople.co.in>',
+    'Prople Store <onboarding@resend.dev>'
+  ].filter(Boolean)));
+
   let lastError = '';
 
-  if (client) {
+  for (const key of candidateKeys) {
     try {
-      const htmlContent = renderPropleEmail({
-        recipientName,
-        email: cleanEmail,
-        title: 'Reset your password',
-        purposeText: 'Here is your Prople Store password reset code and direct link:',
-        code,
-        validityMinutes: 15,
-        actionUrl: directLink,
-        actionText: 'Reset Password',
-        isPasswordReset: true,
-      });
-
-      const primarySender = getAuthEmailFrom();
-      const candidateSenders = Array.from(new Set([
-        primarySender,
-        'The Prople Team <auth@prople.co.in>',
-        'Prople Store <auth@prople.co.in>',
-        'Prople Store <onboarding@resend.dev>'
-      ].filter(Boolean)));
-
+      const client = new Resend(key);
       for (const sender of candidateSenders) {
         const sendResult = await client.emails.send({
           from: sender,
@@ -625,20 +646,34 @@ export async function sendPasswordResetEmailTemplate(
         } else {
           lastError = sendResult.error?.message || String(sendResult.error);
           console.warn(`[Resend] Password reset dispatch notice with sender '${sender}':`, lastError);
+          const errLower = lastError.toLowerCase();
+          if (errLower.includes('api key is invalid') || errLower.includes('unauthorized') || (sendResult.error as any)?.statusCode === 401) {
+            break; // Try next candidate key
+          }
         }
       }
     } catch (resendErr: any) {
       lastError = resendErr?.message || String(resendErr);
-      console.warn('[Resend] Password reset dispatch warning:', lastError);
+      console.warn('[Resend] Password reset dispatch exception:', lastError);
     }
-  } else {
-    lastError = 'RESEND_API_KEY is not configured in the server environment. Please set RESEND_API_KEY to send emails via Resend.';
-    console.warn('[Resend] ' + lastError);
+  }
+
+  // Fallback to Firebase Identity Toolkit if Resend failed across all keys
+  console.warn('[Resend] Password reset dispatch did not succeed, attempting Firebase Identity Toolkit fallback...');
+  const fbResult = await sendFirebaseOobCode('PASSWORD_RESET', cleanEmail, directLink);
+  if (fbResult.success) {
+    console.log(`[Firebase] Successfully dispatched password reset email to ${cleanEmail} via Firebase Auth`);
+    return {
+      success: true,
+      message: `A password reset link has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
+    };
+  } else if (fbResult.error) {
+    lastError = fbResult.error;
   }
 
   return { 
     success: false, 
-    error: lastError || 'Failed to dispatch password reset email via Resend. Please ensure your Resend API key is configured and sender domain is verified.'
+    error: lastError || 'Failed to dispatch password reset email. Please check your email configuration.'
   };
 }
 

@@ -4,6 +4,55 @@
 
 This document serves as the continuous record and operational blueprint for algorithms, backend optimizations, search engine indexing, Google SEO, AI chatbot Generative Engine Optimization (GEO), and infrastructure scaling for Prople Store.
 
+## 0000000000000000000000000008. Multi-Tiered Resilient Email & OTP Dispatch Architecture (Eliminating 401 Unauthorized API Key Blocker & Multi-Layer Failover)
+
+### 1. Architectural Problem & Domain Motivation
+1. **Resend HTTP 401 Unauthorized Blocker on Serverless/Cloud Deployments**:
+   - In cross-platform deployment pipelines (Vercel serverless functions in `/api/auth/[action].ts` alongside Node.js runtime in `server.ts`), misconfigured or stale environment variables in the host dashboard (`process.env.RESEND_API_KEY`) overrode valid fallback keys with an invalid or expired API token.
+   - When requests reached `https://api.resend.com/emails`, Resend rejected the call with `401 Unauthorized: {"message":"API key is invalid","name":"validation_error","statusCode":401}`.
+   - The dispatch process previously had a single-key execution path without candidate iteration. A single 401 failure caused the entire OTP dispatch to abort and report an opaque delivery error to the user interface.
+2. **Cascading Frontend Sanitization Misdirection**:
+   - In `errorUtils.ts`, whenever an error string contained `"api key"` or `"resend"`, the UI sanitized it to `"Unable to deliver email at this moment. Please verify your email address and try again."`
+   - This caused users who entered valid email addresses (e.g. `msahajan1290@gmail.com`) to mistakenly believe their email address was rejected by the platform, when the root failure was an upstream server-side 401 API key authorization failure.
+3. **Single Provider Single Point of Failure (SPOF)**:
+   - Relying exclusively on one email delivery provider (Resend) created vulnerability to upstream provider outages, DNS propagate latency on newly verified domains, and API token expiration.
+
+### 2. Multi-Tiered Failover & Self-Healing Architecture
+The authentication system was re-architected with a 3-tier delivery guarantee:
+
+```
+[User Action: Request OTP / Password Reset]
+                 │
+                 ▼
+  [Step 1: Sanitize & Candidate Key Pool]
+  ├─ 1. process.env.RESEND_API_KEY (Strip quotes, 'Bearer ' prefixes, whitespace)
+  ├─ 2. Alternate env variables: RESEND_API_KEY_, VITE_RESEND_API_KEY, RESEND_KEY
+  └─ 3. Verified Resend Key: re_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL (Domain: prople.co.in)
+                 │
+                 ▼
+  [Step 2: Key & Sender Iteration Loop]
+  ├─ Try Key 1 across Verified Senders (auth@prople.co.in, onboarding@resend.dev)
+  ├─ If 401 Unauthorized / 403 Forbidden ──► Immediately break to Key 2
+  └─ If HTTP 200/201 (Accepted) ──► Complete & Return Success
+                 │
+          (If All Keys Fail)
+                 ▼
+  [Step 3: Direct Firebase Identity Toolkit OOB Fallback]
+  ├─ Call https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode
+  ├─ Dispatch 'VERIFY_EMAIL' / 'EMAIL_SIGNIN' or 'PASSWORD_RESET' directly
+  └─ Google's authorized mail infrastructure delivers message with zero third-party key dependency
+```
+
+### 3. Verification & Metrics
+- **Local Express Backend (`server.ts` & `server/emailAuth.ts`)**:
+  - Live tested dispatching verification and reset codes with `curl -X POST http://localhost:3000/api/auth/send-otp` -> returns `{ success: true, delivered: true }`.
+- **Vercel Serverless Function (`api/auth/[action].ts`)**:
+  - Implemented candidate key resolution (`getCandidateResendApiKeys`), 401 key rotation, and automated fallback to Firebase Identity Toolkit (`sendFirebaseOobCode`).
+- **User-Facing Error Clarity (`errorUtils.ts`)**:
+  - Updated error messaging to eliminate false user blame, ensuring users are never asked to "verify email address" when server delivery encounters transient network or provider restrictions.
+
+---
+
 ## 0000000000000000000000000007. Zero-Failure Dual-Layer Authentication & Serverless Shielding Architecture (Eliminating FUNCTION_INVOCATION_FAILED & Infrastructure Error Leaks)
 
 ### 1. Architectural Problem & Domain Motivation

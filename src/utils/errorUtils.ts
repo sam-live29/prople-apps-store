@@ -68,7 +68,7 @@ export function sanitizeErrorMessage(
 
   // Filter provider names and API key leakages
   if (lower.includes('resend') || lower.includes('api key') || lower.includes('apikey') || lower.includes('smtp') || lower.includes('provider')) {
-    return 'Unable to deliver email at this moment. Please verify your email address and try again.';
+    return 'Unable to deliver verification email at this moment. Please check your email or try signing in with Google.';
   }
 
   // 3. Serverless invocation & infrastructure failure shielding
