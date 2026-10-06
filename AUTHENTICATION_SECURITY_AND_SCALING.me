@@ -204,15 +204,17 @@ This blueprint documents the production-grade authentication security engine for
    - Clicking this link bypassed the Prople Store application interface entirely and presented a generic white/blue form.
 
 2. **The High-Fidelity Prople Store Reset Architecture**:
-   - **Primary Custom Mail Dispatch**: When a user requests a reset, the client invokes `/api/auth/forgot-password`.
-   - **Rich GitHub Dark-Mode Email Template**: The email delivers:
-     - The Prople Store brand icon.
-     - A cryptographically secure 6-digit OTP code (`code`) formatted in bold 32px text.
-     - A direct green action button (`Reset Password Directly →`) linking back to `https://www.prople.co.in/?auth=reset-password&email=...&code=...`.
+   - **Exclusive Custom Mail Dispatch**: Client invokes `/api/auth/forgot-password` exclusively, eliminating plain automated Firebase mail triggers.
+   - **Customized Recipient & Names**: `formatRecipientName()` dynamically title-cases and personalizes the user's name from account metadata.
+   - **All-in-One Email Layout**: The single custom email delivers:
+     - The official Prople Store logo and GitHub dark-mode container.
+     - A cryptographically secure 6-digit OTP code (`code`) in 34px bold letter-spaced typography.
+     - The direct action button (`Reset Password Directly →`) linking to `https://www.prople.co.in/?auth=reset-password&email=...&code=...`.
+   - **Clean Authentication UI**:
+     - No external link buttons appear on the authentication screen; users only see the clean 6-digit verification code input.
+     - If the user prefers clicking the button directly in their email, it auto-fills and verifies the code on Prople Store.
    - **Universal UI Catchment**:
-     - `AuthPage.tsx` and `NavigationContext.tsx` intercept all incoming reset routes: `?auth=reset-password`, `?action=reset-password`, `?mode=reset-password`, `?mode=resetPassword`, and `?oobCode=...`.
-     - When a code or `oobCode` is detected, the app automatically transitions to the `reset-new-password` step inside Prople Store's native dark-mode UI.
-     - Supports both 6-digit OTP codes and Firebase `oobCode` credentials using `confirmPasswordReset` as a unified hybrid handler.
+     - `AuthPage.tsx` and `NavigationContext.tsx` intercept incoming reset routes (`?auth=reset-password`, `?action=reset-password`, `?mode=reset-password`, `?mode=resetPassword`, and `?oobCode=...`) and display the native Prople Store password form.
 
 
 

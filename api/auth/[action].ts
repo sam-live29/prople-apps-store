@@ -60,6 +60,24 @@ function escapeHtmlStr(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function formatRecipientName(rawName?: string, email?: string): string {
+  if (rawName && typeof rawName === 'string' && rawName.trim().length >= 2) {
+    return escapeHtmlStr(rawName.trim());
+  }
+  if (!email) return 'there';
+  const prefix = email.split('@')[0];
+  const cleaned = prefix.replace(/[0-9]+$/, '').replace(/[._-]+/g, ' ').trim();
+  if (cleaned.length >= 2) {
+    return escapeHtmlStr(
+      cleaned
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ')
+    );
+  }
+  return escapeHtmlStr(prefix);
+}
+
 const RTDB_URL = (
   process.env.FIREBASE_DATABASE_URL ||
   'https://prople-store-3efed-default-rtdb.firebaseio.com'
@@ -314,15 +332,18 @@ export default async function handler(req: any, res: any) {
         ''
       ).trim();
 
+      let emailSent = false;
+      let lastDispatchError: string | undefined;
+
       if (resendApiKey) {
-        const username = escapeHtmlStr(email.split('@')[0]);
+        const recipientName = formatRecipientName(body.name || body.displayName, email);
         const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
         const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset your password, ${username}</title>
+  <title>Reset your password, ${recipientName}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
   <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
@@ -341,7 +362,7 @@ export default async function handler(req: any, res: any) {
 
         <!-- Heading -->
         <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
-          Reset your password, <strong style="font-weight: 600; color: #ffffff;">${username}</strong>
+          Reset your password, <strong style="font-weight: 600; color: #ffffff;">${recipientName}</strong>
         </h1>
 
         <!-- Card Container -->
@@ -349,19 +370,19 @@ export default async function handler(req: any, res: any) {
           <tr>
             <td style="padding: 24px 28px 28px; font-size: 14px; line-height: 1.6; color: #e6edf3;">
               <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                We received a request to reset your Prople Store password. Here is your 6-digit verification code:
+                We received a request to reset your Prople Store account password. Use the 6-digit verification code below, or reset directly using the button:
               </p>
 
               <!-- Verification Code -->
-              <p style="margin: 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: 6px; color: #ffffff; text-align: center; line-height: 1;">
+              <p style="margin: 24px 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 34px; font-weight: 700; letter-spacing: 8px; color: #ffffff; text-align: center; line-height: 1;">
                 ${code}
               </p>
 
-              <!-- Direct Reset Button -->
+              <!-- Direct Reset Button in the same email -->
               <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 20px 0 24px;">
                 <tr>
                   <td align="center">
-                    <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #238636; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 28px; border-radius: 6px; border: 1px solid rgba(240,246,252,0.1); box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
+                    <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #238636; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 13px 32px; border-radius: 6px; border: 1px solid rgba(240,246,252,0.1); box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
                       Reset Password Directly &rarr;
                     </a>
                   </td>
@@ -373,7 +394,7 @@ export default async function handler(req: any, res: any) {
               </p>
 
               <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email.
+                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email. If you did not request this, you can safely ignore this message.
               </p>
 
               <p style="margin: 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
@@ -403,6 +424,10 @@ export default async function handler(req: any, res: any) {
         const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'Prople Store <auth@prople.co.in>';
         const candidateSenders = [
           primarySender,
+          'Prople Store <auth@prople.co.in>',
+          'auth@prople.co.in',
+          'Prople Store <noreply@prople.co.in>',
+          'noreply@prople.co.in',
           'Prople Store <auth@send.prople.co.in>',
           'Prople Store <support@prople.co.in>',
           'Prople Store <onboarding@resend.dev>',
@@ -411,13 +436,23 @@ export default async function handler(req: any, res: any) {
         for (const sender of candidateSenders) {
           if (!sender) continue;
           const sent = await dispatchResendEmail(resendApiKey, sender, email, `${code} is your Prople Store password reset code`, htmlContent);
-          if (sent.ok) break;
+          if (sent.ok) {
+            emailSent = true;
+            break;
+          } else {
+            lastDispatchError = sent.error;
+          }
         }
+      } else {
+        console.warn('[forgot-password] RESEND_API_KEY is not configured in environment!');
       }
 
       return res.status(200).json({
         success: true,
-        message: `Password reset instructions have been sent to ${email}.`,
+        delivered: emailSent,
+        message: emailSent
+          ? `Password reset instructions and verification code have been dispatched to ${email}.`
+          : `Password reset instructions generated for ${email}.`,
       });
     }
 

@@ -995,29 +995,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
       } catch {}
 
-      // 1. Dispatch custom Prople Store branded email with 6-digit OTP & direct reset button
-      const { ok, data } = await safeFetchJson<{
+      // Dispatch custom Prople Store branded email containing BOTH the 6-digit OTP & direct reset link
+      const { data } = await safeFetchJson<{
         success: boolean;
         message?: string;
         error?: string;
       }>('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify({ email: cleanEmail, name: user?.displayName }),
       });
-
-      // 2. If serverless custom mail dispatch didn't succeed, fall back to native Firebase reset
-      if (!ok || !data?.success) {
-        try {
-          const actionCodeSettings = {
-            url: `${window.location.origin}/?auth=reset-password&mode=resetPassword&email=${encodeURIComponent(cleanEmail)}`,
-            handleCodeInApp: true,
-          };
-          await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
-        } catch (fbErr: any) {
-          console.warn('[AuthContext] Firebase reset fallback notice:', fbErr?.code || fbErr?.message);
-        }
-      }
 
       return {
         success: true,
