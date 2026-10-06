@@ -1,0 +1,11 @@
+# Security Policy and Vulnerability Disclosure for Prople Store & Cloaktail Industries
+# Compliant with RFC 9116
+
+Contact: mailto:cloaktailsupport@gmail.com
+Contact: mailto:cloaktailofficial@gmail.com
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://www.prople.co.in/.well-known/security.txt
+Policy: https://www.prople.co.in/terms
+Acknowledgments: https://www.prople.co.in/terms
+Hiring: https://www.prople.co.in/about

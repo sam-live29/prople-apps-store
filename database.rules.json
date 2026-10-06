@@ -1,0 +1,62 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "_auth_otps": {
+      ".read": false,
+      ".write": false,
+      "$otpKey": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['email', 'expiresAt', 'attempts']) && newData.child('email').isString() && newData.child('expiresAt').isNumber() && newData.child('attempts').isNumber()"
+      }
+    },
+    "_auth_sessions": {
+      ".read": false,
+      ".write": false,
+      "$sessionKey": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['email', 'status', 'createdAt']) && newData.child('email').isString() && newData.child('createdAt').isNumber()"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "liveMetrics": {
+      "$appId": {
+        ".read": true,
+        ".write": "auth != null",
+        "downloadsCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "activeUsers": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        }
+      }
+    },
+    "downloads": {
+      "$appId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "broadcasts": {
+      ".read": true,
+      ".write": "auth != null && (auth.token.email === 'yoursahabhai@gmail.com' || auth.token.email === 'sahanurmolla1290@gmail.com' || auth.token.email === 'bengalsocietyofscience2025@gmail.com')"
+    },
+    "test": {
+      ".read": true,
+      ".write": "auth != null"
+    }
+  }
+}

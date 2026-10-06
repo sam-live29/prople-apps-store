@@ -1,0 +1,6 @@
+{
+  "name": "Prople Store",
+  "description": "Discover apps and games on Prople Store, a multi-platform app store and web store supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows operated by Cloaktail Industries. Verified downloads, web apps, ratings, and developer publishing.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

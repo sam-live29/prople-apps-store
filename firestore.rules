@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email_verified == true && (
+          request.auth.token.email == 'msahajan1290@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla3545@gmail.com' ||
+          request.auth.token.email == 'yoursahabhai@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla1290@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla3131@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla190@gmail.com' ||
+          request.auth.token.email == 'sahinurmolla190@gmail.com' ||
+          request.auth.token.email == 'bengalsocietyofscience2025@gmail.com' ||
+          request.auth.token.email == 'prople.site@gmail.com' ||
+          request.auth.token.email.matches('(?i)^(sahanurmolla[0-9]*@gmail\\.com|sahinurmolla[0-9]*@gmail\\.com|msahajan1290@gmail\\.com|yoursahabhai@gmail\\.com|bengalsocietyofscience2025@gmail\\.com|prople\\.site@gmail\\.com|(admin|security|moderator|executive|root|dev)@prople\\.co\\.in)$')
+        ))
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isAdmin() || (request.auth != null && request.auth.token.email != null && resource.data.email == request.auth.token.email);
+    }
+
+    match /apps/{appId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (
+        request.resource.data.owner == request.auth.uid ||
+        request.resource.data.developerId == request.auth.uid ||
+        request.resource.data.creatorUid == request.auth.uid ||
+        (request.auth.token.email != null && (
+          request.resource.data.developerEmail == request.auth.token.email ||
+          request.resource.data.ownerEmail == request.auth.token.email ||
+          request.resource.data.publisherEmail == request.auth.token.email
+        )) ||
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          (
+            resource.data.owner == request.auth.uid ||
+            resource.data.developerId == request.auth.uid ||
+            resource.data.creatorUid == request.auth.uid ||
+            (request.auth.token.email != null && (
+              resource.data.developerEmail == request.auth.token.email ||
+              resource.data.ownerEmail == request.auth.token.email ||
+              resource.data.publisherEmail == request.auth.token.email
+            ))
+          ) &&
+          request.resource.data.owner == resource.data.owner &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
+        )
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.owner == request.auth.uid ||
+        resource.data.developerId == request.auth.uid ||
+        resource.data.creatorUid == request.auth.uid ||
+        (request.auth.token.email != null && (
+          resource.data.developerEmail == request.auth.token.email ||
+          resource.data.ownerEmail == request.auth.token.email ||
+          resource.data.publisherEmail == request.auth.token.email
+        )) ||
+        isAdmin()
+      );
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          (request.auth.token.email != null && resource.data.userEmail == request.auth.token.email) ||
+          get(/databases/$(database)/documents/apps/$(appId)).data.owner == request.auth.uid ||
+          isAdmin()
+        );
+      }
+    }
+
+    match /console_configs/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /publisher_registry/{nameId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /auth_failed_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    match /locked_ips/{ipId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /auth_security_state/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /app_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /review_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /app_moderation/{appId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /banned_releases/{banId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /publisher_restrictions/{pubKey} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,243 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with marketplace and developer publisher credentials",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "age": { "type": "string" },
+        "gender": { "type": "string" },
+        "location": { "type": "string" },
+        "isEmailVerified": { "type": "boolean" },
+        "isPublisher": { "type": "boolean" },
+        "publisherName": { "type": "string" },
+        "publisherRole": { "type": "string" },
+        "publishedAppIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email"]
+    },
+    "AppListing": {
+      "title": "AppListing",
+      "description": "Marketplace application listing with metadata, binaries, and real-time statistics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "developer": { "type": "string" },
+        "category": { "type": "string" },
+        "rating": { "type": "number" },
+        "ratingsCount": { "type": "number" },
+        "reviewsCount": { "type": "string" },
+        "ratingBreakdown": { "type": "object" },
+        "downloadsCount": { "type": "number" },
+        "downloads": { "type": "string" },
+        "size": { "type": "string" },
+        "contentRating": { "type": "string" },
+        "price": { "type": "string" },
+        "type": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "featureGraphicUrl": { "type": "string" },
+        "promoVideoUrl": { "type": "string" },
+        "videoThumbnailUrl": { "type": "string" },
+        "tagline": { "type": "string" },
+        "aboutText": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "screenshots": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "tabletScreenshots": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "downloadUrl": { "type": "string" },
+        "githubRepo": { "type": "string" },
+        "githubReleaseUrl": { "type": "string" },
+        "versionName": { "type": "string" },
+        "releaseTag": { "type": "string" },
+        "assetName": { "type": "string" },
+        "sha256": { "type": "string" },
+        "releaseNotes": { "type": "string" },
+        "releaseDate": { "type": "string" },
+        "initialReleaseDate": { "type": "string" },
+        "minAndroid": { "type": "string" },
+        "containsAds": { "type": "boolean" },
+        "inAppPurchases": { "type": "boolean" },
+        "dataSafety": { "type": "object" },
+        "developerInfo": { "type": "object" },
+        "developerId": { "type": "string" },
+        "developerEmail": { "type": "string" },
+        "creatorUid": { "type": "string" },
+        "owner": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "developer", "category"]
+    },
+    "ConsoleConfig": {
+      "title": "ConsoleConfig",
+      "description": "Developer console configuration, hero banners, spotlight settings, and publish rate limits",
+      "type": "object",
+      "properties": {
+        "owner": { "type": "string" },
+        "developerEmail": { "type": "string" },
+        "banners": { "type": "array" },
+        "sections": { "type": "array" },
+        "publishQuota": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["owner"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "User review, star rating, feedback media, developer replies, and helpful votes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "appId": { "type": "string" },
+        "appName": { "type": "string" },
+        "appIcon": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "rating": { "type": "number" },
+        "text": { "type": "string" },
+        "date": { "type": "string" },
+        "helpfulCount": { "type": "number" },
+        "notHelpfulCount": { "type": "number" },
+        "media": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "isFlagged": { "type": "boolean" },
+        "flagReason": { "type": "string" },
+        "reply": {
+          "type": "object",
+          "properties": {
+            "authorName": { "type": "string" },
+            "text": { "type": "string" },
+            "date": { "type": "string" },
+            "authorRole": { "type": "string" },
+            "isVerifiedPublisher": { "type": "boolean" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["rating"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System and release notification updates for marketplace users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "appId": { "type": "string" },
+        "actionType": { "type": "string" },
+        "actionUrl": { "type": "string" },
+        "actionLabel": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string" },
+        "targetType": { "type": "string" },
+        "creatorUid": { "type": "string" },
+        "isUnread": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "message"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Administrator authority credentials and role records",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string" },
+        "grantedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "PublisherRegistryRecord": {
+      "title": "PublisherRegistryRecord",
+      "description": "Indexed registry of unique developer and publisher studio names",
+      "type": "object",
+      "properties": {
+        "normalizedName": { "type": "string" },
+        "displayName": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerEmail": { "type": "string", "format": "email" },
+        "claimedAt": { "type": "string", "format": "date-time" },
+        "isActive": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["normalizedName", "displayName"]
+    }
+  },
+  "firestore": {
+    "/publisher_registry/{nameId}": {
+      "schema": {
+        "$ref": "#/entities/PublisherRegistryRecord"
+      },
+      "description": "Indexed registry of unique developer and publisher studio names"
+    },
+    "/admins/{adminId}": {
+      "schema": {
+        "$ref": "#/entities/AdminRecord"
+      },
+      "description": "Verified administrator authority records"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "User profiles and developer credentials"
+    },
+    "/apps/{appId}": {
+      "schema": {
+        "$ref": "#/entities/AppListing"
+      },
+      "description": "Marketplace app listings with metadata, binaries, and real-time aggregate statistics"
+    },
+    "/console_configs/{userId}": {
+      "schema": {
+        "$ref": "#/entities/ConsoleConfig"
+      },
+      "description": "Developer console configuration, spotlight banners, and publishing rate limit tracking"
+    },
+    "/apps/{appId}/reviews/{reviewId}": {
+      "schema": {
+        "$ref": "#/entities/Review"
+      },
+      "description": "User reviews and developer replies for a specific app listing"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "User-specific notifications and release alerts"
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Store-wide broadcast notifications and new app release announcements"
+    }
+  }
+}

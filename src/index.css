@@ -1,0 +1,346 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-theme-bg: var(--theme-bg);
+  --color-theme-card: var(--theme-card);
+  --color-theme-nav: var(--theme-nav);
+  --color-theme-hover: var(--theme-hover);
+  --color-theme-active: var(--theme-active);
+  --color-theme-text: var(--theme-text);
+  --color-theme-text-muted: var(--theme-text-muted);
+  --color-theme-heading: var(--theme-heading);
+  --color-theme-border: var(--theme-border);
+  --color-theme-surface: var(--theme-surface);
+
+  --font-sans: 'Google Sans', 'Google Sans Text', 'Product Sans', Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: 'Google Sans', 'Google Sans Text', 'Product Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-google-sans: 'Google Sans', 'Google Sans Text', 'Product Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-google-sans-text: 'Google Sans Text', 'Google Sans', 'Product Sans', Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-roboto: Roboto, 'Google Sans Text', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root {
+  --theme-bg: #131314;
+  --theme-card: #1e1f22;
+  --theme-surface: #1e1f22;
+  --theme-nav: #1e1f22;
+  --theme-hover: #2d2e30;
+  --theme-active: #404145;
+  --theme-text: #e3e3e3;
+  --theme-text-muted: #9aa0a6;
+  --theme-heading: #f3f4f6;
+  --theme-border: rgba(95, 99, 104, 0.45);
+  color-scheme: dark;
+}
+
+:root.light {
+  --theme-bg: #ffffff;
+  --theme-card: #ffffff;
+  --theme-surface: #f1f3f4;
+  --theme-nav: #ffffff;
+  --theme-hover: #f1f3f4;
+  --theme-active: #e8eaed;
+  --theme-text: #0f172a;
+  --theme-text-muted: #475569;
+  --theme-heading: #0f172a;
+  --theme-border: #e0e2ec;
+  color-scheme: light;
+}
+
+:root.dark {
+  --theme-bg: #131314;
+  --theme-card: #1e1f22;
+  --theme-surface: #1e1f22;
+  --theme-nav: #1e1f22;
+  --theme-hover: #2d2e30;
+  --theme-active: #404145;
+  --theme-text: #e3e3e3;
+  --theme-text-muted: #9aa0a6;
+  --theme-heading: #f3f4f6;
+  --theme-border: rgba(95, 99, 104, 0.45);
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Native app viewport - completely remove visible slider indicator and scrollbar thumb */
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+}
+
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+}
+
+::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+  overflow: hidden;
+  border: none;
+  outline: none;
+  font-family: 'Google Sans', 'Google Sans Text', 'Product Sans', Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Major headings, app titles, hero spotlights, and primary branding */
+h1, h2, h3, h4, h5, h6,
+.font-google-sans,
+.font-heading {
+  font-family: 'Google Sans', 'Google Sans Text', 'Product Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -0.012em;
+}
+
+/* Core Material Design UI elements: buttons, tabs, chips, form controls, navigation */
+button,
+nav,
+input,
+select,
+textarea,
+.font-google-sans-text,
+.ui-label {
+  font-family: 'Google Sans Text', 'Google Sans', 'Product Sans', Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Standard system font / fallback for body descriptions, regular text lists, and paragraphs */
+p,
+li,
+.prose,
+.font-roboto,
+.font-body {
+  font-family: Roboto, 'Google Sans Text', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+@layer utilities {
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto !important;
+    touch-action: pan-x pan-y;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .smooth-scroll {
+    scroll-behavior: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* Native hardware-accelerated momentum touch scrolling without auto-scroll jumps */
+.overflow-y-auto,
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto !important;
+  overscroll-behavior-y: contain;
+}
+
+/* Horizontal scrolling containers must NEVER contain vertical overscroll, ensuring vertical page scrolling is never blocked */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-x pan-y;
+}
+
+/* Ensure headings have deep, crisp contrast in light mode */
+html.light h1:not([class*="text-white"]):not([class*="text-amber"]):not([class*="text-blue"]),
+html.light h2:not([class*="text-white"]):not([class*="text-amber"]):not([class*="text-blue"]),
+html.light h3:not([class*="text-white"]):not([class*="text-amber"]):not([class*="text-blue"]),
+html.light h4:not([class*="text-white"]):not([class*="text-amber"]):not([class*="text-blue"]) {
+  color: #0f172a;
+}
+
+/* Material Design 3 circular progress indicator animations */
+@keyframes m3-spinner-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes m3-spinner-dash {
+  0% {
+    stroke-dasharray: 1, 200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 89, 200;
+    stroke-dashoffset: -35px;
+  }
+  100% {
+    stroke-dasharray: 89, 200;
+    stroke-dashoffset: -124px;
+  }
+}
+
+.m3-spinner {
+  animation: m3-spinner-rotate 1.4s linear infinite;
+  transform-origin: center center;
+}
+
+.m3-spinner-fast {
+  animation: m3-spinner-rotate 0.95s linear infinite;
+  transform-origin: center center;
+}
+
+.m3-spinner-circle {
+  stroke-dasharray: 1, 200;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  animation: m3-spinner-dash 1.4s ease-in-out infinite;
+}
+
+.m3-spinner-circle-fast {
+  stroke-dasharray: 1, 200;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  animation: m3-spinner-dash 0.95s ease-in-out infinite;
+}
+
+@keyframes review-highlight-fade {
+  0% {
+    background-color: rgba(59, 130, 246, 0.22);
+    opacity: 1;
+  }
+  65% {
+    background-color: rgba(59, 130, 246, 0.22);
+    opacity: 1;
+  }
+  100% {
+    background-color: transparent;
+    opacity: 0;
+  }
+}
+
+.review-highlight-animation {
+  animation: review-highlight-fade 2s cubic-bezier(0.4, 0, 0.2, 1) 1 forwards;
+  pointer-events: none;
+}
+
+/* Cards are static - no bounce, press scaling, or transform animations */
+.banner-card-bounce {
+  transform: none !important;
+  transition: none !important;
+}
+
+.banner-card-bounce:hover,
+.banner-card-bounce:active {
+  transform: none !important;
+}
+
+/* Authentication Loading Progress Animations */
+@keyframes auth-indeterminate-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(30%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-auth-progress {
+  animation: auth-indeterminate-bar 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes auth-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
+}
+
+.animate-auth-glow {
+  animation: auth-pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes auth-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.auth-button-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-button-shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0.25) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: auth-shimmer 2s infinite;
+  content: '';
+}
+
+
