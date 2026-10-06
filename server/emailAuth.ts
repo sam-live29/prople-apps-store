@@ -1,3 +1,4 @@
+import "dotenv/config";
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -30,7 +31,7 @@ export const setRuntimeResendApiKey = (key: string): void => {
 };
 
 export const getResendApiKey = (): string => {
-  return (
+  let key = (
     runtimeResendApiKey ||
     process.env.RESEND_API_KEY ||
     process.env.RESEND_API_KEY_ ||
@@ -39,6 +40,22 @@ export const getResendApiKey = (): string => {
     process.env.VITE_RESEND_KEY ||
     ''
   ).trim();
+
+  if (!key) {
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        const match = content.match(/RESEND_API_KEY\s*=\s*([^\r\n]+)/);
+        if (match && match[1]) {
+          key = match[1].trim().replace(/^['"]|['"]$/g, '');
+          runtimeResendApiKey = key;
+        }
+      }
+    } catch {}
+  }
+
+  return key;
 };
 
 export const getResendClient = (): Resend | null => {
