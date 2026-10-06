@@ -4778,22 +4778,22 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
 #### User Experience Evolution & Problem Solved
 - **The Issue**: Early iterations of HTML transactional emails contained excess container nesting, AI-generic markdown gradients, heavy dark borders, and visual clutter that felt uncurated and generic.
 - **The Solution**: Re-architected transactional emails (`renderPropleEmail` and `renderFirebaseHtmlTemplate`) according to Instagram's signature clean security email design language:
-  1. **Minimalist Clean Canvas**:
-     - Outer background: `#fafafa` neutral light gray providing high contrast across web and mobile inboxes.
-     - Central Card: Crisp `#ffffff` container (`max-width: 440px`), thin hairline border (`1px solid #dbdbdb`), rounded corners (`8px`), and generous balanced padding (`32px 28px`).
+  1. **Seamless Unified Canvas (No Misaligned "Left Behind" Backgrounds)**:
+     - Unified both `body` and table wrappers to `#ffffff`, completely eliminating the multi-shaded inverted dark mode background blocks in Gmail Android where a secondary grey box appeared offset behind the card.
+     - Added `<meta name="color-scheme" content="light dark">` and `<meta name="supported-color-schemes" content="light dark">` headers to ensure email clients apply harmonious dark mode rendering.
+     - Sized container to `max-width: 420px; box-sizing: border-box;` with compact `28px 22px` padding so it never blows out past narrow (360px) mobile phone viewports.
   2. **Centered Brand Identity**:
      - Centered Prople Store app icon (`/logo.png`) and bold brand name (`Prople Store`), mirroring Instagram's centered top mark.
   3. **Simplified Direct Copy**:
      - Human, non-robotic greeting (`Hi [Name],`).
-     - Clear, single-sentence intent specifying the targeted account email.
+     - Clear, single-sentence intent specifying the targeted account email (e.g. `Here is your Prople Store password reset code:`).
   4. **Dedicated Verification Box with 1-Tap Copy Action**:
-     - Replaces generic button-only logins with a dedicated verification code section.
-     - High-contrast 28px bold monospace code (`user-select: all; -webkit-user-select: all;`) allowing instant 1-tap full selection on mobile devices.
-     - Inline **"Copy Code"** button styled with Instagram's signature blue (`#0095f6`), linking to the auto-verification URL so clicking copies and populates the code into the active web session.
+     - High-contrast 24px bold monospace code (`user-select: all; -webkit-user-select: all;`, `letter-spacing: 4px`) fitted comfortably into the card without horizontal overflow.
+     - Inline **"Copy Code"** button styled with Instagram's signature blue (`#0095f6`), linking to the verification URL to auto-fill and verify the session in 1 click.
      - Embedded Schema.org JSON-LD `ConfirmAction` enabling native "Copy code: XXXXXX" one-tap action chips directly inside Gmail and Apple Mail inbox lists.
-  5. **Preserved Complete Action Hierarchy & Security Copy**:
-     - Full primary action button (`Verify Email` / `Reset Password`) for instant 1-click continuation.
-     - Direct URL fallback for restricted or terminal-based clients.
+  5. **Cleaned Action Hierarchy (Removed Redundant Text Link)**:
+     - Prominent full-width `#0095f6` button (`Verify Email` / `Reset Password`) for instant 1-click continuation.
+     - Completely removed redundant `Or open directly: [link]` and `Or copy and paste this link...` text paragraphs as requested, letting the primary button cleanly handle the browser navigation.
      - 15-minute expiration notice and phishing defense disclaimer.
   6. **Signature Instagram-Style Footer**:
      - Thin separator (`border-top: 1px solid #dbdbdb`).
