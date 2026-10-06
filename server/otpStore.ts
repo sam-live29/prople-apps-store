@@ -108,37 +108,48 @@ export async function persistOtp(
 }
 
 /**
- * Verifies and consumes an OTP code.
- * Checks memory cache and Realtime Database.
+ * Verifies and optionally consumes an OTP code.
+ * Checks memory cache and Realtime Database, using the freshest record.
  */
 export async function verifyAndConsumeOtp(
   email: string,
-  inputCode: string
+  inputCode: string,
+  consume = true
 ): Promise<{ valid: boolean; error?: string }> {
   const norm = email.toLowerCase().trim();
   const cleanCode = String(inputCode).trim();
+  if (!cleanCode || !/^\d{6}$/.test(cleanCode)) {
+    return {
+      valid: false,
+      error: 'Please enter a valid 6-digit verification code.',
+    };
+  }
+
   const now = Date.now();
   const key = getOtpKey(norm);
 
-  // 1. Try to read from RTDB first for cross-instance consistency
-  let record: StoredOtpRecord | null = null;
+  const memRecord = memoryStore.get(norm) || null;
+  let rtdbRecord: StoredOtpRecord | null = null;
 
   try {
     const url = `${RTDB_URL}/_auth_otps/${key}.json`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data === 'object' && (data.code || data.codeHmac)) {
-        record = data as StoredOtpRecord;
+        rtdbRecord = data as StoredOtpRecord;
       }
     }
   } catch (err: any) {
     console.warn('[Distributed OTP] Failed to read from RTDB:', err.message);
   }
 
-  // Fallback to memory store if RTDB failed or was empty
-  if (!record && memoryStore.has(norm)) {
-    record = memoryStore.get(norm)!;
+  // Choose the most recently created record if both exist
+  let record: StoredOtpRecord | null = null;
+  if (memRecord && rtdbRecord) {
+    record = (memRecord.createdAt || 0) >= (rtdbRecord.createdAt || 0) ? memRecord : rtdbRecord;
+  } else {
+    record = memRecord || rtdbRecord;
   }
 
   if (!record) {
@@ -149,7 +160,6 @@ export async function verifyAndConsumeOtp(
   }
 
   if (now > record.expiresAt) {
-    // Delete expired record
     await deleteOtpRecord(norm, key);
     return {
       valid: false,
@@ -175,12 +185,12 @@ export async function verifyAndConsumeOtp(
   if (!matchesHmac && !matchesPlain) {
     record.attempts = (record.attempts || 0) + 1;
     memoryStore.set(norm, record);
-    // Update attempts in RTDB asynchronously
     try {
       await fetch(`${RTDB_URL}/_auth_otps/${key}/attempts.json`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record.attempts),
+        signal: AbortSignal.timeout(2500),
       });
     } catch {}
 
@@ -190,8 +200,10 @@ export async function verifyAndConsumeOtp(
     };
   }
 
-  // Successfully verified - consume OTP so it cannot be used again
-  await deleteOtpRecord(norm, key);
+  // Successfully verified - consume OTP if requested so it cannot be used again
+  if (consume) {
+    await deleteOtpRecord(norm, key);
+  }
   return { valid: true };
 }
 

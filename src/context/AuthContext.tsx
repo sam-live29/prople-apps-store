@@ -798,7 +798,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: userEmail,
         displayName,
         photoURL: cred.user.photoURL || undefined,
-        isEmailVerified: false
+        isEmailVerified: true
       });
 
       setUser(unified);
@@ -879,13 +879,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
     try {
-      // Generate client-side fallback verification code
-      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-      try {
-        sessionStorage.setItem(`prople_otp_${cleanEmail}`, fallbackCode);
-      } catch {}
-
-      const { ok, data } = await safeFetchJson<{ 
+      const { ok, data, error } = await safeFetchJson<{ 
         success: boolean; 
         delivered?: boolean;
         message?: string; 
@@ -897,7 +891,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to dispatch verification code. Please try again.');
+        throw new Error(data?.error || error || 'Failed to dispatch verification code. Please try again.');
       }
 
       return { 
@@ -915,45 +909,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.toLowerCase().trim();
     const cleanCode = code.trim();
     try {
-      const { ok, data } = await safeFetchJson<{ success: boolean; user?: any; error?: string }>('/api/auth/verify-otp', {
+      if (!/^\d{6}$/.test(cleanCode)) {
+        throw new Error('Please enter a valid 6-digit verification code.');
+      }
+
+      const { ok, data, error } = await safeFetchJson<{ success: boolean; user?: any; error?: string }>('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
       });
 
-      let verifiedUser = data?.user;
-
-      if (!ok || !data?.success || !verifiedUser) {
-        // Check client-side fallback session code
-        let localCode: string | null = null;
-        try {
-          localCode = sessionStorage.getItem(`prople_otp_${cleanEmail}`);
-        } catch {}
-
-        if (localCode && (localCode === cleanCode || cleanCode.length === 6)) {
-          verifiedUser = {
-            uid: `usr_email_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
-            email: cleanEmail,
-            displayName: cleanEmail.split('@')[0],
-            isEmailVerified: true,
-          };
-        } else if (cleanCode.length === 6) {
-          verifiedUser = {
-            uid: `usr_email_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
-            email: cleanEmail,
-            displayName: cleanEmail.split('@')[0],
-            isEmailVerified: true,
-          };
-        } else {
-          throw new Error('Please enter the 6-digit verification code.');
-        }
+      if (!ok || !data?.success || !data?.user) {
+        throw new Error(data?.error || error || 'Invalid or expired verification code. Please check your email and try again.');
       }
+
+      const verifiedUser = data.user;
 
       // Clear 2FA pending gate now that Step 2 OTP is verified
       pendingTwoFactorRef.current = false;
       try {
         sessionStorage.removeItem(SESSION_PENDING_2FA_KEY);
-        sessionStorage.removeItem(`prople_otp_${cleanEmail}`);
       } catch {}
 
       const activeFbUid = auth.currentUser?.uid;
@@ -989,13 +964,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
     try {
-      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-      try {
-        sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
-      } catch {}
-
       // Dispatch server-authoritative branded HTML email with 6-digit OTP & direct reset link via Resend.com
-      const { ok, data } = await safeFetchJson<{
+      const { ok, data, error } = await safeFetchJson<{
         success: boolean;
         delivered?: boolean;
         message?: string;
@@ -1005,6 +975,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, name: user?.displayName }),
       });
+
+      if (!ok || !data?.success) {
+        throw new Error(data?.error || error || 'Failed to dispatch password reset code. Please try again.');
+      }
 
       return {
         success: true,
@@ -1031,7 +1005,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const { data } = await safeFetchJson<{
+      const { ok, data, error } = await safeFetchJson<{
         success: boolean;
         message?: string;
         user?: any;
@@ -1042,15 +1016,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email: cleanEmail, code: cleanCode, newPassword }),
       });
 
-      let verifiedUser = data?.user;
-      if (!verifiedUser) {
-        verifiedUser = {
-          uid: `usr_email_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
-          email: cleanEmail,
-          displayName: cleanEmail.split('@')[0],
-          isEmailVerified: true,
-        };
+      if (!ok || !data?.success || !data?.user) {
+        throw new Error(data?.error || error || 'Invalid or expired reset code. Please check your email and try again.');
       }
+
+      const verifiedUser = data.user;
 
       // If user is logged into Firebase, also update Firebase password
       if (auth.currentUser && auth.currentUser.email === cleanEmail) {

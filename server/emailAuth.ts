@@ -106,14 +106,19 @@ export async function storeOtp(email: string, code: string, ttlMinutes = 15): Pr
   await persistOtp(norm, code, ttlMinutes);
 }
 
-export async function verifyStoredOtp(email: string, inputCode: string): Promise<{ valid: boolean; error?: string }> {
+export async function verifyStoredOtp(email: string, inputCode: string, consume = true): Promise<{ valid: boolean; error?: string }> {
   const norm = email.toLowerCase().trim();
-  const cleanCode = inputCode.trim();
+  const cleanCode = String(inputCode || '').trim();
+  if (!cleanCode || !/^\d{6}$/.test(cleanCode)) {
+    return { valid: false, error: 'Please enter a valid 6-digit verification code.' };
+  }
 
-  // First try the distributed store
-  const distributedResult = await verifyAndConsumeOtp(norm, cleanCode);
+  // First check the distributed store (memory + RTDB)
+  const distributedResult = await verifyAndConsumeOtp(norm, cleanCode, consume);
   if (distributedResult.valid) {
-    otpStore.delete(norm);
+    if (consume) {
+      otpStore.delete(norm);
+    }
     return { valid: true };
   }
 
@@ -138,8 +143,10 @@ export async function verifyStoredOtp(email: string, inputCode: string): Promise
     return { valid: false, error: 'Invalid verification code. Please check your email and try again.' };
   }
 
-  // Success: consume OTP
-  otpStore.delete(norm);
+  // Success: consume OTP if requested
+  if (consume) {
+    otpStore.delete(norm);
+  }
   return { valid: true };
 }
 
@@ -520,19 +527,14 @@ export async function sendOtpEmail(
       });
 
       const primarySender = getAuthEmailFrom();
-      const candidateSenders = [
+      const candidateSenders = Array.from(new Set([
         primarySender,
         'The Prople Team <auth@prople.co.in>',
         'Prople Store <auth@prople.co.in>',
-        'auth@prople.co.in',
-        'support@prople.co.in',
-        'noreply@prople.co.in',
-        'onboarding@resend.dev',
         'Prople Store <onboarding@resend.dev>'
-      ];
+      ].filter(Boolean)));
 
       for (const sender of candidateSenders) {
-        if (!sender) continue;
         const sendResult = await client.emails.send({
           from: sender,
           to: [cleanEmail],
@@ -563,16 +565,6 @@ export async function sendOtpEmail(
     console.warn('[Resend] ' + lastError);
   }
 
-  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if available
-  const fbResult = await sendFirebaseOobCode('VERIFY_EMAIL', cleanEmail, directLink);
-  if (fbResult.success) {
-    return {
-      success: true,
-      message: `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
-    };
-  }
-
-  // Both providers failed or unconfigured: return transparent status to notify caller
   return { 
     success: false, 
     error: lastError || 'Failed to dispatch email via Resend. Please ensure your Resend API key is configured and sender domain is verified.'
@@ -606,19 +598,14 @@ export async function sendPasswordResetEmailTemplate(
       });
 
       const primarySender = getAuthEmailFrom();
-      const candidateSenders = [
+      const candidateSenders = Array.from(new Set([
         primarySender,
         'The Prople Team <auth@prople.co.in>',
         'Prople Store <auth@prople.co.in>',
-        'auth@prople.co.in',
-        'support@prople.co.in',
-        'noreply@prople.co.in',
-        'onboarding@resend.dev',
         'Prople Store <onboarding@resend.dev>'
-      ];
+      ].filter(Boolean)));
 
       for (const sender of candidateSenders) {
-        if (!sender) continue;
         const sendResult = await client.emails.send({
           from: sender,
           to: [cleanEmail],
@@ -647,15 +634,6 @@ export async function sendPasswordResetEmailTemplate(
   } else {
     lastError = 'RESEND_API_KEY is not configured in the server environment. Please set RESEND_API_KEY to send emails via Resend.';
     console.warn('[Resend] ' + lastError);
-  }
-
-  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if available
-  const fbResult = await sendFirebaseOobCode('PASSWORD_RESET', cleanEmail, directLink);
-  if (fbResult.success) {
-    return {
-      success: true,
-      message: `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
-    };
   }
 
   return { 

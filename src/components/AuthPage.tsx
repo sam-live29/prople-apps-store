@@ -345,16 +345,38 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     }
   };
 
-  // Validate OTP in step 1 of password reset, then transition to step 2 (Set new password)
-  const handleVerifyResetOtp = (e: React.FormEvent) => {
+  // Validate OTP in step 1 of password reset against backend before transitioning to step 2 (Set new password)
+  const handleVerifyResetOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = resetCode.trim();
-    if (!cleanCode || cleanCode.length < 6) {
+    if (!cleanCode || !/^\d{6}$/.test(cleanCode)) {
       setFieldErrors({ resetCode: 'Please enter the 6-digit verification code.' });
       return;
     }
     setFieldErrors({});
-    setStep('reset-new-password');
+    setIsSubmitting(true);
+    try {
+      const { ok, data, error } = await safeFetchJson<{ success: boolean; error?: string }>('/api/auth/verify-reset-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: cleanCode }),
+      });
+
+      if (!ok || !data?.success) {
+        const msg = sanitizeErrorMessage(data?.error || error, 'Invalid or expired verification code. Please check your email and try again.');
+        setFieldErrors({ resetCode: msg });
+        showToast(msg);
+        return;
+      }
+
+      setStep('reset-new-password');
+    } catch (err: any) {
+      const msg = sanitizeErrorMessage(err, 'Invalid or expired verification code. Please check your email and try again.');
+      setFieldErrors({ resetCode: msg });
+      showToast(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle Sign Up: Step 1 (Validate Full Name + Email + Password + Consent, then send real OTP via Resend)

@@ -61,6 +61,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/auth/:action",
+      "destination": "/api/auth/[action]?action=:action"
+    },
+    {
       "source": "/.well-known/security.txt",
       "destination": "/.well-known/security.txt"
     },

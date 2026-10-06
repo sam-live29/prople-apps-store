@@ -1361,8 +1361,10 @@ async function startServer() {
       }
 
       const code = generateOtp();
-      await storeOtp(cleanEmail, code, 15);
-      await createAuthSession(cleanEmail);
+      await Promise.all([
+        storeOtp(cleanEmail, code, 15),
+        createAuthSession(cleanEmail),
+      ]);
 
       const host = req.headers["x-forwarded-host"] || req.headers.host || "www.prople.co.in";
       const proto = (req.headers["x-forwarded-proto"] as string) || (String(host).includes("localhost") ? "http" : "https");
@@ -1382,6 +1384,7 @@ async function startServer() {
 
       return res.json({
         success: true,
+        delivered: true,
         message: emailResult.message || `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
@@ -1524,8 +1527,10 @@ async function startServer() {
       }
 
       const code = generateOtp();
-      await storeOtp(cleanEmail, code, 15);
-      await createAuthSession(cleanEmail);
+      await Promise.all([
+        storeOtp(cleanEmail, code, 15),
+        createAuthSession(cleanEmail),
+      ]);
 
       const host = req.headers["x-forwarded-host"] || req.headers.host || "www.prople.co.in";
       const proto = (req.headers["x-forwarded-proto"] as string) || (String(host).includes("localhost") ? "http" : "https");
@@ -1545,10 +1550,56 @@ async function startServer() {
 
       return res.json({
         success: true,
+        delivered: true,
         message: emailResult.message || `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
       console.warn("[Auth API] forgot-password notice:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Verify reset code without consuming it yet (Step 1 of password reset)
+  app.post("/api/auth/verify-reset-code", async (req, res) => {
+    try {
+      const ip = getClientIp(req);
+      if (isIpLocked(ip)) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied: Your IP address has been locked due to exceeding 20 failed security verification attempts.",
+        });
+      }
+
+      const { email, code } = req.body || {};
+      if (!email || !code) {
+        return res.status(400).json({ success: false, error: "Email and verification code are required." });
+      }
+
+      const cleanEmail = String(email).toLowerCase().trim();
+      const verification = await verifyStoredOtp(cleanEmail, String(code), false);
+
+      if (!verification.valid) {
+        const strikeRes = await registerFailedSecurityEvent(serverDb, {
+          ip,
+          email: cleanEmail,
+          type: "failed_password_reset",
+          userAgent: String(req.headers["user-agent"] || ""),
+          reason: verification.error || "Invalid or expired reset code",
+        });
+
+        if (strikeRes.isLocked) {
+          return res.status(403).json({ success: false, error: strikeRes.message });
+        }
+
+        return res.status(400).json({
+          success: false,
+          error: verification.error || "Invalid or expired verification code.",
+        });
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.warn("[Auth API] verify-reset-code notice:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
