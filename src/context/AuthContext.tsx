@@ -897,16 +897,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email: cleanEmail, name: name?.trim() }),
       });
 
+      if (!ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to dispatch verification code. Please try again.');
+      }
+
       return { 
         success: true, 
-        delivered: data?.delivered,
+        delivered: data?.delivered ?? true,
         message: data?.message || `A verification code has been dispatched to ${cleanEmail}.`
-      };
-    } catch {
-      // Client fallback guarantees seamless transition without showing server errors
-      return { 
-        success: true, 
-        message: `A verification code has been dispatched to ${cleanEmail}.`
       };
     } finally {
       setIsLoading(false);
@@ -997,7 +995,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
       } catch {}
 
-      // 1. Dispatch custom branded email containing BOTH the 6-digit OTP & direct reset link
+      // Dispatch custom branded email containing BOTH the 6-digit OTP & direct reset link button
       const { ok, data } = await safeFetchJson<{
         success: boolean;
         delivered?: boolean;
@@ -1009,25 +1007,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email: cleanEmail, name: user?.displayName }),
       });
 
-      // 2. Automated Safeguard: If custom Resend dispatch did not confirm delivery,
-      // invoke Firebase's native password reset configured with actionCodeSettings
-      // so the link opens the Prople Store UI directly (never the default Firebase form).
-      if (!ok || !data?.delivered) {
-        try {
-          const actionCodeSettings = {
-            url: `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}`,
-            handleCodeInApp: true,
-          };
-          await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
-        } catch (fbErr: any) {
-          console.warn('[AuthContext] Firebase fallback reset email notice:', fbErr?.message);
-        }
+      if (!ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to dispatch verification code. Please try again.');
       }
 
       return {
         success: true,
-        delivered: data?.delivered || true,
-        message: data?.message || `Password reset instructions and verification code have been dispatched to ${cleanEmail}. Check your inbox.`,
+        delivered: data?.delivered ?? true,
+        message: data?.message || `A verification code has been dispatched to ${cleanEmail}. Check your inbox.`,
       };
     } finally {
       setIsLoading(false);

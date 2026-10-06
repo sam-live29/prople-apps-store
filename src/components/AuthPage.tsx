@@ -300,11 +300,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       setEmail(targetEmail.trim());
       setStep('reset-otp');
       setResendCooldown(60);
-      showToast(res.message || 'Password reset code sent to your email.', { duration: 6000 });
+      showToast(res.message || 'Verification code sent to your email.', { duration: 7000 });
     } catch (err: any) {
-      const msg = sanitizeErrorMessage(err, 'Failed to send password reset code. Please try again.');
+      const msg = sanitizeErrorMessage(err, 'Failed to send verification code. Please try again.');
       setFieldErrors({ email: msg });
-      showToast(msg, { duration: 6000 });
+      showToast(msg, { duration: 7000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -355,12 +355,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       const res = await sendEmailOtp(email.trim(), cleanName);
       setStep('verify-otp');
       setResendCooldown(60);
-      showToast(res.message || 'Verification code sent to your email.', { duration: 6000 });
-    } catch {
-      // Transition smoothly into verification step so user is never blocked
-      setStep('verify-otp');
-      setResendCooldown(60);
-      showToast('Verification code is ready. Check your inbox.', { duration: 6000 });
+      showToast(res.message || 'Verification code sent to your email.', { duration: 7000 });
+    } catch (err: any) {
+      const msg = sanitizeErrorMessage(err, 'Failed to send verification code. Please check your email or try again.');
+      setFieldErrors({ general: msg });
+      showToast(msg, { duration: 7000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -997,25 +996,18 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
             </div>
           )}
 
-          {/* Real Production OTP Verification Screen (Sign Up Account Activation) */}
+          {/* OTP Verification Screen (Sign Up & Two-Factor) */}
           {step === 'verify-otp' && (
-            <div className="w-full">
-              <h1 className="text-2xl font-bold text-center text-theme-text mb-1 tracking-tight">
-                Check your inbox
+            <div className="w-full text-center">
+              <h1 className="text-2xl font-bold text-theme-text mb-2 tracking-tight">
+                Enter Verification Code
               </h1>
-              <p className="text-xs text-center text-theme-text-muted mb-4 leading-relaxed max-w-xs mx-auto">
-                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>.
+              <p className="text-sm text-theme-text-muted mb-6 leading-relaxed max-w-sm mx-auto">
+                Enter 6-digit verification code sent to <span className="font-semibold text-theme-text">{email}</span>
               </p>
 
-              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-400 text-center leading-relaxed">
-                A 6-digit code has been dispatched to <strong className="text-white font-semibold">{email}</strong>. Check your inbox and spam folder.
-              </div>
-
-              <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full text-left space-y-4">
+              <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-theme-text-muted mb-2 text-center">
-                    6-Digit Verification Code
-                  </label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -1054,10 +1046,10 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                   disabled={isSubmitting || isLoading || otpCode.length < 6}
                   className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white rounded-full text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <span>Verify &amp; Activate Account</span>
+                  <span>Verify Code</span>
                 </button>
 
-                <div className="flex items-center justify-between text-xs pt-2">
+                <div className="flex items-center justify-between text-xs pt-1">
                   <button
                     type="button"
                     disabled={isSubmitting}
@@ -1084,55 +1076,22 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                     <span>{resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}</span>
                   </button>
                 </div>
-
-                {otpPurpose === 'signup' && password && password.length >= 6 && (
-                  <div className="pt-3 border-t border-theme-border/40 text-center">
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={async () => {
-                        setIsSubmitting(true);
-                        try {
-                          await signup(email.trim(), password, name.trim());
-                          showToast('Account created successfully! Welcome to Prople Store.');
-                          handleAuthSuccess();
-                        } catch (err: any) {
-                          const msg = sanitizeErrorMessage(err, 'Failed to activate account.');
-                          setFieldErrors({ general: msg });
-                          showToast(msg);
-                        } finally {
-                          setIsSubmitting(false);
-                        }
-                      }}
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                    >
-                      Didn't get the code? Activate account with password &rarr;
-                    </button>
-                  </div>
-                )}
               </form>
             </div>
           )}
 
-          {/* Step 1 of Password Reset: OTP Input Section Only */}
+          {/* Password Reset: OTP Input Step */}
           {step === 'reset-otp' && (
-            <div className="w-full">
-              <h1 className="text-2xl font-bold text-center text-theme-text mb-1 tracking-tight">
-                Reset your password
+            <div className="w-full text-center">
+              <h1 className="text-2xl font-bold text-theme-text mb-2 tracking-tight">
+                Enter Verification Code
               </h1>
-              <p className="text-xs text-center text-theme-text-muted mb-4 leading-relaxed max-w-xs mx-auto">
-                We've sent a 6-digit verification code to <span className="font-semibold text-theme-text">{email}</span>.
+              <p className="text-sm text-theme-text-muted mb-6 leading-relaxed max-w-sm mx-auto">
+                Enter 6-digit verification code sent to <span className="font-semibold text-theme-text">{email}</span>
               </p>
 
-              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs text-blue-400 text-center leading-relaxed">
-                A 6-digit code has been dispatched to <strong className="text-white font-semibold">{email}</strong>. Enter the code below or click the direct button in the email.
-              </div>
-
-              <form onSubmit={handleVerifyResetOtp} className="w-full text-left space-y-4">
+              <form onSubmit={handleVerifyResetOtp} className="w-full space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-theme-text-muted mb-2 text-center">
-                    6-Digit Verification Code
-                  </label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -1155,12 +1114,12 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                     }`}
                   />
                   {fieldErrors.resetCode && (
-                    <p className="mt-1.5 text-xs text-red-500 font-medium text-center animate-fadeIn">
+                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
                       {fieldErrors.resetCode}
                     </p>
                   )}
                   {fieldErrors.general && !fieldErrors.resetCode && (
-                    <p className="mt-1.5 text-xs text-red-500 font-medium text-center animate-fadeIn">
+                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
                       {fieldErrors.general}
                     </p>
                   )}
@@ -1174,7 +1133,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                   <span>Verify Code</span>
                 </button>
 
-                <div className="flex items-center justify-between text-xs pt-2">
+                <div className="flex items-center justify-between text-xs pt-1">
                   <button
                     type="button"
                     disabled={isSubmitting}

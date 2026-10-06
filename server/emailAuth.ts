@@ -113,8 +113,27 @@ export async function verifyStoredOtp(email: string, inputCode: string): Promise
   return { valid: true };
 }
 
+export function formatRecipientName(rawName?: string, email?: string): string {
+  if (rawName && typeof rawName === 'string' && rawName.trim().length >= 2) {
+    return escapeHtmlEmail(rawName.trim());
+  }
+  if (!email) return 'there';
+  const prefix = email.split('@')[0];
+  const cleaned = prefix.replace(/[0-9]+$/, '').replace(/[._-]+/g, ' ').trim();
+  if (cleaned.length >= 2) {
+    return escapeHtmlEmail(
+      cleaned
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ')
+    );
+  }
+  return escapeHtmlEmail(prefix);
+}
+
 export function renderGithubEmail({
   recipientName,
+  email,
   title,
   purposeText,
   code,
@@ -123,6 +142,7 @@ export function renderGithubEmail({
   actionText,
 }: {
   recipientName?: string;
+  email?: string;
   title: string;
   purposeText: string;
   code: string;
@@ -130,7 +150,7 @@ export function renderGithubEmail({
   actionUrl?: string;
   actionText?: string;
 }): string {
-  const displayUser = escapeHtmlEmail(recipientName ? recipientName : 'there');
+  const displayUser = formatRecipientName(recipientName, email);
   const safeTitle = escapeHtmlEmail(title);
   const safePurpose = escapeHtmlEmail(purposeText);
   const safeCode = escapeHtmlEmail(code);
@@ -143,80 +163,61 @@ export function renderGithubEmail({
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${safeTitle}</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
-    <tr>
-      <td align="center">
-        <!-- Brand Logo -->
-        <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
-          <tr>
-            <td align="center">
-              <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
-                <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
-              </a>
-            </td>
-          </tr>
-        </table>
+<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 36px 24px;">
+    <!-- Brand Header -->
+    <div style="margin-bottom: 24px;">
+      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 10px;">
+        <img src="https://www.prople.co.in/logo.png" width="32" height="32" alt="Prople Store" style="display: block; width: 32px; height: 32px; border-radius: 6px; border: 0;" />
+        <span style="font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Prople Store</span>
+      </a>
+    </div>
 
-        <!-- Heading -->
-        <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
-          ${safeTitle}, <strong style="font-weight: 600; color: #ffffff;">${displayUser}</strong>
-        </h1>
+    <!-- Body Content -->
+    <p style="margin: 0 0 18px; font-size: 16px; color: #e6edf3;">Hey ${displayUser}!</p>
 
-        <!-- Card Container (GitHub exact styling: transparent background, 1px border, wider container) -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: transparent; border: 1px solid #30363d; border-radius: 6px; box-sizing: border-box; text-align: left;">
-          <tr>
-            <td style="padding: 24px 28px 28px; font-size: 14px; line-height: 1.6; color: #e6edf3;">
-              <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                ${safePurpose}
-              </p>
+    <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.6;">
+      ${safePurpose}
+    </p>
 
-              <!-- Verification Code: bold, white, centered, generous letter-spacing like GitHub -->
-              <p style="margin: 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: 6px; color: #ffffff; text-align: center; line-height: 1;">
-                ${safeCode}
-              </p>
+    ${safeActionUrl ? `
+    <!-- Action Button (Reset Password) -->
+    <div style="margin: 32px 0 24px 0;">
+      <a href="${safeActionUrl}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; padding: 14px 32px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">
+        ${safeActionText} &rarr;
+      </a>
+    </div>
+    ` : ''}
 
-              ${safeActionUrl ? `
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 20px 0 24px;">
-                <tr>
-                  <td align="center">
-                    <a href="${safeActionUrl}" target="_blank" style="display: inline-block; background-color: #238636; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 28px; border-radius: 6px; border: 1px solid rgba(240,246,252,0.1); box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
-                      ${safeActionText} &rarr;
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              ` : ''}
+    <p style="margin: 24px 0 8px; font-size: 14px; color: #8b949e;">${safeActionUrl ? 'Or enter this 6-digit verification code on the reset page:' : 'Verification code:'}</p>
+    <div style="margin: 0 0 24px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #ffffff; background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 24px; display: inline-block;">
+      ${safeCode}
+    </div>
 
-              <p style="margin: 24px 0 12px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                This code is valid for <strong style="color: #ffffff;">${validityMinutes} minutes</strong> and can only be used once.
-              </p>
+    ${safeActionUrl ? `
+    <p style="margin: 0 0 20px; font-size: 13px; color: #8b949e; word-break: break-all;">
+      Direct link: <a href="${safeActionUrl}" style="color: #58a6ff; text-decoration: underline;">${safeActionUrl}</a>
+    </p>
+    ` : ''}
 
-              <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email.
-              </p>
+    <p style="margin: 20px 0 12px; font-size: 14px; color: #8b949e; line-height: 1.5;">
+      This code ${safeActionUrl ? 'and link are' : 'is'} valid for <strong>${validityMinutes} minutes</strong> and can only be used once.
+    </p>
 
-              <p style="margin: 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                Thanks,<br>
-                <span style="color: #8b949e;">The Prople Team</span>
-              </p>
-            </td>
-          </tr>
-        </table>
+    <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
+      If you did not request this, you can safely ignore this email. Please don't share this code with anyone.
+    </p>
 
-        <!-- Footer -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; margin-top: 24px;">
-          <tr>
-            <td align="center" style="font-size: 12px; color: #8b949e; line-height: 1.5;">
-              <p style="margin: 0;">
-                Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+    <p style="margin: 24px 0 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+      Thanks,<br>
+      <span style="color: #8b949e;">The Prople Team</span>
+    </p>
+
+    <!-- Footer -->
+    <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #21262d; font-size: 12px; color: #8b949e;">
+      Prople Store &bull; Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
+    </div>
+  </div>
 </body>
 </html>`;
 }
@@ -227,7 +228,6 @@ export async function sendOtpEmail(
   recipientName?: string
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   const client = getResendClient();
-  const displayName = recipientName ? recipientName.trim() : email.split('@')[0];
 
   if (!client) {
     console.warn(`[Dev Auth] RESEND_API_KEY is not configured. Generated 6-digit verification code for ${email}: ${code}`);
@@ -239,7 +239,8 @@ export async function sendOtpEmail(
 
   try {
     const htmlContent = renderGithubEmail({
-      recipientName: displayName,
+      recipientName,
+      email,
       title: 'Please verify your identity',
       purposeText: 'Here is your Prople Store authentication verification code:',
       code,
@@ -252,6 +253,7 @@ export async function sendOtpEmail(
       'Prople Store <auth@prople.co.in>',
       'Prople Store <auth@send.prople.co.in>',
       'Prople Store <support@prople.co.in>',
+      'Prople Store <noreply@prople.co.in>',
       'Prople Store <onboarding@resend.dev>'
     ];
 
@@ -312,7 +314,8 @@ export async function sendPasswordResetEmailTemplate(
 
   try {
     const htmlContent = renderGithubEmail({
-      recipientName: displayName,
+      recipientName,
+      email,
       title: 'Reset your password',
       purposeText: 'Here is your Prople Store password reset code and direct link:',
       code,
@@ -325,8 +328,9 @@ export async function sendPasswordResetEmailTemplate(
     const candidateSenders = [
       primarySender,
       'Prople Store <auth@prople.co.in>',
-      'Prople Store <support@prople.co.in>',
       'Prople Store <auth@send.prople.co.in>',
+      'Prople Store <support@prople.co.in>',
+      'Prople Store <noreply@prople.co.in>',
       'Prople Store <onboarding@resend.dev>'
     ];
 

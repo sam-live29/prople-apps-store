@@ -4662,6 +4662,26 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
 4. **Client-Side Error Sanitization**:
    - In `AuthPage.tsx`, transformed raw infrastructure/gateway errors (such as `FUNCTION_INVOCATION_FAILED`) into clean, actionable user feedback: `"Unable to connect to the authentication server. Please try again or continue with Google."`
 
+### 4. OTP Authentication UX Streamlining & Unified Branded Transactional Email Architecture
+
+#### Requirements Addressed
+1. **Simplified Authentication Page OTP Screen**:
+   - Removed visual noise, extraneous banners, info boxes, redundant labels, and bottom border cards from the OTP entry view (`step === 'verify-otp'` and `step === 'reset-otp'`).
+   - Clean, focused typography hierarchy: single prominent title *"Enter Verification Code"*, explicit subtitle *"Enter 6-digit verification code sent to xx@email"*, centered monospace 6-digit input, primary *"Verify Code"* action button, and subtle *"Change email"* / *"Resend code"* controls.
+2. **Elimination of Separate Reset Link Option on Auth Page**:
+   - On the authentication interface, password reset directly prompts for account email and dispatches the verification code without confusing multi-option link vs code selection.
+   - Removed uncustomized Firebase fallback link calls (`sendPasswordResetEmail`) that bypassed the customized email template and sent generic Google links without OTP codes.
+3. **Unified High-Fidelity Branded Email Template**:
+   - Both account verification (`send-otp`) and password reset (`forgot-password`) deliver custom branded HTML emails with:
+     * **Standardized Sender Name**: Display name strictly formatted as `Prople Store <...>` across all candidate dispatchers (`Prople Store <auth@prople.co.in>`, `Prople Store <auth@send.prople.co.in>`, `Prople Store <support@prople.co.in>`, `Prople Store <noreply@prople.co.in>`, `Prople Store <onboarding@resend.dev>`), ensuring email clients show the sender as **Prople Store** rather than a raw email address.
+     * **Personalized Recipient Salutation**: Intelligent capitalization and formatting (`formatRecipientName`) deriving clean recipient names (e.g. `Hey Sahanur Molla!` or `Hey Sahanur!`) rather than raw email handles.
+     * **Prominent 6-Digit Verification Code Block**: 32px bold monospace text with 8px letter-spacing, dark slate background (`#161b22`), and 1px border (`#30363d`).
+     * **Well-Margined Direct Reset Button (Password Reset)**: Distinctive `#2563eb` action button (*"Reset Password Directly →"*) with generous vertical spacing (`32px 0 24px 0`), padding (`14px 32px`), and direct URL fallback.
+     * **Clear Expiration & Security Copy**: Explicit 15-minute validity window and security disclaimers.
+4. **Toast Lifecycle & Execution Telemetry**:
+   - Extended default toast display duration to 6000ms–7500ms so confirmation notices remain readable.
+   - Throws clear actionable feedback if email dispatch encounters network or provider limits, rather than prematurely dismissing toasts or masking errors.
+
 
 
 

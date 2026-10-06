@@ -213,70 +213,47 @@ export default async function handler(req: any, res: any) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Please verify your identity, ${recipientName}</title>
+  <title>[Prople Store] Please verify your device</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
-    <tr>
-      <td align="center">
-        <!-- Brand Logo -->
-        <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
-          <tr>
-            <td align="center">
-              <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
-                <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
-              </a>
-            </td>
-          </tr>
-        </table>
+<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 36px 24px;">
+    <!-- Brand Header -->
+    <div style="margin-bottom: 24px;">
+      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
+        <img src="https://www.prople.co.in/logo.png" width="32" height="32" alt="Prople Store" style="display: block; width: 32px; height: 32px; border-radius: 6px; border: 0;" />
+      </a>
+    </div>
 
-        <!-- Heading -->
-        <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
-          Please verify your identity, <strong style="font-weight: 600; color: #ffffff;">${recipientName}</strong>
-        </h1>
+    <!-- Body Content -->
+    <p style="margin: 0 0 18px; font-size: 16px; color: #e6edf3;">Hey ${recipientName}!</p>
 
-        <!-- Card Container -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: transparent; border: 1px solid #30363d; border-radius: 6px; box-sizing: border-box; text-align: left;">
-          <tr>
-            <td style="padding: 24px 28px 28px; font-size: 14px; line-height: 1.6; color: #e6edf3;">
-              <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                Here is your Prople Store authentication verification code:
-              </p>
+    <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.6;">
+      A sign in attempt requires further verification. To complete the sign in, enter the verification code on the device or login page:
+    </p>
 
-              <!-- Verification Code -->
-              <p style="margin: 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: 6px; color: #ffffff; text-align: center; line-height: 1;">
-                ${code}
-              </p>
+    <p style="margin: 20px 0 6px; font-size: 14px; color: #8b949e;">Verification code:</p>
+    <div style="margin: 0 0 24px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #ffffff; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 20px; display: inline-block;">
+      ${code}
+    </div>
 
-              <p style="margin: 24px 0 12px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                This code is valid for <strong style="color: #ffffff;">15 minutes</strong> and can only be used once.
-              </p>
+    <p style="margin: 20px 0 12px; font-size: 14px; color: #8b949e; line-height: 1.5;">
+      This code is valid for <strong>15 minutes</strong> and can only be used once.
+    </p>
 
-              <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email.
-              </p>
+    <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
+      If you did not attempt to sign in to your account, someone may be attempting to access your account. Please check your account security settings.
+    </p>
 
-              <p style="margin: 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                Thanks,<br>
-                <span style="color: #8b949e;">The Prople Team</span>
-              </p>
-            </td>
-          </tr>
-        </table>
+    <p style="margin: 24px 0 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+      Thanks,<br>
+      <span style="color: #8b949e;">The Prople Team</span>
+    </p>
 
-        <!-- Footer -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; margin-top: 24px;">
-          <tr>
-            <td align="center" style="font-size: 12px; color: #8b949e; line-height: 1.5;">
-              <p style="margin: 0;">
-                Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+    <!-- Footer -->
+    <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #21262d; font-size: 12px; color: #8b949e;">
+      Prople Store &bull; Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
+    </div>
+  </div>
 </body>
 </html>`;
 
@@ -284,11 +261,9 @@ export default async function handler(req: any, res: any) {
         const candidateSenders = [
           primarySender,
           'Prople Store <auth@prople.co.in>',
-          'auth@prople.co.in',
-          'Prople Store <noreply@prople.co.in>',
-          'noreply@prople.co.in',
           'Prople Store <auth@send.prople.co.in>',
           'Prople Store <support@prople.co.in>',
+          'Prople Store <noreply@prople.co.in>',
           'Prople Store <onboarding@resend.dev>',
         ];
 
@@ -343,81 +318,59 @@ export default async function handler(req: any, res: any) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset your password, ${recipientName}</title>
+  <title>[Prople Store] Reset your password</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
-    <tr>
-      <td align="center">
-        <!-- Brand Logo -->
-        <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
-          <tr>
-            <td align="center">
-              <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
-                <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
-              </a>
-            </td>
-          </tr>
-        </table>
+<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 36px 24px;">
+    <!-- Brand Header -->
+    <div style="margin-bottom: 24px;">
+      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 10px;">
+        <img src="https://www.prople.co.in/logo.png" width="32" height="32" alt="Prople Store" style="display: block; width: 32px; height: 32px; border-radius: 6px; border: 0;" />
+        <span style="font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">Prople Store</span>
+      </a>
+    </div>
 
-        <!-- Heading -->
-        <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
-          Reset your password, <strong style="font-weight: 600; color: #ffffff;">${recipientName}</strong>
-        </h1>
+    <!-- Body Content -->
+    <p style="margin: 0 0 18px; font-size: 16px; color: #e6edf3;">Hey ${recipientName}!</p>
 
-        <!-- Card Container -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: transparent; border: 1px solid #30363d; border-radius: 6px; box-sizing: border-box; text-align: left;">
-          <tr>
-            <td style="padding: 24px 28px 28px; font-size: 14px; line-height: 1.6; color: #e6edf3;">
-              <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                We received a request to reset your Prople Store account password. Use the 6-digit verification code below, or reset directly using the button:
-              </p>
+    <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.6;">
+      We received a request to reset your Prople Store account password. To complete the password reset, click the button below:
+    </p>
 
-              <!-- Verification Code -->
-              <p style="margin: 24px 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 34px; font-weight: 700; letter-spacing: 8px; color: #ffffff; text-align: center; line-height: 1;">
-                ${code}
-              </p>
+    <!-- Reset Link Button: Clean, well-margined, prominent -->
+    <div style="margin: 32px 0 24px 0;">
+      <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; padding: 14px 32px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">
+        Reset Password Directly &rarr;
+      </a>
+    </div>
 
-              <!-- Direct Reset Button in the same email -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 20px 0 24px;">
-                <tr>
-                  <td align="center">
-                    <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #238636; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 13px 32px; border-radius: 6px; border: 1px solid rgba(240,246,252,0.1); box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
-                      Reset Password Directly &rarr;
-                    </a>
-                  </td>
-                </tr>
-              </table>
+    <p style="margin: 24px 0 8px; font-size: 14px; color: #94a3b8;">Or enter this 6-digit verification code on the reset page:</p>
+    <div style="margin: 0 0 24px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #ffffff; background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 24px; display: inline-block;">
+      ${code}
+    </div>
 
-              <p style="margin: 24px 0 12px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                This code is valid for <strong style="color: #ffffff;">15 minutes</strong> and can only be used once.
-              </p>
+    <p style="margin: 0 0 20px; font-size: 13px; color: #94a3b8; word-break: break-all;">
+      Direct link: <a href="${resetLink}" style="color: #60a5fa; text-decoration: underline;">${resetLink}</a>
+    </p>
 
-              <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
-                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email. If you did not request this, you can safely ignore this message.
-              </p>
+    <p style="margin: 20px 0 12px; font-size: 14px; color: #94a3b8; line-height: 1.5;">
+      This code and reset link are valid for <strong>15 minutes</strong> and can only be used once.
+    </p>
 
-              <p style="margin: 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
-                Thanks,<br>
-                <span style="color: #8b949e;">The Prople Team</span>
-              </p>
-            </td>
-          </tr>
-        </table>
+    <p style="margin: 0 0 24px; font-size: 14px; color: #94a3b8; line-height: 1.5;">
+      If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+    </p>
 
-        <!-- Footer -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; margin-top: 24px;">
-          <tr>
-            <td align="center" style="font-size: 12px; color: #8b949e; line-height: 1.5;">
-              <p style="margin: 0;">
-                Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+    <p style="margin: 24px 0 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+      Thanks,<br>
+      <span style="color: #8b949e;">The Prople Team</span>
+    </p>
+
+    <!-- Footer -->
+    <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #21262d; font-size: 12px; color: #8b949e;">
+      Prople Store &bull; Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
+    </div>
+  </div>
 </body>
 </html>`;
 
@@ -425,11 +378,9 @@ export default async function handler(req: any, res: any) {
         const candidateSenders = [
           primarySender,
           'Prople Store <auth@prople.co.in>',
-          'auth@prople.co.in',
-          'Prople Store <noreply@prople.co.in>',
-          'noreply@prople.co.in',
           'Prople Store <auth@send.prople.co.in>',
           'Prople Store <support@prople.co.in>',
+          'Prople Store <noreply@prople.co.in>',
           'Prople Store <onboarding@resend.dev>',
         ];
 
