@@ -193,5 +193,27 @@ This blueprint documents the production-grade authentication security engine for
      8. `api/github-release-meta.ts` (Release metadata ingestion)
    - Guarantees 100% build compatibility with Vercel Hobby tier while preserving full API backwards-compatibility for frontend callers.
 
+---
+
+## 8. Password Reset Flow Architecture & Prople Store UI Enforcement
+
+### Root Cause Analysis of Missing OTP and Default Firebase UI
+1. **The Issue**:
+   - When users requested a password reset, `sendPasswordResetEmail(auth, cleanEmail)` was called prior to the custom API endpoint.
+   - This triggered Firebase's default email template from `noreply@prople-store-3efed.firebaseapp.com`, which contains no OTP code and links to Google's default barebones webpage (`prople-store-3efed.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=...`).
+   - Clicking this link bypassed the Prople Store application interface entirely and presented a generic white/blue form.
+
+2. **The High-Fidelity Prople Store Reset Architecture**:
+   - **Primary Custom Mail Dispatch**: When a user requests a reset, the client invokes `/api/auth/forgot-password`.
+   - **Rich GitHub Dark-Mode Email Template**: The email delivers:
+     - The Prople Store brand icon.
+     - A cryptographically secure 6-digit OTP code (`code`) formatted in bold 32px text.
+     - A direct green action button (`Reset Password Directly →`) linking back to `https://www.prople.co.in/?auth=reset-password&email=...&code=...`.
+   - **Universal UI Catchment**:
+     - `AuthPage.tsx` and `NavigationContext.tsx` intercept all incoming reset routes: `?auth=reset-password`, `?action=reset-password`, `?mode=reset-password`, `?mode=resetPassword`, and `?oobCode=...`.
+     - When a code or `oobCode` is detected, the app automatically transitions to the `reset-new-password` step inside Prople Store's native dark-mode UI.
+     - Supports both 6-digit OTP codes and Firebase `oobCode` credentials using `confirmPasswordReset` as a unified hybrid handler.
+
+
 
 

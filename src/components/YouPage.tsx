@@ -124,7 +124,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
     // Never show developer notice during password reset or auth flows
     if (typeof window !== 'undefined') {
       const search = window.location.search || '';
-      if (search.includes('reset-password') || search.includes('auth=')) {
+      if (search.includes('reset-password') || search.includes('resetPassword') || search.includes('auth=') || search.includes('oobCode')) {
         return;
       }
     }

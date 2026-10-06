@@ -168,7 +168,15 @@ export function getInitialNavigationState(): NavigationState {
       };
     }
 
-    if (rawPath === '/auth' || rawPath === '/login' || rawPath === '/signin' || searchParams.get('auth') || searchParams.get('mode') === 'reset-password') {
+    if (
+      rawPath === '/auth' ||
+      rawPath === '/login' ||
+      rawPath === '/signin' ||
+      searchParams.has('auth') ||
+      searchParams.get('mode') === 'reset-password' ||
+      searchParams.get('mode') === 'resetPassword' ||
+      searchParams.has('oobCode')
+    ) {
       return {
         ...initialNavigationState,
         overlay: 'auth',

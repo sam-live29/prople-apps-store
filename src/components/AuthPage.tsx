@@ -24,6 +24,7 @@ import StoreCircleLoader from './StoreCircleLoader';
 import TermsPage from './TermsPage';
 import PrivacyPolicyPage from './PrivacyPolicyPage';
 import { usePreserveScroll } from '../services/scrollManager';
+import { auth } from '../firebase';
 
 interface AuthPageProps {
   onClose?: () => void;
@@ -113,13 +114,31 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       const actionParam = searchParams.get('action');
       const modeParam = searchParams.get('mode');
       const emailParam = searchParams.get('email');
-      const codeParam = searchParams.get('code');
+      const codeParam = searchParams.get('code') || searchParams.get('oobCode');
 
-      if (authParam === 'reset-password' || actionParam === 'reset-password' || modeParam === 'reset-password') {
-        if (emailParam) setEmail(decodeURIComponent(emailParam));
+      const isResetMode =
+        authParam === 'reset-password' ||
+        actionParam === 'reset-password' ||
+        modeParam === 'reset-password' ||
+        modeParam === 'resetPassword' ||
+        Boolean(searchParams.get('oobCode'));
+
+      if (isResetMode) {
+        if (emailParam) {
+          setEmail(decodeURIComponent(emailParam));
+        } else if (searchParams.get('oobCode')) {
+          import('firebase/auth').then(({ verifyPasswordResetCode }) => {
+            verifyPasswordResetCode(auth, searchParams.get('oobCode')!)
+              .then((userEmail) => {
+                if (userEmail) setEmail(userEmail);
+              })
+              .catch(() => {});
+          });
+        }
+
         if (codeParam) {
           setResetCode(decodeURIComponent(codeParam));
-          // If code is provided in the direct link, jump directly to set new password!
+          // If code or oobCode is provided in the direct link, jump directly to set new password!
           setStep('reset-new-password');
         } else {
           setStep('reset-otp');

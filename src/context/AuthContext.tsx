@@ -995,17 +995,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(`prople_reset_${cleanEmail}`, fallbackCode);
       } catch {}
 
-      // 1. Native Firebase Password Reset Email (Direct from Google - zero server dependency)
-      let fbSuccess = false;
-      try {
-        await sendPasswordResetEmail(auth, cleanEmail);
-        fbSuccess = true;
-      } catch (fbErr: any) {
-        console.warn('[AuthContext] Firebase native reset notice:', fbErr?.code || fbErr?.message);
-      }
-
-      // 2. Auxiliary serverless reset dispatch (fire-and-forget, never throws)
-      safeFetchJson<{
+      // 1. Dispatch custom Prople Store branded email with 6-digit OTP & direct reset button
+      const { ok, data } = await safeFetchJson<{
         success: boolean;
         message?: string;
         error?: string;
@@ -1013,13 +1004,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail }),
-      }).catch(() => {});
+      });
+
+      // 2. If serverless custom mail dispatch didn't succeed, fall back to native Firebase reset
+      if (!ok || !data?.success) {
+        try {
+          const actionCodeSettings = {
+            url: `${window.location.origin}/?auth=reset-password&mode=resetPassword&email=${encodeURIComponent(cleanEmail)}`,
+            handleCodeInApp: true,
+          };
+          await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+        } catch (fbErr: any) {
+          console.warn('[AuthContext] Firebase reset fallback notice:', fbErr?.code || fbErr?.message);
+        }
+      }
 
       return {
         success: true,
-        message: fbSuccess
-          ? `Password reset link has been dispatched to ${cleanEmail}. Please check your inbox.`
-          : `Password reset instructions have been sent to ${cleanEmail}.`,
+        message: data?.message || `Password reset instructions and verification code have been dispatched to ${cleanEmail}.`,
       };
     } finally {
       setIsLoading(false);
@@ -1031,6 +1033,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.toLowerCase().trim();
     const cleanCode = code.trim();
     try {
+      // If code is a Firebase oobCode (from Firebase action link), confirm directly with Firebase Auth
+      if (cleanCode.length > 8 || !/^\d{6}$/.test(cleanCode)) {
+        try {
+          const { confirmPasswordReset } = await import('firebase/auth');
+          await confirmPasswordReset(auth, cleanCode, newPassword);
+        } catch (oobErr: any) {
+          console.warn('[AuthContext] confirmPasswordReset notice:', oobErr?.message);
+        }
+      }
+
       const { data } = await safeFetchJson<{
         success: boolean;
         message?: string;
