@@ -50,6 +50,11 @@ The authentication system was re-architected with a 3-tier delivery guarantee:
   - Implemented candidate key resolution (`getCandidateResendApiKeys`), 401 key rotation, and automated fallback to Firebase Identity Toolkit (`sendFirebaseOobCode`).
 - **User-Facing Error Clarity (`errorUtils.ts`)**:
   - Updated error messaging to eliminate false user blame, ensuring users are never asked to "verify email address" when server delivery encounters transient network or provider restrictions.
+- **Minimalist Transactional Email Design Standard (Anti-Slop)**:
+  - Replaced nested heavy marketing cards with clean, authentic transactional email typography matching standard Google and security mailers (`-apple-system`, neutral `#0d1117` dark mode canvas).
+  - Integrated `user-select: all; -webkit-user-select: all;` on the 6-digit monospace code block for instant 1-tap mobile selection.
+  - Paired the OTP with an adjacent high-contrast action button (`Verify Email →` / `Reset Password →`) and direct browser fallback URL.
+  - Maintained Schema.org JSON-LD `ConfirmAction` so Gmail and Android natively render an interactive "Copy code" button in notifications and the inbox header.
 
 ---
 

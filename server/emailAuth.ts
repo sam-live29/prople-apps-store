@@ -209,7 +209,6 @@ export function renderPropleEmail({
   const safeTitle = escapeHtmlEmail(title);
   const safePurpose = escapeHtmlEmail(purposeText);
   const safeCode = escapeHtmlEmail(code);
-  const spacedCode = safeCode.split('').join(' ');
   const safeEmail = escapeHtmlEmail(email || '');
   const safeActionUrl = actionUrl ? escapeHtmlEmail(actionUrl) : '';
   const defaultActionText = isPasswordReset ? 'Reset Password' : 'Verify Email';
@@ -238,99 +237,72 @@ export function renderPropleEmail({
   }
   </script>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
-  <!-- Preheader text for email clients -->
+<body style="margin: 0; padding: 24px 16px; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e6edf3; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;">
   <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; max-width: 0px; opacity: 0;">
-    ${safeCode} is your Prople Store authentication code. Valid for ${validityMinutes} minutes. &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
+    ${safeCode} is your Prople Store code. &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
   </div>
 
-  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; width: 100%;">
-    <tr>
-      <td align="center" style="padding: 40px 16px;">
-        <div style="max-width: 560px; width: 100%; text-align: left;">
-          
-          <!-- Brand Header -->
-          <div style="margin-bottom: 28px;">
-            <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 12px;">
-              <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
-              <span style="font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.4px;">Prople Store</span>
-            </a>
-          </div>
+  <div style="max-width: 520px; margin: 0 auto; text-align: left;">
+    
+    <!-- Minimal Brand Header -->
+    <div style="margin-bottom: 24px;">
+      <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+        <img src="https://www.prople.co.in/logo.png" width="28" height="28" alt="Prople Store" style="display: block; width: 28px; height: 28px; border-radius: 6px; border: 0;" />
+        <span style="font-size: 17px; font-weight: 700; color: #ffffff; letter-spacing: -0.2px;">Prople Store</span>
+      </a>
+    </div>
 
-          <!-- Greeting Header -->
-          <h1 style="margin: 0 0 16px 0; font-size: 22px; font-weight: 600; color: #ffffff; line-height: 1.35;">
-            ${safeTitle}, <span style="color: #60a5fa;">${displayUser}</span>
-          </h1>
+    <!-- Greeting & Purpose -->
+    <p style="margin: 0 0 16px 0; font-size: 15px; color: #e6edf3;">
+      Hello${displayUser ? ` <strong style="color: #ffffff;">${displayUser}</strong>` : ''},
+    </p>
 
-          <!-- Main Content Card -->
-          <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 26px 24px; margin-bottom: 24px;">
-            
-            <p style="margin: 0 0 18px 0; font-size: 15px; color: #c9d1d9; line-height: 1.6;">
-              ${safePurpose}
-            </p>
+    <p style="margin: 0 0 20px 0; font-size: 15px; color: #c9d1d9;">
+      ${safePurpose} ${safeEmail ? `for your <span style="color: #58a6ff;">${safeEmail}</span> account.` : ''}
+    </p>
 
-            <!-- Authentication Code Box (Monospace, Spaced, High-Contrast) -->
-            <div style="margin: 22px 0; text-align: left;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: #8b949e; margin-bottom: 8px;">
-                Authentication Code
-              </div>
-              <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #ffffff; background-color: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px 22px; display: inline-block;">
-                ${spacedCode}
-              </div>
-            </div>
+    <!-- OTP Code & Action Button Row -->
+    <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 20px 0 8px 0;">
+      <tr>
+        <td style="background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 18px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size: 26px; font-weight: 700; letter-spacing: 6px; color: #58a6ff; user-select: all; -webkit-user-select: all; text-align: center;">
+          ${safeCode}
+        </td>
+        ${safeActionUrl ? `
+        <td style="padding-left: 12px;">
+          <a href="${safeActionUrl}" target="_blank" style="display: inline-block; background-color: #238636; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 20px; border-radius: 8px; white-space: nowrap;">
+            ${safeActionText} &rarr;
+          </a>
+        </td>
+        ` : ''}
+      </tr>
+    </table>
 
-            ${safeActionUrl ? `
-            <!-- Prominent Call-To-Action Button -->
-            <div style="margin: 26px 0 20px 0;">
-              <a href="${safeActionUrl}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; padding: 13px 30px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center; border: 1px solid rgba(255,255,255,0.1);">
-                ${safeActionText} &rarr;
-              </a>
-            </div>
+    <div style="font-size: 12px; color: #8b949e; margin-bottom: 22px;">
+      Tip: Tap code to select &amp; copy, or click the button to verify automatically.
+    </div>
 
-            <!-- Direct Fallback Link -->
-            <p style="margin: 0 0 20px 0; font-size: 13px; color: #8b949e; word-break: break-all; line-height: 1.5;">
-              Or click this direct link: <a href="${safeActionUrl}" style="color: #58a6ff; text-decoration: underline;">${safeActionUrl}</a>
-            </p>
-            ` : ''}
+    ${safeActionUrl ? `
+    <p style="margin: 0 0 22px 0; font-size: 13px; color: #8b949e; word-break: break-all; line-height: 1.5;">
+      Direct link: <a href="${safeActionUrl}" style="color: #58a6ff; text-decoration: underline;">${safeActionUrl}</a>
+    </p>
+    ` : ''}
 
-            <!-- Validity & Security Advisory -->
-            <p style="margin: 18px 0 10px 0; font-size: 13px; color: #8b949e; line-height: 1.5;">
-              This code ${safeActionUrl ? 'and link are' : 'is'} valid for <strong>${validityMinutes} minutes</strong> and can only be used once.
-            </p>
+    <p style="margin: 0 0 24px 0; font-size: 13px; color: #8b949e; line-height: 1.5;">
+      This code is valid for <strong>${validityMinutes} minutes</strong>. If you didn&rsquo;t ask for this, you can safely ignore this email.
+    </p>
 
-            <p style="margin: 0 0 20px 0; font-size: 13px; color: #8b949e; line-height: 1.5;">
-              <strong>Please don't share this code with anyone:</strong> we'll never ask for it on the phone or via email.
-            </p>
+    <!-- Sign-off -->
+    <p style="margin: 0 0 24px 0; font-size: 15px; color: #e6edf3; line-height: 1.5;">
+      Thanks,<br>
+      <strong style="color: #ffffff;">Your Prople Store team</strong>
+    </p>
 
-            <!-- Sender Signature -->
-            <p style="margin: 22px 0 0 0; font-size: 14px; color: #c9d1d9; line-height: 1.5;">
-              Thanks,<br>
-              <strong style="color: #ffffff;">The Prople Team</strong>
-            </p>
-          </div>
+    <!-- Minimal Footer -->
+    <div style="border-top: 1px solid #21262d; padding-top: 16px; font-size: 12px; color: #6e7681;">
+      Prople Store &bull; Cloaktail Industries &bull; <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a>
+    </div>
 
-          <!-- Professional Footer -->
-          <div style="border-top: 1px solid #21262d; padding-top: 20px; font-size: 12px; color: #8b949e; line-height: 1.6;">
-            <div>
-              <strong style="color: #c9d1d9;">Prople Store</strong> &bull; Multi-Platform Application &amp; Web Store &bull; Cloaktail Industries
-            </div>
-            <div style="margin-top: 6px;">
-              Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull;
-              <a href="https://www.prople.co.in/privacy" style="color: #58a6ff; text-decoration: none;">Privacy Policy</a> &bull;
-              <a href="https://www.prople.co.in/terms" style="color: #58a6ff; text-decoration: none;">Terms of Service</a> &bull;
-              <a href="mailto:support@prople.co.in" style="color: #58a6ff; text-decoration: none;">support@prople.co.in</a>
-            </div>
-            ${safeEmail ? `
-            <div style="margin-top: 8px; color: #6e7681; font-size: 11px;">
-              This email was sent to ${safeEmail} regarding your Prople Store account. If you did not initiate this request, you can safely ignore this email.
-            </div>
-            ` : ''}
-          </div>
-
-        </div>
-      </td>
-    </tr>
-  </table>
+  </div>
 </body>
 </html>`;
 }
