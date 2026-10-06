@@ -1056,8 +1056,8 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               <p className="text-sm text-theme-text-muted mb-2 leading-relaxed max-w-sm mx-auto">
                 Enter the 6-digit code sent to <span className="font-semibold text-theme-text">{email}</span>
               </p>
-              <p className="text-xs text-blue-400/90 mb-5 max-w-sm mx-auto bg-blue-500/10 border border-blue-500/20 rounded-lg py-1.5 px-3">
-                💡 Tip: You can also tap the &ldquo;Verify Email&rdquo; button in your email to authenticate instantly.
+              <p className="text-xs text-theme-text-muted mb-5 max-w-sm mx-auto leading-relaxed">
+                You can enter the 6-digit code below or tap the &ldquo;Verify Email&rdquo; button in your email to authenticate instantly.
               </p>
 
               <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full space-y-4">
@@ -1143,8 +1143,8 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               <p className="text-sm text-theme-text-muted mb-2 leading-relaxed max-w-sm mx-auto">
                 Enter the 6-digit code sent to <span className="font-semibold text-theme-text">{email}</span>
               </p>
-              <p className="text-xs text-blue-400/90 mb-5 max-w-sm mx-auto bg-blue-500/10 border border-blue-500/20 rounded-lg py-1.5 px-3">
-                💡 Tip: You can enter the 6-digit code below OR click the &ldquo;Reset Password&rdquo; link in your email.
+              <p className="text-xs text-theme-text-muted mb-5 max-w-sm mx-auto leading-relaxed">
+                You can enter the 6-digit code below or click the &ldquo;Reset Password&rdquo; link in your email.
               </p>
 
               <form onSubmit={handleVerifyResetOtp} className="w-full space-y-4">

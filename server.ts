@@ -37,7 +37,14 @@ import {
   slugifyAppName
 } from "./server/seoRenderer";
 import { createS3UploadPresignedUrl, uploadBufferToS3, S3_BUCKET_NAME, S3_REGION } from "./server/s3Storage";
-import { generateOtp, storeOtp, verifyStoredOtp, sendOtpEmail, sendPasswordResetEmailTemplate } from "./server/emailAuth";
+import { 
+  generateOtp, 
+  storeOtp, 
+  verifyStoredOtp, 
+  sendOtpEmail, 
+  sendPasswordResetEmailTemplate,
+  setRuntimeResendApiKey
+} from "./server/emailAuth";
 import { 
   persistUserPasswordHash, 
   getUserPasswordHash,
@@ -77,6 +84,15 @@ try {
     serverDb = initFirestore(fbApp);
     console.log("[Backend] Firestore initialized for server-authoritative API");
     initAuthSecurity(serverDb);
+    serverGetDoc(serverDoc(serverDb, "system_config", "resend")).then((snap: any) => {
+      if (snap && snap.exists()) {
+        const data = snap.data();
+        if (data?.apiKey) {
+          setRuntimeResendApiKey(data.apiKey);
+          console.log("[Backend] Loaded Resend API key from Firestore system_config");
+        }
+      }
+    }).catch(() => {});
   }
 } catch (e: any) {
   console.warn("[Backend] Failed to initialize Firestore on server:", e.message);
@@ -1357,7 +1373,7 @@ async function startServer() {
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,
-          error: "Failed to deliver verification email. Please check your email address and try again.",
+          error: emailResult.error || "Failed to deliver verification email via Resend. Please verify your Resend configuration.",
         });
       }
 
@@ -1520,7 +1536,7 @@ async function startServer() {
       if (!emailResult.success) {
         return res.status(500).json({
           success: false,
-          error: "Failed to deliver password reset email. Please check your email address and try again.",
+          error: emailResult.error || "Failed to deliver password reset email via Resend. Please verify your Resend configuration.",
         });
       }
 

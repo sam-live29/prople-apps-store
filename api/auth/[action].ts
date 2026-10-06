@@ -206,14 +206,17 @@ export default async function handler(req: any, res: any) {
       }).catch(() => {});
 
       const resendApiKey = (
-        process.env.RESEND_API_KEY_ ||
         process.env.RESEND_API_KEY ||
+        process.env.RESEND_API_KEY_ ||
         process.env.VITE_RESEND_API_KEY ||
+        process.env.RESEND_KEY ||
+        process.env.VITE_RESEND_KEY ||
         ''
       ).trim();
 
       const verifyLink = `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
+      let lastResendError = '';
 
       if (resendApiKey) {
         const recipientName = formatRecipientName(body.name || body.displayName, email);
@@ -233,9 +236,11 @@ export default async function handler(req: any, res: any) {
           primarySender,
           'The Prople Team <auth@prople.co.in>',
           'Prople Store <auth@prople.co.in>',
-          'The Prople Team <support@prople.co.in>',
-          'The Prople Team <noreply@prople.co.in>',
-          'The Prople Team <onboarding@resend.dev>',
+          'auth@prople.co.in',
+          'support@prople.co.in',
+          'noreply@prople.co.in',
+          'onboarding@resend.dev',
+          'Prople Store <onboarding@resend.dev>',
         ];
 
         for (const sender of candidateSenders) {
@@ -244,8 +249,12 @@ export default async function handler(req: any, res: any) {
           if (result.ok) {
             emailSent = true;
             break;
+          } else if (result.error) {
+            lastResendError = result.error;
           }
         }
+      } else {
+        lastResendError = 'RESEND_API_KEY is not configured in server environment';
       }
 
       // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if Resend is unavailable or fails
@@ -254,6 +263,13 @@ export default async function handler(req: any, res: any) {
         if (fbRes.success) {
           emailSent = true;
         }
+      }
+
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          error: lastResendError || 'Failed to dispatch verification email via Resend. Please check your Resend API key and domain configuration.',
+        });
       }
 
       return res.status(200).json({
@@ -281,14 +297,17 @@ export default async function handler(req: any, res: any) {
       }).catch(() => {});
 
       const resendApiKey = (
-        process.env.RESEND_API_KEY_ ||
         process.env.RESEND_API_KEY ||
+        process.env.RESEND_API_KEY_ ||
         process.env.VITE_RESEND_API_KEY ||
+        process.env.RESEND_KEY ||
+        process.env.VITE_RESEND_KEY ||
         ''
       ).trim();
 
       const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${code}`;
       let emailSent = false;
+      let lastResendError = '';
 
       if (resendApiKey) {
         const recipientName = formatRecipientName(body.name || body.displayName, email);
@@ -309,9 +328,11 @@ export default async function handler(req: any, res: any) {
           primarySender,
           'The Prople Team <auth@prople.co.in>',
           'Prople Store <auth@prople.co.in>',
-          'The Prople Team <support@prople.co.in>',
-          'The Prople Team <noreply@prople.co.in>',
-          'The Prople Team <onboarding@resend.dev>',
+          'auth@prople.co.in',
+          'support@prople.co.in',
+          'noreply@prople.co.in',
+          'onboarding@resend.dev',
+          'Prople Store <onboarding@resend.dev>',
         ];
 
         for (const sender of candidateSenders) {
@@ -320,8 +341,12 @@ export default async function handler(req: any, res: any) {
           if (sent.ok) {
             emailSent = true;
             break;
+          } else if (sent.error) {
+            lastResendError = sent.error;
           }
         }
+      } else {
+        lastResendError = 'RESEND_API_KEY is not configured in server environment';
       }
 
       // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if Resend is unavailable or fails
@@ -330,6 +355,13 @@ export default async function handler(req: any, res: any) {
         if (fbRes.success) {
           emailSent = true;
         }
+      }
+
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          error: lastResendError || 'Failed to dispatch password reset email via Resend. Please check your Resend API key and domain configuration.',
+        });
       }
 
       return res.status(200).json({

@@ -21,8 +21,13 @@ This blueprint documents the production-grade authentication security engine for
 ### B. Resend.com Primary Email Delivery Engine & High-Capacity OTP Architecture
 - **Provider Architecture**:
   - Resend.com (`resend`) is the dedicated, unconstrained transactional email authority for all 6-digit OTP codes, email verification tokens, and password reset links.
-  - Custom domain delivery configured for `The Prople Team <auth@prople.co.in>` (with fallback to verified sender domains).
-  - Firebase is strictly decoupled from email delivery: Firebase Auth client `sendPasswordResetEmail` and Identity Toolkit `sendOobCode` are eliminated from the email pipeline, preventing Firebase Spark quota exhaustion (100 emails/day cap) and artificial OTP blocks.
+  - Multi-tiered sender candidate fallback:
+    1. Primary custom sender: `The Prople Team <auth@prople.co.in>` (or `AUTH_EMAIL_FROM`).
+    2. Fallback aliases: `Prople Store <auth@prople.co.in>`, `auth@prople.co.in`, `support@prople.co.in`, `noreply@prople.co.in`.
+    3. Resend sandbox testing senders: `onboarding@resend.dev`, `Prople Store <onboarding@resend.dev>` (ensuring test delivery to account owner without unverified domain blocks).
+  - Environment variable resolution: Evaluates `runtimeResendApiKey` (dynamically loaded from Firestore `system_config/resend`), `RESEND_API_KEY`, `RESEND_API_KEY_`, `VITE_RESEND_API_KEY`, `RESEND_KEY`, and `VITE_RESEND_KEY`.
+  - Transparent error telemetry: If Resend delivery fails or keys are unconfigured, the backend reports the explicit diagnostic rather than a false-positive success message.
+  - UI refinement: Minimal, clean secondary instruction typography without distracting emoji badges or high-contrast background containers.
 - **Threshold**: Scaled to 100 OTP dispatches per 2-hour rolling window to leverage Resend's high enterprise throughput while blocking malicious automated bot floods.
 - **Scope**: Applied to both `/api/auth/send-otp` (sign-in / registration) and `/api/auth/forgot-password` (password reset).
 - **Protection**:

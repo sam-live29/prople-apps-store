@@ -21,11 +21,22 @@ function timingSafeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+let runtimeResendApiKey = '';
+
+export const setRuntimeResendApiKey = (key: string): void => {
+  if (key && typeof key === 'string') {
+    runtimeResendApiKey = key.trim();
+  }
+};
+
 export const getResendApiKey = (): string => {
   return (
-    process.env.RESEND_API_KEY_ ||
+    runtimeResendApiKey ||
     process.env.RESEND_API_KEY ||
+    process.env.RESEND_API_KEY_ ||
     process.env.VITE_RESEND_API_KEY ||
+    process.env.RESEND_KEY ||
+    process.env.VITE_RESEND_KEY ||
     ''
   ).trim();
 };
@@ -476,6 +487,7 @@ export async function sendOtpEmail(
   const directLink = verifyLink || `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
 
   const client = getResendClient();
+  let lastError = '';
 
   if (client) {
     try {
@@ -495,9 +507,11 @@ export async function sendOtpEmail(
         primarySender,
         'The Prople Team <auth@prople.co.in>',
         'Prople Store <auth@prople.co.in>',
-        'The Prople Team <support@prople.co.in>',
-        'The Prople Team <noreply@prople.co.in>',
-        'The Prople Team <onboarding@resend.dev>'
+        'auth@prople.co.in',
+        'support@prople.co.in',
+        'noreply@prople.co.in',
+        'onboarding@resend.dev',
+        'Prople Store <onboarding@resend.dev>'
       ];
 
       for (const sender of candidateSenders) {
@@ -519,17 +533,20 @@ export async function sendOtpEmail(
             message: `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
           };
         } else {
-          console.warn(`[Resend] Dispatch notice with sender '${sender}':`, sendResult.error?.message || sendResult.error);
+          lastError = sendResult.error?.message || String(sendResult.error);
+          console.warn(`[Resend] Dispatch notice with sender '${sender}':`, lastError);
         }
       }
     } catch (resendErr: any) {
-      console.warn('[Resend] Dispatch warning:', resendErr.message);
+      lastError = resendErr?.message || String(resendErr);
+      console.warn('[Resend] Dispatch warning:', lastError);
     }
   } else {
-    console.warn('[Resend] RESEND_API_KEY is not configured in environment variables. Resend client is inactive.');
+    lastError = 'RESEND_API_KEY is not configured in the server environment. Please set RESEND_API_KEY to send emails via Resend.';
+    console.warn('[Resend] ' + lastError);
   }
 
-  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service
+  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if available
   const fbResult = await sendFirebaseOobCode('VERIFY_EMAIL', cleanEmail, directLink);
   if (fbResult.success) {
     return {
@@ -538,10 +555,10 @@ export async function sendOtpEmail(
     };
   }
 
-  // If both failed, return a clean, user-friendly message without internal provider details
+  // Both providers failed or unconfigured: return transparent status to notify caller
   return { 
-    success: true, 
-    message: `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.` 
+    success: false, 
+    error: lastError || 'Failed to dispatch email via Resend. Please ensure your Resend API key is configured and sender domain is verified.'
   };
 }
 
@@ -555,6 +572,7 @@ export async function sendPasswordResetEmailTemplate(
   const directLink = resetLink || `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
 
   const client = getResendClient();
+  let lastError = '';
 
   if (client) {
     try {
@@ -575,9 +593,11 @@ export async function sendPasswordResetEmailTemplate(
         primarySender,
         'The Prople Team <auth@prople.co.in>',
         'Prople Store <auth@prople.co.in>',
-        'The Prople Team <support@prople.co.in>',
-        'The Prople Team <noreply@prople.co.in>',
-        'The Prople Team <onboarding@resend.dev>'
+        'auth@prople.co.in',
+        'support@prople.co.in',
+        'noreply@prople.co.in',
+        'onboarding@resend.dev',
+        'Prople Store <onboarding@resend.dev>'
       ];
 
       for (const sender of candidateSenders) {
@@ -599,17 +619,20 @@ export async function sendPasswordResetEmailTemplate(
             message: `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`
           };
         } else {
-          console.warn(`[Resend] Password reset dispatch notice with sender '${sender}':`, sendResult.error?.message || sendResult.error);
+          lastError = sendResult.error?.message || String(sendResult.error);
+          console.warn(`[Resend] Password reset dispatch notice with sender '${sender}':`, lastError);
         }
       }
     } catch (resendErr: any) {
-      console.warn('[Resend] Password reset dispatch warning:', resendErr.message);
+      lastError = resendErr?.message || String(resendErr);
+      console.warn('[Resend] Password reset dispatch warning:', lastError);
     }
   } else {
-    console.warn('[Resend] RESEND_API_KEY is not configured in environment variables. Resend client is inactive.');
+    lastError = 'RESEND_API_KEY is not configured in the server environment. Please set RESEND_API_KEY to send emails via Resend.';
+    console.warn('[Resend] ' + lastError);
   }
 
-  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service
+  // Dual Fallback: Dispatch through Firebase Identity Toolkit email service if available
   const fbResult = await sendFirebaseOobCode('PASSWORD_RESET', cleanEmail, directLink);
   if (fbResult.success) {
     return {
@@ -619,8 +642,8 @@ export async function sendPasswordResetEmailTemplate(
   }
 
   return { 
-    success: true, 
-    message: `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.` 
+    success: false, 
+    error: lastError || 'Failed to dispatch password reset email via Resend. Please ensure your Resend API key is configured and sender domain is verified.'
   };
 }
 
