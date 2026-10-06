@@ -4682,6 +4682,43 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
    - Extended default toast display duration to 6000ms–7500ms so confirmation notices remain readable.
    - Throws clear actionable feedback if email dispatch encounters network or provider limits, rather than prematurely dismissing toasts or masking errors.
 
+### 5. Dual-Channel Authentication Delivery, Real-Time Cross-Window Sync & Standardized Firebase HTML Email Templates
+
+#### Core Challenges Solved
+1. **Uninterrupted Sign-Up & Password Reset Dispatch**:
+   - In environments where third-party email providers (like Resend) are temporarily missing API keys or encounter rate limits, authentication codes previously failed to dispatch.
+   - Standard Firebase `VERIFY_EMAIL` calls without a pre-existing user `idToken` were rejected by Google Identity Toolkit with `400 INVALID_ID_TOKEN`.
+   - **Solution**: Implemented resilient dual-channel dispatch in `server/emailAuth.ts`:
+     * Primary Channel: High-fidelity custom HTML email dispatch via Resend with Schema.org Email Markup (`EmailMessage`, `ConfirmAction`).
+     * Secondary Channel: Google Identity Toolkit REST API (`accounts:sendOobCode`) using project API keys, automatically mapping verification requests to `EMAIL_SIGNIN` out-of-band links that Google reliably dispatches without requiring active ID tokens.
+     * Guaranteed Zero Technical Error Leakage: All user-facing toasts and error banners never display vendor or internal library names (e.g., `resend.com`, `API key`, `SMTP`).
+
+2. **Dual Verification Option (OTP Code + Direct 1-Click Action Link)**:
+   - Delivered emails include both the prominent spaced 6-digit verification code (`4 8 2 9 1 5`) AND a prominent primary CTA button (*"Verify Email"* or *"Reset Password"*).
+   - On the web client (`AuthPage.tsx`), the user has full agency:
+     * Enter the 6-digit code directly in the active browser tab without leaving the page.
+     * Click the direct action link from their email on any device or browser to authenticate or reset passwords in 1-click.
+
+3. **Elimination of the "Left-Behind" Unauthenticated Browser Tab**:
+   - **The Problem**: When a user opens an email on a mobile device (e.g., Gmail on Android) and clicks a verification or reset link, the email client opens an in-app WebView (`com.google.android.gm`), leaving the user's primary browser tab (Chrome, Edge, Safari) sitting unauthenticated on the login page.
+   - **Architectural Solution**: Real-Time Cross-Window Session Synchronization:
+     * When sign-up or password reset is initiated, the server establishes a pending auth session (`createAuthSession`) recorded in local memory and Realtime Database (`_auth_sessions/${key}.json`).
+     * The primary browser tab actively monitors session status (`/api/auth/session-status?email=...`) via polling and instant triggers on `visibilitychange` and `window.focus`.
+     * As soon as the user verifies or resets their password in the email client/new tab, `completeAuthSession` publishes the authenticated user credentials.
+     * The primary browser tab immediately detects session completion, automatically authenticates the user in the background (`completeExternalAuth`), closes the auth dialog, and seamlessly transitions to the authenticated home feed.
+
+4. **Android In-App WebView Intent Handoff**:
+   - When an email link opens inside Gmail or Android WebViews, `AuthPage.tsx` detects the environment (`/Gmail|GSA|Version\/[0-9.]+/i`) and attempts a clean Android Intent handoff:
+     `intent://${host}${pathname}${search}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;`
+   - A persistent, high-contrast banner is rendered at the top of the screen giving users an instant 1-tap option to *"Open in Browser →"*, guaranteeing that desktop and mobile cookies, PWA install prompts, and credential managers operate in the user's preferred default browser.
+
+5. **Standardized Firebase Console Custom HTML Templates**:
+   - Authored complete, copy-paste-ready HTML email templates in `/FIREBASE_EMAIL_TEMPLATES.md` compatible with Firebase Console Custom Email Templates:
+     * Password Reset Template (`%LINK%`, `%DISPLAY_NAME%`, `%APP_NAME%`)
+     * Email Verification Template
+     * Email Link (Passwordless Sign-In) Template
+   - Configured with official sender name (`The Prople Team`), authorized domain (`prople.co.in`), support contact (`support@prople.co.in`), and responsive dark-mode styling.
+
 
 
 

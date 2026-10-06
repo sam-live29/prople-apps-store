@@ -299,14 +299,119 @@ export function renderPropleEmail({
 export const renderGithubEmail = renderPropleEmail;
 
 /**
+ * Standardized HTML email template compatible with Firebase Console Custom Email Templates.
+ * Variables supported by Firebase Auth:
+ * %APP_NAME% - Application Name (e.g. Prople Store)
+ * %DISPLAY_NAME% - User's display name
+ * %LINK% - Action handler verification or password reset URL
+ * %EMAIL% - User's email address
+ */
+export function renderFirebaseHtmlTemplate(type: 'reset-password' | 'verify-email'): string {
+  const isReset = type === 'reset-password';
+  const actionTitle = isReset ? 'Reset your Prople Store password' : 'Verify your email address';
+  const headingText = isReset ? 'Reset your password' : 'Verify your email';
+  const bodyText = isReset
+    ? 'We received a request to reset the password for your Prople Store account. Click the button below to choose a new password.'
+    : 'Welcome to Prople Store! Please verify your email address to activate your account and start discovering applications.';
+  const buttonText = isReset ? 'Reset Password' : 'Verify Email';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${actionTitle}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; line-height: 1.6;">
+  <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; max-width: 0px; opacity: 0;">
+    ${headingText} for Prople Store. Valid for 15 minutes. &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
+  </div>
+
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; width: 100%;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+        <div style="max-width: 560px; width: 100%; text-align: left;">
+          
+          <!-- Brand Header -->
+          <div style="margin-bottom: 28px;">
+            <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-flex; align-items: center; gap: 12px;">
+              <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
+              <span style="font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.4px;">Prople Store</span>
+            </a>
+          </div>
+
+          <!-- Greeting Header -->
+          <h1 style="margin: 0 0 16px 0; font-size: 22px; font-weight: 600; color: #ffffff; line-height: 1.35;">
+            ${headingText}, <span style="color: #60a5fa;">%DISPLAY_NAME%</span>
+          </h1>
+
+          <!-- Main Content Card -->
+          <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 26px 24px; margin-bottom: 24px;">
+            
+            <p style="margin: 0 0 20px 0; font-size: 15px; color: #c9d1d9; line-height: 1.6;">
+              ${bodyText}
+            </p>
+
+            <!-- Prominent Primary Call-To-Action Button -->
+            <div style="margin: 26px 0 22px 0;">
+              <a href="%LINK%" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; padding: 13px 32px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center; border: 1px solid rgba(255,255,255,0.1);">
+                ${buttonText} &rarr;
+              </a>
+            </div>
+
+            <!-- Fallback Direct Link -->
+            <p style="margin: 0 0 20px 0; font-size: 13px; color: #8b949e; word-break: break-all; line-height: 1.5;">
+              Or copy and paste this link into your browser: <br>
+              <a href="%LINK%" style="color: #58a6ff; text-decoration: underline;">%LINK%</a>
+            </p>
+
+            <!-- Validity Advisory -->
+            <p style="margin: 18px 0 10px 0; font-size: 13px; color: #8b949e; line-height: 1.5;">
+              This link is valid for <strong>15 minutes</strong> and can only be used once. If you did not make this request, you can safely ignore this email.
+            </p>
+
+            <!-- Sender Signature -->
+            <p style="margin: 22px 0 0 0; font-size: 14px; color: #c9d1d9; line-height: 1.5;">
+              Thanks,<br>
+              <strong style="color: #ffffff;">The Prople Team</strong>
+            </p>
+          </div>
+
+          <!-- Professional Footer -->
+          <div style="border-top: 1px solid #21262d; padding-top: 20px; font-size: 12px; color: #8b949e; line-height: 1.6;">
+            <div>
+              <strong style="color: #c9d1d9;">Prople Store</strong> &bull; Multi-Platform Application &amp; Web Store &bull; Cloaktail Industries
+            </div>
+            <div style="margin-top: 6px;">
+              Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull;
+              <a href="https://www.prople.co.in/privacy" style="color: #58a6ff; text-decoration: none;">Privacy Policy</a> &bull;
+              <a href="https://www.prople.co.in/terms" style="color: #58a6ff; text-decoration: none;">Terms of Service</a> &bull;
+              <a href="mailto:support@prople.co.in" style="color: #58a6ff; text-decoration: none;">support@prople.co.in</a>
+            </div>
+            <div style="margin-top: 8px; color: #6e7681; font-size: 11px;">
+              This email was sent to %EMAIL% regarding your Prople Store account.
+            </div>
+          </div>
+
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
  * Dispatches an email using Google Firebase Identity Toolkit REST API.
  * This guarantees reliable email delivery directly via Firebase's authorized email infrastructure
  * without requiring any third-party email provider keys.
+ * Handles both PASSWORD_RESET and EMAIL_SIGNIN/VERIFY_EMAIL gracefully.
  */
 export async function sendFirebaseOobCode(
-  requestType: 'PASSWORD_RESET' | 'VERIFY_EMAIL',
+  requestType: 'PASSWORD_RESET' | 'VERIFY_EMAIL' | 'EMAIL_SIGNIN',
   email: string,
-  continueUrl: string
+  continueUrl: string,
+  idToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let apiKey = process.env.FIREBASE_API_KEY || '';
@@ -324,14 +429,30 @@ export async function sendFirebaseOobCode(
       return { success: false, error: 'Firebase service is temporarily unreachable' };
     }
 
+    // Prepare body: if VERIFY_EMAIL without an idToken, fallback to EMAIL_SIGNIN
+    // which dispatches a verified authentication link directly to the email.
+    let fbRequestType: string = requestType;
+    const bodyPayload: any = {
+      email: email.trim().toLowerCase(),
+      continueUrl,
+    };
+
+    if (requestType === 'VERIFY_EMAIL') {
+      if (idToken) {
+        fbRequestType = 'VERIFY_EMAIL';
+        bodyPayload.idToken = idToken;
+        delete bodyPayload.email;
+      } else {
+        fbRequestType = 'EMAIL_SIGNIN';
+      }
+    }
+
+    bodyPayload.requestType = fbRequestType;
+
     const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requestType,
-        email: email.trim().toLowerCase(),
-        continueUrl,
-      }),
+      body: JSON.stringify(bodyPayload),
     });
 
     const data = await res.json();
@@ -362,7 +483,7 @@ export async function sendOtpEmail(
         recipientName,
         email: cleanEmail,
         title: 'Please verify your identity',
-        purposeText: 'Here is your Prople Store authentication verification code:',
+        purposeText: 'Here is your Prople Store authentication verification code and direct link:',
         code,
         validityMinutes: 15,
         actionUrl: directLink,

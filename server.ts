@@ -1558,7 +1558,31 @@ async function startServer() {
       }
 
       const cleanEmail = email.toLowerCase().trim();
-      const verification = await verifyStoredOtp(cleanEmail, String(code));
+      let verification = await verifyStoredOtp(cleanEmail, String(code));
+
+      // If code is not in OTP store, check if it is a Firebase oobCode from email action link
+      if (!verification.valid && (String(code).length > 8 || !/^\d{6}$/.test(String(code).trim()))) {
+        try {
+          const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+          let fbKey = process.env.FIREBASE_API_KEY || "";
+          if (!fbKey && fs.existsSync(configPath)) {
+            const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+            fbKey = cfg.apiKey || "";
+          }
+          if (fbKey) {
+            const fbRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${fbKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ oobCode: String(code).trim(), newPassword }),
+            });
+            if (fbRes.ok) {
+              verification = { valid: true };
+            }
+          }
+        } catch (oobErr: any) {
+          console.warn("[Auth API] oobCode verification notice:", oobErr?.message);
+        }
+      }
 
       if (!verification.valid) {
         const strikeRes = await registerFailedSecurityEvent(serverDb, {

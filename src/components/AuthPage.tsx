@@ -105,8 +105,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false);
 
-  // Check URL query parameters on mount (direct 1-click password reset link)
+  // Check URL query parameters on mount (direct 1-click password reset or email verification links)
   useEffect(() => {
     try {
       const searchParams = new URLSearchParams(window.location.search);
@@ -116,12 +117,34 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       const emailParam = searchParams.get('email');
       const codeParam = searchParams.get('code') || searchParams.get('oobCode');
 
+      // Detect in-app Android/Gmail webview to break out or show banner
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+      const isAndroid = /Android/i.test(ua);
+      const isGmailOrWebview = /Gmail|GSA|Version\/[0-9.]+/i.test(ua) || (isAndroid && ua.includes('; wv'));
+      if (isAndroid && isGmailOrWebview) {
+        setIsInAppBrowser(true);
+        try {
+          if (!sessionStorage.getItem('prople_attempted_chrome_intent')) {
+            sessionStorage.setItem('prople_attempted_chrome_intent', '1');
+            const intentUrl = "intent://" + window.location.host + window.location.pathname + window.location.search + "#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end";
+            window.location.href = intentUrl;
+          }
+        } catch {}
+      }
+
       const isResetMode =
         authParam === 'reset-password' ||
         actionParam === 'reset-password' ||
         modeParam === 'reset-password' ||
         modeParam === 'resetPassword' ||
-        Boolean(searchParams.get('oobCode'));
+        (Boolean(searchParams.get('oobCode')) && modeParam !== 'verifyEmail');
+
+      const isVerifyEmailMode =
+        authParam === 'verify-email' ||
+        actionParam === 'verify-email' ||
+        modeParam === 'verifyEmail' ||
+        modeParam === 'signIn' ||
+        (Boolean(searchParams.get('oobCode')) && modeParam === 'verifyEmail');
 
       if (isResetMode) {
         if (emailParam) {
@@ -143,19 +166,31 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
         } else {
           setStep('reset-otp');
         }
+      } else if (isVerifyEmailMode) {
+        const cleanEmail = emailParam ? decodeURIComponent(emailParam) : '';
+        const cleanCode = codeParam ? decodeURIComponent(codeParam) : '';
+        if (cleanEmail) setEmail(cleanEmail);
+        if (cleanCode) setOtpCode(cleanCode);
 
-        // On Android inside Gmail webview, attempt automatic handoff to Chrome once
-        const ua = navigator.userAgent || '';
-        const isAndroid = /Android/i.test(ua);
-        const isGmailOrWebview = /Gmail|GSA|Version\/[0-9.]+/i.test(ua) || (isAndroid && ua.includes('; wv'));
-        if (isAndroid && isGmailOrWebview) {
-          try {
-            if (!sessionStorage.getItem('prople_attempted_chrome_intent')) {
-              sessionStorage.setItem('prople_attempted_chrome_intent', '1');
-              const intentUrl = "intent://" + window.location.host + window.location.pathname + window.location.search + "#Intent;scheme=https;action=android.intent.action.VIEW;end";
-              window.location.href = intentUrl;
-            }
-          } catch {}
+        // If email and 6-digit code or oobCode are provided in query params, auto-verify immediately!
+        if (cleanEmail && cleanCode) {
+          setIsSubmitting(true);
+          verifyEmailOtp(cleanEmail, cleanCode)
+            .then(() => {
+              showToast('Email verified successfully! Welcome to Prople Store.');
+              handleAuthSuccess();
+            })
+            .catch((err) => {
+              setStep('verify-otp');
+              const msg = sanitizeErrorMessage(err, 'Verification could not be confirmed. Please check your code.');
+              setFieldErrors({ otp: msg });
+              showToast(msg);
+            })
+            .finally(() => {
+              setIsSubmitting(false);
+            });
+        } else {
+          setStep('verify-otp');
         }
       }
     } catch {}
@@ -189,7 +224,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
           }).catch(() => {});
 
           completeExternalAuth(data.user);
-          showToast('Password reset verified in Gmail! You are now logged in.');
+          showToast('Authentication confirmed! You are now logged in.');
           handleAuthSuccess();
         }
       } catch {}
@@ -423,7 +458,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       setResendCooldown(60);
       showToast(res.message || 'New verification code sent to your email.');
     } catch (err: any) {
-      const msg = err.message || 'Failed to resend verification code.';
+      const msg = sanitizeErrorMessage(err, 'Failed to resend verification code. Please try again.');
       setFieldErrors({ otp: msg });
       showToast(msg);
     } finally {
@@ -457,7 +492,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       showToast('Password reset successfully! You are now signed in.');
       handleAuthSuccess();
     } catch (err: any) {
-      const msg = err.message || 'Failed to reset password. Please check the code and try again.';
+      const msg = sanitizeErrorMessage(err, 'Failed to reset password. Please check the code and try again.');
       setFieldErrors({ general: msg });
       showToast(msg);
     } finally {
@@ -475,7 +510,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       setResendCooldown(60);
       showToast(res.message || 'New password reset code sent to your email.');
     } catch (err: any) {
-      const msg = err.message || 'Failed to resend reset code.';
+      const msg = sanitizeErrorMessage(err, 'Failed to resend reset code. Please try again.');
       setFieldErrors({ general: msg });
       showToast(msg);
     } finally {
@@ -517,6 +552,22 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-theme-bg text-theme-text font-sans w-full shadow-none overflow-hidden selection:bg-blue-500/30">
+      {/* External Browser Handoff Banner for Android Gmail & In-App WebViews */}
+      {isInAppBrowser && (
+        <div className="bg-blue-950/80 border-b border-blue-800/40 px-3.5 py-2 text-xs flex items-center justify-between gap-3 text-blue-200 shrink-0 z-30">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />
+            <span className="truncate">Opened in email app. Open in your main browser for instant sync:</span>
+          </div>
+          <a
+            href={`intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;`}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-2.5 py-1 rounded text-xs shrink-0 inline-flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+          >
+            Open in Browser &rarr;
+          </a>
+        </div>
+      )}
+
       {/* Top Header matching standard Prople Store layout */}
       <header className="h-[60px] sm:h-[68px] flex items-center justify-between px-2.5 sm:px-4 md:px-6 bg-theme-bg shrink-0 gap-3 z-20 w-full border-0">
         <div className="flex items-center gap-2 sm:gap-3 shrink-0 -translate-x-[2px]">
@@ -1002,8 +1053,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               <h1 className="text-2xl font-bold text-theme-text mb-2 tracking-tight">
                 Enter Verification Code
               </h1>
-              <p className="text-sm text-theme-text-muted mb-6 leading-relaxed max-w-sm mx-auto">
-                Enter 6-digit verification code sent to <span className="font-semibold text-theme-text">{email}</span>
+              <p className="text-sm text-theme-text-muted mb-2 leading-relaxed max-w-sm mx-auto">
+                Enter the 6-digit code sent to <span className="font-semibold text-theme-text">{email}</span>
+              </p>
+              <p className="text-xs text-blue-400/90 mb-5 max-w-sm mx-auto bg-blue-500/10 border border-blue-500/20 rounded-lg py-1.5 px-3">
+                💡 Tip: You can also tap the &ldquo;Verify Email&rdquo; button in your email to authenticate instantly.
               </p>
 
               <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full space-y-4">
@@ -1086,8 +1140,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               <h1 className="text-2xl font-bold text-theme-text mb-2 tracking-tight">
                 Enter Verification Code
               </h1>
-              <p className="text-sm text-theme-text-muted mb-6 leading-relaxed max-w-sm mx-auto">
-                Enter 6-digit verification code sent to <span className="font-semibold text-theme-text">{email}</span>
+              <p className="text-sm text-theme-text-muted mb-2 leading-relaxed max-w-sm mx-auto">
+                Enter the 6-digit code sent to <span className="font-semibold text-theme-text">{email}</span>
+              </p>
+              <p className="text-xs text-blue-400/90 mb-5 max-w-sm mx-auto bg-blue-500/10 border border-blue-500/20 rounded-lg py-1.5 px-3">
+                💡 Tip: You can enter the 6-digit code below OR click the &ldquo;Reset Password&rdquo; link in your email.
               </p>
 
               <form onSubmit={handleVerifyResetOtp} className="w-full space-y-4">
