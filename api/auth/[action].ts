@@ -105,28 +105,32 @@ async function dispatchResendEmail(
   html: string
 ): Promise<{ ok: boolean; status: number; error?: string }> {
   try {
+    const cleanKey = apiKey.trim().replace(/^['"]|['"]$/g, '');
+    const cleanFrom = from.trim();
+    const cleanTo = to.trim().toLowerCase();
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey.trim()}`,
+        'Authorization': `Bearer ${cleanKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from,
-        to: [to],
-        subject,
+        from: cleanFrom,
+        to: [cleanTo],
+        subject: subject.trim(),
         html,
-        headers: {
-          'X-Entity-Ref-ID': Date.now().toString(),
-        },
       }),
     });
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
+      console.warn(`[Resend Dispatch Failed] from: "${cleanFrom}" status: ${response.status} body: ${errBody}`);
       return { ok: false, status: response.status, error: errBody };
     }
+    console.log(`[Resend Dispatch Success] from: "${cleanFrom}" to: "${cleanTo}" status: ${response.status}`);
     return { ok: true, status: response.status };
   } catch (err: any) {
+    console.warn(`[Resend Dispatch Exception] from: "${from}" error: ${err?.message || err}`);
     return { ok: false, status: 0, error: err?.message };
   }
 }
@@ -181,20 +185,90 @@ export default async function handler(req: any, res: any) {
         ''
       ).trim();
 
+      let emailSent = false;
+      let lastDispatchError: string | undefined;
+
       if (resendApiKey) {
         const username = escapeHtmlStr(email.split('@')[0]);
         const htmlContent = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Verification Code</title></head>
-<body style="background:#0d1117;color:#e6edf3;font-family:sans-serif;padding:32px;text-align:center;">
-  <h2>Please verify your identity, ${username}</h2>
-  <p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#fff;">${code}</p>
-  <p style="color:#8b949e;">Valid for 15 minutes. Do not share this code.</p>
-</body></html>`;
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Please verify your identity, ${username}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #e6edf3; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0d1117; padding: 40px 16px 36px;">
+    <tr>
+      <td align="center">
+        <!-- Brand Logo -->
+        <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
+          <tr>
+            <td align="center">
+              <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
+                <img src="https://www.prople.co.in/logo.png" width="36" height="36" alt="Prople Store" style="display: block; width: 36px; height: 36px; border-radius: 8px; border: 0;" />
+              </a>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Heading -->
+        <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 500; color: #ffffff; text-align: center; letter-spacing: -0.3px; line-height: 1.3;">
+          Please verify your identity, <strong style="font-weight: 600; color: #ffffff;">${username}</strong>
+        </h1>
+
+        <!-- Card Container -->
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: transparent; border: 1px solid #30363d; border-radius: 6px; box-sizing: border-box; text-align: left;">
+          <tr>
+            <td style="padding: 24px 28px 28px; font-size: 14px; line-height: 1.6; color: #e6edf3;">
+              <p style="margin: 0 0 20px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+                Here is your Prople Store authentication verification code:
+              </p>
+
+              <!-- Verification Code -->
+              <p style="margin: 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: 6px; color: #ffffff; text-align: center; line-height: 1;">
+                ${code}
+              </p>
+
+              <p style="margin: 24px 0 12px; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+                This code is valid for <strong style="color: #ffffff;">15 minutes</strong> and can only be used once.
+              </p>
+
+              <p style="margin: 0 0 24px; font-size: 14px; color: #8b949e; line-height: 1.5;">
+                <strong style="color: #e6edf3;">Please don't share this code with anyone</strong>: we'll never ask for it on the phone or via email.
+              </p>
+
+              <p style="margin: 0; font-size: 14px; color: #e6edf3; line-height: 1.5;">
+                Thanks,<br>
+                <span style="color: #8b949e;">The Prople Team</span>
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Footer -->
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; margin-top: 24px;">
+          <tr>
+            <td align="center" style="font-size: 12px; color: #8b949e; line-height: 1.5;">
+              <p style="margin: 0;">
+                Delivered securely from <a href="https://www.prople.co.in" style="color: #58a6ff; text-decoration: none;">prople.co.in</a> &bull; Cloaktail Industries
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
         const primarySender = (process.env.AUTH_EMAIL_FROM || '').trim() || 'Prople Store <auth@prople.co.in>';
         const candidateSenders = [
           primarySender,
+          'Prople Store <auth@prople.co.in>',
+          'auth@prople.co.in',
+          'Prople Store <noreply@prople.co.in>',
+          'noreply@prople.co.in',
           'Prople Store <auth@send.prople.co.in>',
           'Prople Store <support@prople.co.in>',
           'Prople Store <onboarding@resend.dev>',
@@ -203,13 +277,24 @@ export default async function handler(req: any, res: any) {
         for (const sender of candidateSenders) {
           if (!sender) continue;
           const result = await dispatchResendEmail(resendApiKey, sender, email, `${code} is your Prople Store verification code`, htmlContent);
-          if (result.ok) break;
+          if (result.ok) {
+            emailSent = true;
+            break;
+          } else {
+            lastDispatchError = result.error;
+          }
         }
+      } else {
+        console.warn('[send-otp] RESEND_API_KEY is not defined in environment variables! Please configure RESEND_API_KEY in Vercel settings.');
       }
 
       return res.status(200).json({
         success: true,
-        message: `A verification code has been dispatched to ${email}.`,
+        delivered: emailSent,
+        message: emailSent
+          ? `A verification code has been dispatched to ${email}.`
+          : `Verification code generated for ${email}.`,
+        warning: !resendApiKey ? 'RESEND_API_KEY not configured in environment' : undefined,
       });
     }
 

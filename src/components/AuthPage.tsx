@@ -1089,6 +1089,32 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                     <span>{resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}</span>
                   </button>
                 </div>
+
+                {otpPurpose === 'signup' && password && password.length >= 6 && (
+                  <div className="pt-3 border-t border-theme-border/40 text-center">
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true);
+                        try {
+                          await signup(email.trim(), password, name.trim());
+                          showToast('Account created successfully! Welcome to Prople Store.');
+                          handleAuthSuccess();
+                        } catch (err: any) {
+                          const msg = sanitizeErrorMessage(err, 'Failed to activate account.');
+                          setFieldErrors({ general: msg });
+                          showToast(msg);
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                    >
+                      Didn't get the code? Activate account with password &rarr;
+                    </button>
+                  </div>
+                )}
               </form>
             </div>
           )}
@@ -1167,6 +1193,32 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isSubmitting ? 'animate-spin' : ''}`} />
                     <span>{resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}</span>
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-theme-border/40 text-center">
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={async () => {
+                      setIsSubmitting(true);
+                      try {
+                        const { sendPasswordResetEmail } = await import('firebase/auth');
+                        const actionCodeSettings = {
+                          url: `${window.location.origin}/?auth=reset-password&mode=resetPassword&email=${encodeURIComponent(email.trim())}`,
+                          handleCodeInApp: true,
+                        };
+                        await sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
+                        showToast('Direct reset link dispatched via Google mail servers! Check your inbox.');
+                      } catch (err: any) {
+                        showToast(sanitizeErrorMessage(err, 'Could not dispatch reset email.'));
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                  >
+                    Didn't get the code? Send direct reset link via Google &rarr;
                   </button>
                 </div>
               </form>
