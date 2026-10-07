@@ -4787,9 +4787,9 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
   3. **Simplified Direct Copy**:
      - Human, non-robotic greeting (`Hi [Name],`).
      - Clear, single-sentence intent specifying the targeted account email (e.g. `Here is your Prople Store password reset code:`).
-  4. **Dedicated Verification Box with 1-Tap Copy Action**:
-     - High-contrast 24px bold monospace code (`user-select: all; -webkit-user-select: all;`, `letter-spacing: 4px`) fitted comfortably into the card without horizontal overflow.
-     - Inline **"Copy Code"** button styled with Instagram's signature blue (`#0095f6`), linking to the verification URL to auto-fill and verify the session in 1 click.
+  4. **Dedicated Centered Verification Box (1-Tap Native Selection, Zero Duplicate Redirects)**:
+     - Because email clients (Gmail, Apple Mail, Outlook) strip all inline JavaScript (`onclick`, `navigator.clipboard.writeText`) for security, an HTML button inside an email body can only act as an external URL link. Removed the duplicate redirecting "Copy Code" button so only the primary CTA button ("Verify Email" / "Reset Password") performs browser navigation.
+     - High-contrast centered 28px bold monospace code (`user-select: all; -webkit-user-select: all;`, `letter-spacing: 6px`) allows 1-tap full selection without horizontal overflow or unexpected browser redirects.
      - Embedded Schema.org JSON-LD `ConfirmAction` enabling native "Copy code: XXXXXX" one-tap action chips directly inside Gmail and Apple Mail inbox lists.
   5. **Cleaned Action Hierarchy (Removed Redundant Text Link)**:
      - Prominent full-width `#0095f6` button (`Verify Email` / `Reset Password`) for instant 1-click continuation.
@@ -4799,6 +4799,18 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
      - Thin separator (`border-top: 1px solid #dbdbdb`).
      - Trademark credit: `from CLOAKTAIL` in subtle tracked uppercase typography.
      - Official links: Privacy Policy, Terms, and Help Center with recipient email attribution.
+
+### 7. Non-Blocking Dev Server Startup & SSR Catalog Cache Stale-While-Revalidate Architecture
+
+#### Root Cause
+- On initial server boot, `GET /` invoked `getAllAppsServer()` synchronously before returning the root HTML document.
+- When the Node.js Firestore WebChannel connection was cold, `serverGetDocs` took 10–12 seconds to resolve, causing the dev server readiness probe and initial page loads to time out.
+
+#### Solution
+- **Bounded Timeout Race & Stale-While-Revalidate**: Upgraded `getAllAppsServer(maxWaitMs)` to return cached catalog entries in `0ms` while refreshing in the background, and capped cold-start waits on `GET /` to `400ms` via `Promise.race`.
+- **Background Startup Warmup**: Triggered non-blocking catalog cache hydration immediately after `app.listen(PORT, "0.0.0.0")` binds port 3000.
+- **Fast-Path Vite Middleware Bypass**: Explicitly bypassed SSR SEO inspection for `/@*`, `/src/*`, and `/node_modules/*` requests, reducing root HTTP response times from ~11s to ~0.11s.
+
 
 
 

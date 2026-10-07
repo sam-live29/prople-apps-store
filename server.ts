@@ -4697,23 +4697,42 @@ async function startServer() {
   let serverAppsCatalogCache: any[] = [];
   let serverAppsCatalogCacheTime = 0;
 
-  async function getAllAppsServer(): Promise<any[]> {
+  let isFetchingAllApps = false;
+  async function getAllAppsServer(maxWaitMs = 1200): Promise<any[]> {
     const now = Date.now();
-    if (serverAppsCatalogCache.length > 0 && now - serverAppsCatalogCacheTime < 30000) {
+    if (serverAppsCatalogCache.length > 0 && now - serverAppsCatalogCacheTime < 60000) {
       return serverAppsCatalogCache;
     }
     if (!serverDb) return serverAppsCatalogCache;
-    try {
-      const snap = await serverGetDocs(serverCollection(serverDb, "apps"));
-      const list: any[] = [];
-      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      serverAppsCatalogCache = list;
-      serverAppsCatalogCacheTime = now;
-      return list;
-    } catch (e: any) {
-      console.warn("[Server] Error getting all apps:", e.message);
+
+    const fetchPromise = (async () => {
+      if (isFetchingAllApps) return serverAppsCatalogCache;
+      isFetchingAllApps = true;
+      try {
+        const snap = await serverGetDocs(serverCollection(serverDb, "apps"));
+        const list: any[] = [];
+        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        if (list.length > 0) {
+          serverAppsCatalogCache = list;
+          serverAppsCatalogCacheTime = Date.now();
+        }
+        return serverAppsCatalogCache;
+      } catch (e: any) {
+        console.warn("[Server] Error getting all apps:", e.message);
+        return serverAppsCatalogCache;
+      } finally {
+        isFetchingAllApps = false;
+      }
+    })();
+
+    if (serverAppsCatalogCache.length > 0) {
       return serverAppsCatalogCache;
     }
+
+    return Promise.race([
+      fetchPromise,
+      new Promise<any[]>((resolve) => setTimeout(() => resolve(serverAppsCatalogCache), maxWaitMs)),
+    ]);
   }
 
   // Helper to fetch app data from Firestore for SSR SEO and deeplink resolution
@@ -4984,7 +5003,13 @@ async function startServer() {
   app.use(async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     const rawPath = req.path;
-    if (rawPath.startsWith('/api/') || (rawPath.includes('.') && !rawPath.endsWith('.html'))) {
+    if (
+      rawPath.startsWith('/api/') ||
+      rawPath.startsWith('/@') ||
+      rawPath.startsWith('/src/') ||
+      rawPath.startsWith('/node_modules/') ||
+      (rawPath.includes('.') && !rawPath.endsWith('.html'))
+    ) {
       return next();
     }
 
@@ -5168,7 +5193,7 @@ async function startServer() {
       if (rawPath === '/' || rawPath === '/index.html') {
         const rawHtml = await getBaseTemplate();
         if (rawHtml) {
-          const allApps = await getAllAppsServer();
+          const allApps = await getAllAppsServer(400);
           const transformedHtml = injectHomeSeoIntoHtml(rawHtml, baseUrl, allApps);
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -5230,6 +5255,9 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+
+    // Warm catalog cache in background without blocking startup
+    getAllAppsServer(5000).catch(() => {});
 
     // Asynchronously bootstrap Meilisearch indexing
     ensureAppsIndexConfigured().then(async (configured) => {

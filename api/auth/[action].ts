@@ -232,26 +232,15 @@ function renderPropleEmail({
                 ${safePurpose} ${safeEmail ? `for <strong style="color: #000000;">${safeEmail}</strong>.` : ''}
               </p>
 
-              <!-- OTP Verification Box with Copy Button (Fixed Mobile Responsive Sizing) -->
-              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="width: 100%; margin: 16px 0 8px 0; background-color: #f7f7f7; border: 1px solid #e6e6e6; border-radius: 8px; box-sizing: border-box;">
+              <!-- OTP Verification Box -->
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="width: 100%; margin: 16px 0 20px 0; background-color: #f7f7f7; border: 1px solid #e6e6e6; border-radius: 8px; box-sizing: border-box;">
                 <tr>
-                  <td style="padding: 12px 14px; vertical-align: middle;">
-                    <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #737373; margin-bottom: 2px;">Security Code</div>
-                    <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 24px; font-weight: 700; letter-spacing: 4px; color: #000000; line-height: 1.2; user-select: all; -webkit-user-select: all;">
-                      ${safeCode}
-                    </div>
-                  </td>
-                  <td style="padding: 12px 14px; vertical-align: middle; text-align: right; white-space: nowrap; width: 1%;">
-                    <a href="${safeActionUrl || 'https://www.prople.co.in'}" target="_blank" style="display: inline-block; background-color: #0095f6; color: #ffffff; font-weight: 600; font-size: 13px; text-decoration: none; padding: 8px 14px; border-radius: 6px; text-align: center; white-space: nowrap;">
-                      Copy Code
-                    </a>
+                  <td style="padding: 16px 14px; text-align: center; vertical-align: middle;">
+                    <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #737373; margin-bottom: 4px;">Security Code</div>
+                    <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #000000; line-height: 1.2; user-select: all; -webkit-user-select: all;">${safeCode}</div>
                   </td>
                 </tr>
               </table>
-
-              <div style="font-size: 11px; color: #737373; margin-bottom: 20px;">
-                Tip: Tap code to select, or click Copy Code to open and verify directly.
-              </div>
 
               <!-- Primary Action CTA Button -->
               ${safeActionUrl ? `
