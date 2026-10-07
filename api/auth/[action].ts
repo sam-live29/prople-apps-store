@@ -206,13 +206,13 @@ function renderPropleEmail({
     ${safeCode} is your Prople Store verification code. &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
   </div>
 
-  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0; padding: 24px 16px; width: 100%; background-color: #ffffff;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0; padding: 0; width: 100%; background-color: #ffffff;">
     <tr>
-      <td align="center" style="margin: 0; padding: 0;">
-        <!-- Seamless Instagram-style Container -->
-        <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="max-width: 420px; width: 100%; margin: 0 auto; background-color: #ffffff; border: 1px solid #dbdbdb; border-radius: 8px; text-align: left; box-sizing: border-box;">
+      <td align="center" valign="top" style="margin: 0; padding: 0;">
+        <!-- Borderless Full-Bleed 9:16 Portrait Container -->
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; width: 100%; margin: 0 auto; background-color: #ffffff; border: 0; text-align: left; box-sizing: border-box;">
           <tr>
-            <td style="padding: 28px 22px 24px 22px;">
+            <td style="padding: 32px 20px 40px 20px;">
               
               <!-- Centered Brand Header -->
               <div style="text-align: center; margin-bottom: 22px;">

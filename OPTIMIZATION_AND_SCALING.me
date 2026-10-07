@@ -4778,10 +4778,10 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
 #### User Experience Evolution & Problem Solved
 - **The Issue**: Early iterations of HTML transactional emails contained excess container nesting, AI-generic markdown gradients, heavy dark borders, and visual clutter that felt uncurated and generic.
 - **The Solution**: Re-architected transactional emails (`renderPropleEmail` and `renderFirebaseHtmlTemplate`) according to Instagram's signature clean security email design language:
-  1. **Seamless Unified Canvas (No Misaligned "Left Behind" Backgrounds)**:
-     - Unified both `body` and table wrappers to `#ffffff`, completely eliminating the multi-shaded inverted dark mode background blocks in Gmail Android where a secondary grey box appeared offset behind the card.
+  1. **Seamless Unified Borderless 9:16 Canvas (No Mid-Centric Box Border or Misaligned Backgrounds)**:
+     - Unified both `body` and table wrappers to `#ffffff` and completely removed the constricting outer card border (`border: 0;`), eliminating the mid-centric boxed look and multi-shaded dark mode background blocks in Gmail Android.
      - Added `<meta name="color-scheme" content="light dark">` and `<meta name="supported-color-schemes" content="light dark">` headers to ensure email clients apply harmonious dark mode rendering.
-     - Sized container to `max-width: 420px; box-sizing: border-box;` with compact `28px 22px` padding so it never blows out past narrow (360px) mobile phone viewports.
+     - Expanded container to `max-width: 540px; width: 100%; box-sizing: border-box;` with zero outer wrapper margin/padding and balanced `32px 20px 40px 20px` inner spacing so it naturally fills 9:16 mobile viewports from edge to edge.
   2. **Centered Brand Identity**:
      - Centered Prople Store app icon (`/logo.png`) and bold brand name (`Prople Store`), mirroring Instagram's centered top mark.
   3. **Simplified Direct Copy**:
