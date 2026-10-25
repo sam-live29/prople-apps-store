@@ -36,11 +36,21 @@ function getSecureCorsHeaders(origin?: string): Record<string, string> {
   };
 }
 
+function getSessionSecret(): string {
+  const configured = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
+  if (configured && configured.trim()) {
+    return configured.trim();
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  throw new Error('Missing SESSION_SECRET or INTERNAL_SECURITY_KEY environment variable.');
+}
+
 function hmacDigest(value: string, salt = ''): string {
-  const secret =
-    process.env.SESSION_SECRET ||
-    process.env.INTERNAL_SECURITY_KEY ||
-    'prople-store-high-entropy-security-key-2026';
+  const secret = getSessionSecret();
   return crypto.createHmac('sha256', secret).update(`${salt}:${value}`).digest('hex');
 }
 
@@ -80,8 +90,6 @@ function formatRecipientName(rawName?: string, email?: string): string {
   return escapeHtmlStr(prefix);
 }
 
-const DEFAULT_RESEND_API_KEY = 're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL';
-
 function getCandidateResendApiKeys(): string[] {
   const envKeys = [
     process.env.RESEND_API_KEY,
@@ -102,17 +110,12 @@ function getCandidateResendApiKeys(): string[] {
     }
   }
 
-  // Ensure default verified key is always present in candidate list
-  if (DEFAULT_RESEND_API_KEY && !candidateKeys.includes(DEFAULT_RESEND_API_KEY)) {
-    candidateKeys.push(DEFAULT_RESEND_API_KEY);
-  }
-
   return candidateKeys;
 }
 
 function getResendApiKey(): string {
   const keys = getCandidateResendApiKeys();
-  return keys[0] || DEFAULT_RESEND_API_KEY;
+  return keys[0] || '';
 }
 
 async function sendFirebaseOobCode(
@@ -121,7 +124,11 @@ async function sendFirebaseOobCode(
   continueUrl: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const apiKey = process.env.FIREBASE_API_KEY || 'AIzaSyC5iotZL4UVF7QcdVn1ps3gIcetBDt9sc4';
+    const apiKey = process.env.FIREBASE_API_KEY || '';
+    if (!apiKey) {
+      return { success: false, error: 'Firebase email delivery is not configured for this environment.' };
+    }
+
     const bodyPayload: any = {
       email: email.trim().toLowerCase(),
       continueUrl,
@@ -183,7 +190,6 @@ function renderPropleEmail({
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
   <title>${safeTitle}</title>
-  <!-- Schema.org Email Markup for Gmail Inbox Actions & 1-Tap Copy Code -->
   <script type="application/ld+json">
   {
     "@context": "http://schema.org",
@@ -200,8 +206,7 @@ function renderPropleEmail({
   }
   </script>
 </head>
-<body style="margin: 0; padding: 0; width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #262626; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;">
-  <!-- Preheader preview text for inbox -->
+<body style="margin: 0; padding: 0; width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #262626; font-[...]">
   <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; max-width: 0px; opacity: 0;">
     ${safeCode} is your Prople Store verification code. &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
   </div>
@@ -209,60 +214,50 @@ function renderPropleEmail({
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0; padding: 0; width: 100%; background-color: #ffffff;">
     <tr>
       <td align="center" valign="top" style="margin: 0; padding: 0;">
-        <!-- Borderless Full-Bleed 9:16 Portrait Container -->
-        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; width: 100%; margin: 0 auto; background-color: #ffffff; border: 0; text-align: left; box-sizing: border-box;">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; width: 100%; margin: 0 auto; background-color: #ffffff; border: 0; text-align: center;">
           <tr>
             <td style="padding: 32px 20px 40px 20px;">
-              
-              <!-- Centered Brand Header -->
               <div style="text-align: center; margin-bottom: 22px;">
                 <a href="https://www.prople.co.in" target="_blank" style="text-decoration: none; display: inline-block;">
-                  <img src="https://www.prople.co.in/logo.png" width="48" height="48" alt="Prople Store" style="display: block; margin: 0 auto; width: 48px; height: 48px; border-radius: 10px; border: 0;" />
+                  <img src="https://www.prople.co.in/logo.png" width="48" height="48" alt="Prople Store" style="display: block; margin: 0 auto; width: 48px; height: 48px; border-radius: 10px; border: 1px solid #e5e5e5; background-color: #ffffff;" />
                   <span style="display: block; margin-top: 8px; font-size: 19px; font-weight: 700; color: #262626; letter-spacing: -0.3px;">Prople Store</span>
                 </a>
               </div>
 
-              <!-- Greeting -->
               <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #262626;">
                 Hi${displayUser ? ` ${displayUser}` : ''},
               </p>
 
-              <!-- Purpose -->
               <p style="margin: 0 0 18px 0; font-size: 14px; color: #262626; line-height: 1.5;">
                 ${safePurpose} ${safeEmail ? `for <strong style="color: #000000;">${safeEmail}</strong>.` : ''}
               </p>
 
-              <!-- OTP Verification Box -->
-              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="width: 100%; margin: 16px 0 20px 0; background-color: #f7f7f7; border: 1px solid #e6e6e6; border-radius: 8px; box-sizing: border-box;">
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="width: 100%; margin: 16px 0 20px 0; background-color: #f7f7f7; border: 1px solid #e6e6e6; border-radius: 14px;">
                 <tr>
                   <td style="padding: 16px 14px; text-align: center; vertical-align: middle;">
                     <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #737373; margin-bottom: 4px;">Security Code</div>
-                    <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #000000; line-height: 1.2; user-select: all; -webkit-user-select: all;">${safeCode}</div>
+                    <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #000000; line-height: 1.3;">${safeCode}</div>
                   </td>
                 </tr>
               </table>
 
-              <!-- Primary Action CTA Button -->
               ${safeActionUrl ? `
               <div style="margin: 20px 0 20px 0;">
-                <a href="${safeActionUrl}" target="_blank" style="display: block; width: 100%; box-sizing: border-box; background-color: #0095f6; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; padding: 12px 20px; border-radius: 8px; text-align: center;">
+                <a href="${safeActionUrl}" target="_blank" style="display: block; width: 100%; box-sizing: border-box; background-color: #0095f6; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; border-radius: 10px; padding: 14px 18px; text-align: center;">
                   ${safeActionText}
                 </a>
               </div>
               ` : ''}
 
-              <!-- Expiry Notice -->
               <p style="margin: 0 0 20px 0; font-size: 13px; color: #737373; line-height: 1.5;">
                 This code is valid for <strong>${validityMinutes} minutes</strong>. If you did not make this request, you can safely ignore this email.
               </p>
 
-              <!-- Sign-off -->
               <p style="margin: 0 0 24px 0; font-size: 14px; color: #262626; line-height: 1.5;">
                 Thanks,<br>
                 <strong style="color: #000000;">The Prople Team</strong>
               </p>
 
-              <!-- Instagram-style Divider & Footer -->
               <div style="border-top: 1px solid #dbdbdb; padding-top: 20px; text-align: center; font-size: 11px; color: #8e8e8e; line-height: 1.6;">
                 <div style="font-weight: 600; color: #737373; text-transform: uppercase; letter-spacing: 0.8px; font-size: 11px; margin-bottom: 6px;">from CLOAKTAIL</div>
                 <div>&copy; Cloaktail Industries &bull; Prople Store &bull; <a href="https://www.prople.co.in" style="color: #0095f6; text-decoration: none;">prople.co.in</a></div>
@@ -285,8 +280,7 @@ function renderPropleEmail({
 }
 
 const RTDB_URL = (
-  process.env.FIREBASE_DATABASE_URL ||
-  'https://prople-store-3efed-default-rtdb.firebaseio.com'
+  process.env.FIREBASE_DATABASE_URL || ''
 ).replace(/\/$/, '');
 
 interface StoredOtpRecord {
@@ -330,6 +324,10 @@ async function persistOtp(email: string, code: string, ttlMinutes = 15): Promise
 
   memoryStore.set(norm, record);
 
+  if (!RTDB_URL) {
+    return;
+  }
+
   try {
     const key = getOtpKey(norm);
     const url = `${RTDB_URL}/_auth_otps/${key}.json`;
@@ -367,17 +365,19 @@ async function verifyAndConsumeOtpRecord(
   const memRec = memoryStore.get(norm) || null;
   let rtdbRec: StoredOtpRecord | null = null;
 
-  try {
-    const rtdbRes = await fetch(`${RTDB_URL}/_auth_otps/${key}.json`, {
-      signal: AbortSignal.timeout(3500),
-    });
-    if (rtdbRes.ok) {
-      const data = await rtdbRes.json();
-      if (data && typeof data === 'object' && (data.code || data.codeHmac)) {
-        rtdbRec = data as StoredOtpRecord;
+  if (RTDB_URL) {
+    try {
+      const rtdbRes = await fetch(`${RTDB_URL}/_auth_otps/${key}.json`, {
+        signal: AbortSignal.timeout(3500),
+      });
+      if (rtdbRes.ok) {
+        const data = await rtdbRes.json();
+        if (data && typeof data === 'object' && (data.code || data.codeHmac)) {
+          rtdbRec = data as StoredOtpRecord;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   let rec: StoredOtpRecord | null = null;
   if (memRec && rtdbRec) {
@@ -395,7 +395,9 @@ async function verifyAndConsumeOtpRecord(
 
   if (now > rec.expiresAt) {
     memoryStore.delete(norm);
-    fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    if (RTDB_URL) {
+      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    }
     return {
       valid: false,
       error: 'Verification code has expired. Please request a new verification code.',
@@ -404,7 +406,9 @@ async function verifyAndConsumeOtpRecord(
 
   if ((rec.attempts || 0) >= 5) {
     memoryStore.delete(norm);
-    fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    if (RTDB_URL) {
+      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    }
     return {
       valid: false,
       error: 'Too many incorrect attempts. Please request a new verification code.',
@@ -421,11 +425,13 @@ async function verifyAndConsumeOtpRecord(
   if (!matchesHmac && !matchesPlain) {
     rec.attempts = (rec.attempts || 0) + 1;
     memoryStore.set(norm, rec);
-    fetch(`${RTDB_URL}/_auth_otps/${key}/attempts.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rec.attempts),
-    }).catch(() => {});
+    if (RTDB_URL) {
+      fetch(`${RTDB_URL}/_auth_otps/${key}/attempts.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rec.attempts),
+      }).catch(() => {});
+    }
 
     return {
       valid: false,
@@ -435,7 +441,9 @@ async function verifyAndConsumeOtpRecord(
 
   if (consume) {
     memoryStore.delete(norm);
-    fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    if (RTDB_URL) {
+      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
+    }
   }
 
   return { valid: true };
@@ -512,7 +520,6 @@ export default async function handler(req: any, res: any) {
   const email = (body.email || req.query?.email || '').toString().toLowerCase().trim();
 
   try {
-    // 1. send-otp
     if (action === 'send-otp') {
       if (!email || !email.includes('@')) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
@@ -523,12 +530,14 @@ export default async function handler(req: any, res: any) {
 
       await Promise.all([
         persistOtp(email, code, 15).catch(() => {}),
-        fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => {}),
+        RTDB_URL
+          ? fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
+              signal: AbortSignal.timeout(3000),
+            }).catch(() => {})
+          : Promise.resolve(),
       ]);
 
       const candidateKeys = getCandidateResendApiKeys();
@@ -558,6 +567,13 @@ export default async function handler(req: any, res: any) {
         ].filter(Boolean))
       );
 
+      if (candidateKeys.length === 0) {
+        return res.status(500).json({
+          success: false,
+          error: 'Email delivery is not configured: missing RESEND_API_KEY environment variable.',
+        });
+      }
+
       for (const key of candidateKeys) {
         for (const sender of candidateSenders) {
           const result = await dispatchResendEmail(
@@ -581,7 +597,6 @@ export default async function handler(req: any, res: any) {
         if (emailSent) break;
       }
 
-      // Fallback: If Resend failed on all keys/senders, dispatch via Firebase Identity Toolkit
       if (!emailSent) {
         console.warn('[Auth] Resend dispatch did not succeed, attempting Firebase Identity Toolkit fallback...');
         const fbResult = await sendFirebaseOobCode('VERIFY_EMAIL', email, verifyLink);
@@ -595,9 +610,7 @@ export default async function handler(req: any, res: any) {
       if (!emailSent) {
         return res.status(500).json({
           success: false,
-          error:
-            lastResendError ||
-            'Failed to dispatch verification email. Please check your email configuration.',
+          error: lastResendError || 'Failed to dispatch verification email. Please check your email configuration.',
         });
       }
 
@@ -608,7 +621,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 2. forgot-password / send-reset-link
     if (action === 'forgot-password' || action === 'send-reset-link') {
       if (!email || !email.includes('@')) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
@@ -619,12 +631,14 @@ export default async function handler(req: any, res: any) {
 
       await Promise.all([
         persistOtp(email, code, 15).catch(() => {}),
-        fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => {}),
+        RTDB_URL
+          ? fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'pending', email, createdAt: Date.now() }),
+              signal: AbortSignal.timeout(3000),
+            }).catch(() => {})
+          : Promise.resolve(),
       ]);
 
       const candidateKeys = getCandidateResendApiKeys();
@@ -655,6 +669,13 @@ export default async function handler(req: any, res: any) {
         ].filter(Boolean))
       );
 
+      if (candidateKeys.length === 0) {
+        return res.status(500).json({
+          success: false,
+          error: 'Email delivery is not configured: missing RESEND_API_KEY environment variable.',
+        });
+      }
+
       for (const key of candidateKeys) {
         for (const sender of candidateSenders) {
           const sent = await dispatchResendEmail(
@@ -678,7 +699,6 @@ export default async function handler(req: any, res: any) {
         if (emailSent) break;
       }
 
-      // Fallback: If Resend failed on all keys/senders, dispatch via Firebase Identity Toolkit
       if (!emailSent) {
         console.warn('[Auth] Resend dispatch did not succeed, attempting Firebase Identity Toolkit fallback...');
         const fbResult = await sendFirebaseOobCode('PASSWORD_RESET', email, resetLink);
@@ -692,9 +712,7 @@ export default async function handler(req: any, res: any) {
       if (!emailSent) {
         return res.status(500).json({
           success: false,
-          error:
-            lastResendError ||
-            'Failed to dispatch password reset email. Please check your email configuration.',
+          error: lastResendError || 'Failed to dispatch password reset email. Please check your email configuration.',
         });
       }
 
@@ -705,7 +723,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3. verify-otp (Strict cryptographic verification - ZERO random code acceptance)
     if (action === 'verify-otp') {
       const code = (body.code || '').toString().trim();
       if (!email || !code) {
@@ -728,11 +745,13 @@ export default async function handler(req: any, res: any) {
       };
 
       const key = getOtpKey(email);
-      fetch(`${RTDB_URL}/_auth_sessions/${key}.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', email, createdAt: Date.now(), user: verifiedUser }),
-      }).catch(() => {});
+      if (RTDB_URL) {
+        fetch(`${RTDB_URL}/_auth_sessions/${key}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'completed', email, createdAt: Date.now(), user: verifiedUser }),
+        }).catch(() => {});
+      }
 
       return res.status(200).json({
         success: true,
@@ -740,7 +759,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3b. verify-reset-code (Step 1 of password reset - verifies code without consuming it yet)
     if (action === 'verify-reset-code') {
       const code = (body.code || '').toString().trim();
       if (!email || !code) {
@@ -758,7 +776,6 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true });
     }
 
-    // 4. reset-password (Strict cryptographic verification - ZERO random code acceptance)
     if (action === 'reset-password') {
       const code = (body.code || '').toString().trim();
       const newPassword = (body.newPassword || '').toString();
@@ -772,27 +789,27 @@ export default async function handler(req: any, res: any) {
       let isValid = false;
       let verifyError = 'Invalid or expired verification code.';
 
-      // Check stored 6-digit OTP
       if (/^\d{6}$/.test(code)) {
         const verification = await verifyAndConsumeOtpRecord(email, code, true);
         isValid = verification.valid;
         if (verification.error) verifyError = verification.error;
       } else if (code.length > 8) {
-        // Firebase oobCode from Firebase action link
-        const fbApiKey = process.env.FIREBASE_API_KEY || 'AIzaSyC5iotZL4UVF7QcdVn1ps3gIcetBDt9sc4';
-        try {
-          const fbRes = await fetch(
-            `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${fbApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ oobCode: code, newPassword }),
+        const fbApiKey = process.env.FIREBASE_API_KEY || '';
+        if (fbApiKey) {
+          try {
+            const fbRes = await fetch(
+              `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${fbApiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oobCode: code, newPassword }),
+              }
+            );
+            if (fbRes.ok) {
+              isValid = true;
             }
-          );
-          if (fbRes.ok) {
-            isValid = true;
-          }
-        } catch {}
+          } catch {}
+        }
       }
 
       if (!isValid) {
@@ -807,11 +824,13 @@ export default async function handler(req: any, res: any) {
       const hash = crypto.pbkdf2Sync(newPassword, salt, 10000, 64, 'sha512').toString('hex');
       const pwdHash = `${salt}:${hash}`;
 
-      fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hash: pwdHash, updatedAt: Date.now() }),
-      }).catch(() => {});
+      if (RTDB_URL) {
+        fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hash: pwdHash, updatedAt: Date.now() }),
+        }).catch(() => {});
+      }
 
       const finalUser = {
         uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
@@ -820,11 +839,13 @@ export default async function handler(req: any, res: any) {
         isEmailVerified: true,
       };
 
-      fetch(`${RTDB_URL}/_auth_sessions/${key}.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', email, createdAt: Date.now(), user: finalUser }),
-      }).catch(() => {});
+      if (RTDB_URL) {
+        fetch(`${RTDB_URL}/_auth_sessions/${key}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'completed', email, createdAt: Date.now(), user: finalUser }),
+        }).catch(() => {});
+      }
 
       return res.status(200).json({
         success: true,
@@ -833,7 +854,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 5. verify-password
     if (action === 'verify-password') {
       const password = (body.password || '').toString();
       if (!email || !password) {
@@ -842,59 +862,62 @@ export default async function handler(req: any, res: any) {
 
       const key = getOtpKey(email);
       try {
-        const pwdRes = await fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
-          signal: AbortSignal.timeout(3000),
-        });
-        if (pwdRes.ok) {
-          const pwdData = await pwdRes.json();
-          if (pwdData && typeof pwdData.hash === 'string' && pwdData.hash.includes(':')) {
-            const [salt, storedHex] = pwdData.hash.split(':');
-            const computed = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-            if (timingSafeEqualString(computed, storedHex)) {
-              return res.status(200).json({
-                success: true,
-                user: {
-                  uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
-                  email,
-                  displayName: email.split('@')[0],
-                  isEmailVerified: true,
-                },
-              });
+        if (RTDB_URL) {
+          const pwdRes = await fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          if (pwdRes.ok) {
+            const pwdData = await pwdRes.json();
+            if (pwdData && typeof pwdData.hash === 'string' && pwdData.hash.includes(':')) {
+              const [salt, storedHex] = pwdData.hash.split(':');
+              const computed = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+              if (timingSafeEqualString(computed, storedHex)) {
+                return res.status(200).json({
+                  success: true,
+                  user: {
+                    uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
+                    email,
+                    displayName: email.split('@')[0],
+                    isEmailVerified: true,
+                  },
+                });
+              }
             }
           }
         }
       } catch {}
 
-      const fbApiKey = process.env.FIREBASE_API_KEY || 'AIzaSyC5iotZL4UVF7QcdVn1ps3gIcetBDt9sc4';
-      try {
-        const idtRes = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${fbApiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, returnSecureToken: true }),
+      const fbApiKey = process.env.FIREBASE_API_KEY || '';
+      if (fbApiKey) {
+        try {
+          const idtRes = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${fbApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, returnSecureToken: true }),
+            }
+          );
+          if (idtRes.ok) {
+            const idtData = await idtRes.json();
+            if (idtData && idtData.localId) {
+              return res.status(200).json({
+                success: true,
+                user: {
+                  uid: idtData.localId,
+                  email,
+                  displayName: idtData.displayName || email.split('@')[0],
+                  isEmailVerified: Boolean(idtData.emailVerified),
+                },
+              });
+            }
           }
-        );
-        if (idtRes.ok) {
-          const idtData = await idtRes.json();
-          if (idtData && idtData.localId) {
-            return res.status(200).json({
-              success: true,
-              user: {
-                uid: idtData.localId,
-                email,
-                displayName: idtData.displayName || email.split('@')[0],
-                isEmailVerified: Boolean(idtData.emailVerified),
-              },
-            });
-          }
-        }
-      } catch {}
+        } catch {}
+      }
 
       return res.status(401).json({ success: false, error: 'auth/invalid-credential' });
     }
 
-    // 6. check-security-status
     if (action === 'check-security-status') {
       return res.status(200).json({
         success: true,
@@ -904,7 +927,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 7. report-failed-login
     if (action === 'report-failed-login') {
       return res.status(200).json({
         success: true,
@@ -913,45 +935,43 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 8. report-successful-login
     if (action === 'report-successful-login') {
       return res.status(200).json({ success: true });
     }
 
-    // 9. session-status
     if (action === 'session-status') {
       if (!email) {
         return res.status(200).json({ success: true, status: 'none' });
       }
 
       const key = getOtpKey(email);
-      try {
-        const rtdbRes = await fetch(`${RTDB_URL}/_auth_sessions/${key}.json`).catch(() => null);
-        if (rtdbRes && rtdbRes.ok) {
-          const rec = await rtdbRes.json().catch(() => null);
-          if (rec && typeof rec === 'object' && rec.status) {
-            return res.status(200).json({
-              success: true,
-              status: rec.status,
-              user: rec.user || undefined,
-            });
+      if (RTDB_URL) {
+        try {
+          const rtdbRes = await fetch(`${RTDB_URL}/_auth_sessions/${key}.json`).catch(() => null);
+          if (rtdbRes && rtdbRes.ok) {
+            const rec = await rtdbRes.json().catch(() => null);
+            if (rec && typeof rec === 'object' && rec.status) {
+              return res.status(200).json({
+                success: true,
+                status: rec.status,
+                user: rec.user || undefined,
+              });
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
 
       return res.status(200).json({ success: true, status: 'none' });
     }
 
-    // 10. consume-session
     if (action === 'consume-session') {
-      if (email) {
+      if (email && RTDB_URL) {
         const key = getOtpKey(email);
         fetch(`${RTDB_URL}/_auth_sessions/${key}.json`, { method: 'DELETE' }).catch(() => {});
       }
       return res.status(200).json({ success: true });
     }
 
-    // 11. migrate-user-rights
     if (action === 'migrate-user-rights') {
       return res.status(200).json({ success: true, user: null });
     }
