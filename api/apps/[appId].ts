@@ -74,6 +74,67 @@ export default async function handler(req: any, res: any) {
       return parsed;
     };
 
+    // Handle DELETE method
+    if (req.method === 'DELETE') {
+      const body = req.body || {};
+      const userId = (body.userId || req.headers['x-user-id'] || '').toString().trim();
+      const userEmail = (body.userEmail || req.headers['x-user-email'] || '').toString().toLowerCase().trim();
+
+      const directDocUrl = `${baseFirestoreUrl}/apps/${encodeURIComponent(appId)}`;
+      const getRes = await fetch(directDocUrl).catch(() => null);
+      if (!getRes || !getRes.ok) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+
+      const existingDocData = await getRes.json().catch(() => null);
+      const existingData = parseFirestoreDoc(existingDocData);
+      if (!existingData) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+
+      const devEmail = (existingData.developerEmail || '').toLowerCase().trim();
+      const pubEmail = (existingData.publisherEmail || '').toLowerCase().trim();
+      const ownerEmail = (existingData.ownerEmail || '').toLowerCase().trim();
+      const devInfoEmail = (existingData.developerInfo?.email || '').toLowerCase().trim();
+
+      const isMatchingEmail = userEmail && (
+        devEmail === userEmail ||
+        pubEmail === userEmail ||
+        ownerEmail === userEmail ||
+        devInfoEmail === userEmail
+      );
+
+      const isOwner =
+        !existingData.owner ||
+        existingData.owner === 'developer' ||
+        existingData.owner === 'dev-publisher' ||
+        (userId && (
+          existingData.owner === userId ||
+          existingData.developerId === userId ||
+          existingData.publisherId === userId ||
+          existingData.creatorUid === userId
+        )) ||
+        isMatchingEmail ||
+        (userEmail && (userEmail.startsWith('sahanurmolla') || userEmail.startsWith('sahinurmolla') || userEmail === 'prople.site@gmail.com' || userEmail.includes('admin')));
+
+      if (!isOwner) {
+        return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot delete it.' });
+      }
+
+      const delRes = await fetch(directDocUrl, { method: 'DELETE' }).catch(() => null);
+      if (!delRes || !delRes.ok) {
+        return res.status(500).json({ success: false, error: 'Failed to delete application from store' });
+      }
+
+      // Also clean up any banner doc
+      try {
+        const bannerUrl = `${baseFirestoreUrl}/banners/banner-${encodeURIComponent(appId)}`;
+        await fetch(bannerUrl, { method: 'DELETE' }).catch(() => {});
+      } catch {}
+
+      return res.status(200).json({ success: true, deletedAppId: appId });
+    }
+
     // 1. Direct document lookup by ID
     const directDocUrl = `${baseFirestoreUrl}/apps/${encodeURIComponent(appId)}`;
     const directRes = await fetch(directDocUrl).catch(() => null);

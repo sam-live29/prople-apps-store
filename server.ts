@@ -2233,6 +2233,14 @@ async function startServer() {
           } catch {}
         }
 
+        serverAppsCatalogCache = [];
+        seoAppsCache.delete(appId.toLowerCase());
+        seoAppsCache.delete(appId);
+        if (cleanDoc.slug) seoAppsCache.delete(cleanDoc.slug.toLowerCase());
+        if (existingData?.slug && existingData.slug !== cleanDoc.slug) {
+          seoAppsCache.delete(existingData.slug.toLowerCase());
+        }
+
         // Notify search engines of sitemap changes
         const host = req.get("host") || "prople-store.web.app";
         const protocol = req.protocol || "https";
@@ -2254,11 +2262,32 @@ async function startServer() {
           });
         }
 
+        // Generate guaranteed collision-free unique slug across entire catalog
+        const baseSlug = slugifyAppName(appPayload.name || '') || 'app';
+        let uniqueSlug = baseSlug;
+        try {
+          const appsCol = serverCollection(serverDb, "apps");
+          const allSnap = await serverGetDocs(appsCol);
+          const existingSlugs = new Set(allSnap.docs.map(d => (d.data().slug || slugifyAppName(d.data().name || '')).toLowerCase()));
+          if (existingSlugs.has(uniqueSlug.toLowerCase())) {
+            const plat = slugifyAppName(appPayload.platform || '');
+            if (plat && !existingSlugs.has(`${baseSlug}-${plat}`.toLowerCase())) {
+              uniqueSlug = `${baseSlug}-${plat}`;
+            } else {
+              let counter = 2;
+              while (existingSlugs.has(`${baseSlug}-${counter}`.toLowerCase())) {
+                counter++;
+              }
+              uniqueSlug = `${baseSlug}-${counter}`;
+            }
+          }
+        } catch {}
+
         const nowIso = new Date().toISOString();
         const cleanDoc = sanitizeObject({
           ...appPayload,
           id: appId,
-          slug: slugifyAppName(appPayload.name || ''),
+          slug: uniqueSlug,
           owner: userId || appPayload.owner || 'developer',
           developerId: userId || appPayload.developerId || 'developer',
           developerEmail: userEmail || appPayload.developerEmail || '',
@@ -2279,7 +2308,8 @@ async function startServer() {
         recordPublishRateLimit(clientIp);
         serverAppsCatalogCache = [];
         seoAppsCache.delete(appId.toLowerCase());
-        if (cleanDoc.slug) seoAppsCache.delete(cleanDoc.slug);
+        seoAppsCache.delete(appId);
+        if (cleanDoc.slug) seoAppsCache.delete(cleanDoc.slug.toLowerCase());
 
         // Index newly published app in Meilisearch
         indexApp(cleanDoc).catch(() => {});
@@ -2573,6 +2603,23 @@ async function startServer() {
       }
 
       await serverDeleteDoc(appRef);
+
+      // Delete associated spotlight banner from Firestore if exists
+      try {
+        const bannerRef = serverDoc(serverDb, "banners", `banner-${appId}`);
+        await serverDeleteDoc(bannerRef);
+      } catch {}
+
+      // Flush server-side in-memory catalog cache and SEO caches
+      serverAppsCatalogCache = [];
+      seoAppsCache.delete(appId.toLowerCase());
+      seoAppsCache.delete(appId);
+      if (existingData?.slug) {
+        seoAppsCache.delete(existingData.slug.toLowerCase());
+      }
+      if (existingData?.name) {
+        seoAppsCache.delete(slugifyAppName(existingData.name));
+      }
 
       // Delete app from Meilisearch index
       deleteAppFromIndex(appId).catch(() => {});

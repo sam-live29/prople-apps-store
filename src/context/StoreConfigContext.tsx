@@ -150,18 +150,17 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
       const freshApps = liveApps || {};
       const count = Object.keys(freshApps).length;
       
-      // Update in-memory apps state: merge so newly published apps are never dropped by snapshot latency
-      setApps(prev => {
-        const combined = { ...prev, ...freshApps };
+      // Update in-memory apps state: Firestore snapshot is the authoritative source of record
+      setApps(() => {
         try {
           if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(combined));
+            sessionStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(freshApps));
           }
           if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(combined));
+            localStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(freshApps));
           }
         } catch {}
-        return combined;
+        return freshApps;
       });
       hasLoadedFirstData = true;
       setHasInitialSyncCompleted(true);
@@ -462,8 +461,31 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
     setApps(prev => {
       const next = { ...prev };
       delete next[appId];
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(next));
+        }
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(next));
+        }
+      } catch {}
       return next;
     });
+
+    // Clean up from appDetailsMock and active draft sessions
+    delete appDetailsMock[appId];
+    try {
+      localStorage.removeItem(`prople_draft_update_app_${appId}`);
+      const activeSessionRaw = localStorage.getItem('prople_publish_form_session');
+      if (activeSessionRaw) {
+        const parsed = JSON.parse(activeSessionRaw);
+        if (parsed?.appId === appId) {
+          localStorage.removeItem('prople_publish_form_session');
+          localStorage.removeItem('prople_publish_form_open');
+        }
+      }
+    } catch {}
+
     // Remove banner if exists
     const matchingBanner = banners.find(b => b.appId === appId);
     if (matchingBanner) {

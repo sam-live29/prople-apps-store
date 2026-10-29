@@ -2649,6 +2649,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setIsPublishOpen(true);
   };
 
+  const handleSwitchToNewPublish = () => {
+    setEditingAppId(null);
+    setInitialAppSnapshot(null);
+    try {
+      localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId: currentDevId }));
+    } catch {}
+    showToast('Switched to New App mode: Publishing will create a separate distinct application entry.', { duration: 4500 });
+  };
+
   const handleDiscardNewAppDraft = () => {
     deleteSavedNewAppDraft(currentDevId);
     try {
@@ -2774,7 +2783,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setIsPublishing(true);
 
     try {
-      const appId = editingAppId || `gh-app-${Date.now()}`;
+      const isUpdateMode = Boolean(editingAppId && appsList.some(a => a.id === editingAppId));
+      const appId = isUpdateMode ? (editingAppId as string) : `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const finalScreenshots = screenshotsList;
 
       // Ensure downloadUrl is a direct binary package link before publishing
@@ -2803,7 +2813,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         ? (dataSharedDetails.trim() || 'User data is shared with declared third parties for operational functionality.')
         : 'No data shared with third parties.');
 
-      const existingApp = editingAppId ? (appsList.find(a => a.id === editingAppId) || appDetailsMock[editingAppId]) : undefined;
+      const existingApp = isUpdateMode ? (appsList.find(a => a.id === editingAppId) || appDetailsMock[editingAppId as string]) : undefined;
       const securityPracticesList: string[] = existingApp?.dataSafety?.securityPractices || existingApp?.securityPractices || [];
 
       // Ownership enforcement: Verify that the current user owns this app before allowing edits
@@ -3047,6 +3057,14 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       const activeUid = user?.uid || auth.currentUser?.uid;
       const activeEmail = user?.email || auth.currentUser?.email;
       await deleteApp(target.id, activeUid, activeEmail);
+      deleteSavedUpdateDraft(target.id);
+      if (editingAppId === target.id) {
+        setEditingAppId(null);
+        setIsPublishOpen(false);
+        resetAllFormState();
+      }
+      setUpdateDraftsVersion(v => v + 1);
+
       if (user && user.publishedAppIds) {
         updateUserProfile({
           publishedAppIds: user.publishedAppIds.filter(id => id !== target.id)
@@ -3532,6 +3550,35 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
             </button>
           ))}
         </div>
+
+        {/* Publish Mode & App Separation Indicator */}
+        {editingAppId ? (
+          <div className="bg-blue-500/10 border-b border-blue-500/20 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs shrink-0 z-30 w-full max-w-7xl mx-auto">
+            <div className="flex items-center gap-2 text-blue-400 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+              <span className="truncate">
+                <strong>Update Mode:</strong> Updating existing catalog app <span className="text-theme-text font-medium">"{name || 'Application'}"</span> <span className="text-[10px] bg-blue-500/20 text-blue-300 font-mono px-1.5 py-0.5 rounded shrink-0">{editingAppId}</span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleSwitchToNewPublish}
+              className="text-[11px] bg-theme-hover hover:bg-theme-hover/80 text-theme-text px-2.5 py-1 rounded-md font-medium shrink-0 cursor-pointer transition-colors border border-theme-border/40"
+              title="Publish as a separate new app instead of updating this one"
+            >
+              Publish as New App Instead
+            </button>
+          </div>
+        ) : (
+          <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-3 sm:px-6 py-1.5 flex items-center justify-between gap-2 text-xs shrink-0 z-30 w-full max-w-7xl mx-auto">
+            <div className="flex items-center gap-2 text-emerald-400 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="truncate text-emerald-300 dark:text-emerald-400">
+                <strong>New Application Release:</strong> Each published app receives an immutable unique ID and distinct catalog listing.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Publisher Name Conflict Banner */}
         {isPublisherNameConflict && (

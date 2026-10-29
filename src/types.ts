@@ -219,6 +219,8 @@ export interface AppDetails {
   owner?: string;
   developerId?: string;
   developerEmail?: string;
+  packageName?: string;
+  slug?: string;
   platform?: 'android' | 'linux' | 'windows' | 'mac' | 'ios' | 'web' | string;
   targetOs?: string;
   packageFormat?: string;
