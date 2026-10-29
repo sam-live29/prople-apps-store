@@ -65,12 +65,17 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000).unref();
 
+let ephemeralInternalSecret: string | null = null;
+
 export function getStableInternalSecret(): string {
   const envKey = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
   if (envKey && envKey.trim()) {
     return envKey.trim();
   }
-  return 'prople-store-high-entropy-auth-secret-key-v1-2026-cloaktail';
+  if (!ephemeralInternalSecret) {
+    ephemeralInternalSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return ephemeralInternalSecret;
 }
 
 /**

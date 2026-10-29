@@ -22,7 +22,7 @@ function timingSafeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-let runtimeResendApiKey = 're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL';
+let runtimeResendApiKey = process.env.RESEND_API_KEY || '';
 
 export const setRuntimeResendApiKey = (key: string): void => {
   if (key && typeof key === 'string') {
@@ -38,7 +38,6 @@ export const getCandidateResendApiKeys = (): string[] => {
     process.env.VITE_RESEND_API_KEY,
     process.env.RESEND_KEY,
     process.env.VITE_RESEND_KEY,
-    're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL',
   ];
 
   const candidateKeys: string[] = [];
@@ -51,16 +50,12 @@ export const getCandidateResendApiKeys = (): string[] => {
     }
   }
 
-  if (!candidateKeys.includes('re_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL')) {
-    candidateKeys.push('re_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL');
-  }
-
   return candidateKeys;
 };
 
 export const getResendApiKey = (): string => {
   const keys = getCandidateResendApiKeys();
-  return keys[0] || 're_cCvaGHEg_A9mhHNEfaUFBoNRi736V9bPL';
+  return keys[0] || '';
 };
 
 export const getResendClient = (): Resend | null => {

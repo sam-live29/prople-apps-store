@@ -36,12 +36,17 @@ function getSecureCorsHeaders(origin?: string): Record<string, string> {
   };
 }
 
+let ephemeralSessionSecret: string | null = null;
+
 function getSessionSecret(): string {
   const configured = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
   if (configured && configured.trim()) {
     return configured.trim();
   }
-  return 'prople-store-high-entropy-auth-secret-key-v1-2026-cloaktail';
+  if (!ephemeralSessionSecret) {
+    ephemeralSessionSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return ephemeralSessionSecret;
 }
 
 function hmacDigest(value: string, salt = ''): string {
