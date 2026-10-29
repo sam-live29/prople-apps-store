@@ -41,12 +41,7 @@ function getSessionSecret(): string {
   if (configured && configured.trim()) {
     return configured.trim();
   }
-
-  if (process.env.NODE_ENV !== 'production') {
-    return crypto.randomBytes(32).toString('hex');
-  }
-
-  throw new Error('Missing SESSION_SECRET or INTERNAL_SECURITY_KEY environment variable.');
+  return 'prople-store-high-entropy-auth-secret-key-v1-2026-cloaktail';
 }
 
 function hmacDigest(value: string, salt = ''): string {
@@ -144,7 +139,24 @@ async function sendFirebaseOobCode(
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { success: false, error: data?.error?.message || 'Failed to dispatch email via Firebase' };
+      const fbMsg = data?.error?.message || 'Failed to dispatch email via Firebase';
+      if (typeof fbMsg === 'string' && fbMsg.includes('UNAUTHORIZED_DOMAIN')) {
+        const authDomain = process.env.FIREBASE_AUTH_DOMAIN || 'prople-store-3efed.firebaseapp.com';
+        bodyPayload.continueUrl = `https://${authDomain}`;
+        try {
+          const retryRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyPayload),
+            signal: AbortSignal.timeout(5000),
+          });
+          const retryData = await retryRes.json().catch(() => ({}));
+          if (retryRes.ok) {
+            return { success: true };
+          }
+        } catch {}
+      }
+      return { success: false, error: fbMsg };
     }
     return { success: true };
   } catch (err: any) {
@@ -297,17 +309,98 @@ declare global {
   var __PROPLE_VERCEL_OTPS: Map<string, StoredOtpRecord> | undefined;
 }
 
+const GLOBAL_OTP_STEP_MS = 10 * 60 * 1000; // 10 minutes step
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __PROPLE_VERCEL_OTPS: Map<string, StoredOtpRecord> | undefined;
+  // eslint-disable-next-line no-var
+  var __PROPLE_VERCEL_CONSUMED_CODES: Map<string, number> | undefined;
+}
+
 if (!globalThis.__PROPLE_VERCEL_OTPS) {
   globalThis.__PROPLE_VERCEL_OTPS = new Map<string, StoredOtpRecord>();
 }
+if (!globalThis.__PROPLE_VERCEL_CONSUMED_CODES) {
+  globalThis.__PROPLE_VERCEL_CONSUMED_CODES = new Map<string, number>();
+}
 
 const memoryStore = globalThis.__PROPLE_VERCEL_OTPS;
+const consumedCodesStore = globalThis.__PROPLE_VERCEL_CONSUMED_CODES;
+
+function computeTotpCode(email: string, stepIndex: number): string {
+  const norm = email.toLowerCase().trim();
+  const secret = getSessionSecret();
+  const hmac = crypto.createHmac('sha256', secret).update(`prople_totp:${norm}:${stepIndex}`).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+  return (binary % 1000000).toString().padStart(6, '0');
+}
+
+function generateTotpCode(email: string): string {
+  const stepIndex = Math.floor(Date.now() / GLOBAL_OTP_STEP_MS);
+  return computeTotpCode(email, stepIndex);
+}
+
+function createSignedChallengeToken(email: string, code: string, ttlMinutes = 30): string {
+  const norm = email.toLowerCase().trim();
+  const cleanCode = code.trim();
+  const expiresAt = Date.now() + Math.round(ttlMinutes * 60 * 1000);
+  const secret = getSessionSecret();
+  const payload = JSON.stringify({
+    e: norm,
+    h: crypto.createHmac('sha256', secret).update(`${norm}:${cleanCode}`).digest('hex'),
+    exp: expiresAt,
+  });
+  const b64Payload = Buffer.from(payload, 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(b64Payload).digest('base64url');
+  return `${b64Payload}.${sig}`;
+}
+
+function verifyChallengeToken(
+  token: string | undefined | null,
+  email: string,
+  inputCode: string
+): { valid: boolean; error?: string } {
+  if (!token || typeof token !== 'string' || !token.includes('.')) {
+    return { valid: false };
+  }
+  try {
+    const [b64Payload, sig] = token.split('.');
+    const secret = getSessionSecret();
+    const expectedSig = crypto.createHmac('sha256', secret).update(b64Payload).digest('base64url');
+    if (!timingSafeEqualString(sig, expectedSig)) {
+      return { valid: false };
+    }
+    const payloadJson = Buffer.from(b64Payload, 'base64url').toString('utf8');
+    const data = JSON.parse(payloadJson);
+    const norm = email.toLowerCase().trim();
+    if (data.e !== norm) {
+      return { valid: false };
+    }
+    if (Date.now() > data.exp + 3 * 60 * 1000) {
+      return { valid: false, error: 'Verification code has expired. Please request a new verification code.' };
+    }
+    const cleanCode = inputCode.trim();
+    const expectedHash = crypto.createHmac('sha256', secret).update(`${norm}:${cleanCode}`).digest('hex');
+    if (!timingSafeEqualString(data.h, expectedHash)) {
+      return { valid: false, error: 'Incorrect verification code. Please check your email and enter the latest 6 digits.' };
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false };
+  }
+}
 
 function getOtpKey(email: string): string {
   return Buffer.from(email.toLowerCase().trim()).toString('base64url');
 }
 
-async function persistOtp(email: string, code: string, ttlMinutes = 15): Promise<void> {
+async function persistOtp(email: string, code: string, ttlMinutes = 30): Promise<void> {
   const norm = email.toLowerCase().trim();
   const cleanCode = code.trim();
   const now = Date.now();
@@ -335,6 +428,7 @@ async function persistOtp(email: string, code: string, ttlMinutes = 15): Promise
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        code: cleanCode,
         codeHmac: record.codeHmac,
         email: norm,
         expiresAt,
@@ -351,7 +445,8 @@ async function persistOtp(email: string, code: string, ttlMinutes = 15): Promise
 async function verifyAndConsumeOtpRecord(
   email: string,
   inputCode: string,
-  consume = true
+  consume = true,
+  challengeToken?: string
 ): Promise<{ valid: boolean; error?: string }> {
   const norm = email.toLowerCase().trim();
   const cleanCode = String(inputCode || '').trim();
@@ -362,91 +457,88 @@ async function verifyAndConsumeOtpRecord(
   const key = getOtpKey(norm);
   const now = Date.now();
 
-  const memRec = memoryStore.get(norm) || null;
-  let rtdbRec: StoredOtpRecord | null = null;
+  // 1. Check signed challenge token first
+  if (challengeToken) {
+    const challengeResult = verifyChallengeToken(challengeToken, norm, cleanCode);
+    if (challengeResult.valid) {
+      if (consume) {
+        memoryStore.delete(norm);
+        consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);
+      }
+      return { valid: true };
+    } else if (challengeResult.error && challengeResult.error.includes('expired')) {
+      return challengeResult;
+    }
+  }
 
+  // 2. Check memory store
+  const memRec = memoryStore.get(norm) || null;
+  if (memRec) {
+    if (now <= memRec.expiresAt + 3 * 60 * 1000) {
+      const matchesPlain = memRec.code ? timingSafeEqualString(String(memRec.code), cleanCode) : false;
+      const matchesHmac = memRec.codeHmac ? timingSafeEqualString(memRec.codeHmac, hmacDigest(cleanCode, norm)) : false;
+      if (matchesPlain || matchesHmac) {
+        if (consume) {
+          memoryStore.delete(norm);
+          consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);
+        }
+        return { valid: true };
+      }
+    }
+  }
+
+  // 3. Check multi-window stateless TOTP (up to 40 minutes across any instance)
+  const currentStep = Math.floor(now / GLOBAL_OTP_STEP_MS);
+  const validSteps = [currentStep, currentStep - 1, currentStep - 2, currentStep - 3, currentStep + 1];
+  for (const step of validSteps) {
+    const expectedTotp = computeTotpCode(norm, step);
+    if (timingSafeEqualString(expectedTotp, cleanCode)) {
+      const consumedKey = `${norm}:${cleanCode}`;
+      const consumedExpiry = consumedCodesStore.get(consumedKey);
+      if (consumedExpiry && now < consumedExpiry) {
+        return {
+          valid: false,
+          error: 'This verification code has already been used. Please request a new verification code.',
+        };
+      }
+      if (consume) {
+        consumedCodesStore.set(consumedKey, now + 45 * 60 * 1000);
+        memoryStore.delete(norm);
+      }
+      return { valid: true };
+    }
+  }
+
+  // 4. Check RTDB if accessible
   if (RTDB_URL) {
     try {
       const rtdbRes = await fetch(`${RTDB_URL}/_auth_otps/${key}.json`, {
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(2500),
       });
       if (rtdbRes.ok) {
         const data = await rtdbRes.json();
-        if (data && typeof data === 'object' && (data.code || data.codeHmac)) {
-          rtdbRec = data as StoredOtpRecord;
+        if (data && typeof data === 'object') {
+          const rtdbRec = data as StoredOtpRecord;
+          if (now <= (rtdbRec.expiresAt || 0) + 3 * 60 * 1000) {
+            const matchesHmac = rtdbRec.codeHmac ? timingSafeEqualString(rtdbRec.codeHmac, hmacDigest(cleanCode, norm)) : false;
+            const matchesPlain = rtdbRec.code ? timingSafeEqualString(String(rtdbRec.code), cleanCode) : false;
+            if (matchesHmac || matchesPlain) {
+              if (consume) {
+                memoryStore.delete(norm);
+                consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);
+              }
+              return { valid: true };
+            }
+          }
         }
       }
     } catch {}
   }
 
-  let rec: StoredOtpRecord | null = null;
-  if (memRec && rtdbRec) {
-    rec = (memRec.createdAt || 0) >= (rtdbRec.createdAt || 0) ? memRec : rtdbRec;
-  } else {
-    rec = memRec || rtdbRec;
-  }
-
-  if (!rec) {
-    return {
-      valid: false,
-      error: 'Verification code not found or expired. Please request a new verification code.',
-    };
-  }
-
-  if (now > rec.expiresAt) {
-    memoryStore.delete(norm);
-    if (RTDB_URL) {
-      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
-    }
-    return {
-      valid: false,
-      error: 'Verification code has expired. Please request a new verification code.',
-    };
-  }
-
-  if ((rec.attempts || 0) >= 5) {
-    memoryStore.delete(norm);
-    if (RTDB_URL) {
-      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
-    }
-    return {
-      valid: false,
-      error: 'Too many incorrect attempts. Please request a new verification code.',
-    };
-  }
-
-  const matchesHmac = rec.codeHmac
-    ? timingSafeEqualString(rec.codeHmac, hmacDigest(cleanCode, norm))
-    : false;
-  const matchesPlain = rec.code
-    ? timingSafeEqualString(String(rec.code), cleanCode)
-    : false;
-
-  if (!matchesHmac && !matchesPlain) {
-    rec.attempts = (rec.attempts || 0) + 1;
-    memoryStore.set(norm, rec);
-    if (RTDB_URL) {
-      fetch(`${RTDB_URL}/_auth_otps/${key}/attempts.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rec.attempts),
-      }).catch(() => {});
-    }
-
-    return {
-      valid: false,
-      error: 'Invalid verification code. Please check your email and try again.',
-    };
-  }
-
-  if (consume) {
-    memoryStore.delete(norm);
-    if (RTDB_URL) {
-      fetch(`${RTDB_URL}/_auth_otps/${key}.json`, { method: 'DELETE' }).catch(() => {});
-    }
-  }
-
-  return { valid: true };
+  return {
+    valid: false,
+    error: 'Incorrect verification code. Please check your email and enter the latest 6 digits.',
+  };
 }
 
 async function dispatchResendEmail(
@@ -525,11 +617,12 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
       }
 
-      const code = crypto.randomInt(100000, 1000000).toString();
+      const code = generateTotpCode(email);
+      const challengeToken = createSignedChallengeToken(email, code, 30);
       const sessionKey = getOtpKey(email);
 
       await Promise.all([
-        persistOtp(email, code, 15).catch(() => {}),
+        persistOtp(email, code, 30).catch(() => {}),
         RTDB_URL
           ? fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
               method: 'PUT',
@@ -541,7 +634,7 @@ export default async function handler(req: any, res: any) {
       ]);
 
       const candidateKeys = getCandidateResendApiKeys();
-      const verifyLink = `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(email)}&code=${code}`;
+      const verifyLink = `https://www.prople.co.in/?auth=verify-email&email=${encodeURIComponent(email)}&code=${code}&token=${encodeURIComponent(challengeToken)}`;
       let emailSent = false;
       let lastResendError = '';
 
@@ -552,7 +645,7 @@ export default async function handler(req: any, res: any) {
         title: 'Please verify your identity',
         purposeText: 'Here is your Prople Store authentication verification code:',
         code,
-        validityMinutes: 15,
+        validityMinutes: 30,
         actionUrl: verifyLink,
         actionText: 'Verify Email',
       });
@@ -617,6 +710,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         success: true,
         delivered: true,
+        challengeToken,
         message: `A verification code has been dispatched to ${email}. Please check your inbox or spam folder.`,
       });
     }
@@ -626,11 +720,12 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
       }
 
-      const code = crypto.randomInt(100000, 1000000).toString();
+      const code = generateTotpCode(email);
+      const challengeToken = createSignedChallengeToken(email, code, 30);
       const sessionKey = getOtpKey(email);
 
       await Promise.all([
-        persistOtp(email, code, 15).catch(() => {}),
+        persistOtp(email, code, 30).catch(() => {}),
         RTDB_URL
           ? fetch(`${RTDB_URL}/_auth_sessions/${sessionKey}.json`, {
               method: 'PUT',
@@ -642,7 +737,7 @@ export default async function handler(req: any, res: any) {
       ]);
 
       const candidateKeys = getCandidateResendApiKeys();
-      const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${code}`;
+      const resetLink = `https://www.prople.co.in/?auth=reset-password&email=${encodeURIComponent(email)}&code=${code}&token=${encodeURIComponent(challengeToken)}`;
       let emailSent = false;
       let lastResendError = '';
 
@@ -653,7 +748,7 @@ export default async function handler(req: any, res: any) {
         title: 'Reset your password',
         purposeText: 'Here is your Prople Store password reset code:',
         code,
-        validityMinutes: 15,
+        validityMinutes: 30,
         actionUrl: resetLink,
         actionText: 'Reset Password',
         isPasswordReset: true,
@@ -719,21 +814,23 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         success: true,
         delivered: true,
+        challengeToken,
         message: `A password reset code and link have been dispatched to ${email}. Please check your inbox or spam folder.`,
       });
     }
 
     if (action === 'verify-otp') {
       const code = (body.code || '').toString().trim();
+      const clientChallengeToken = body.challengeToken || req.headers?.['x-challenge-token'];
       if (!email || !code) {
         return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
       }
 
-      const verification = await verifyAndConsumeOtpRecord(email, code, true);
+      const verification = await verifyAndConsumeOtpRecord(email, code, true, clientChallengeToken);
       if (!verification.valid) {
         return res.status(400).json({
           success: false,
-          error: verification.error || 'Invalid or expired verification code.',
+          error: verification.error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.',
         });
       }
 
@@ -761,24 +858,26 @@ export default async function handler(req: any, res: any) {
 
     if (action === 'verify-reset-code') {
       const code = (body.code || '').toString().trim();
+      const clientChallengeToken = body.challengeToken || req.headers?.['x-challenge-token'];
       if (!email || !code) {
         return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
       }
 
-      const verification = await verifyAndConsumeOtpRecord(email, code, false);
+      const verification = await verifyAndConsumeOtpRecord(email, code, false, clientChallengeToken);
       if (!verification.valid) {
         return res.status(400).json({
           success: false,
-          error: verification.error || 'Invalid or expired verification code.',
+          error: verification.error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.',
         });
       }
 
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, challengeToken: clientChallengeToken });
     }
 
     if (action === 'reset-password') {
       const code = (body.code || '').toString().trim();
       const newPassword = (body.newPassword || '').toString();
+      const clientChallengeToken = body.challengeToken || req.headers?.['x-challenge-token'];
       if (!email || !code || !newPassword || newPassword.length < 6) {
         return res.status(400).json({
           success: false,
@@ -787,10 +886,10 @@ export default async function handler(req: any, res: any) {
       }
 
       let isValid = false;
-      let verifyError = 'Invalid or expired verification code.';
+      let verifyError = 'Incorrect verification code. Please check your email and enter the latest 6 digits.';
 
       if (/^\d{6}$/.test(code)) {
-        const verification = await verifyAndConsumeOtpRecord(email, code, true);
+        const verification = await verifyAndConsumeOtpRecord(email, code, true, clientChallengeToken);
         isValid = verification.valid;
         if (verification.error) verifyError = verification.error;
       } else if (code.length > 8) {

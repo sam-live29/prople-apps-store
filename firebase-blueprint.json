@@ -188,9 +188,48 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["normalizedName", "displayName"]
+    },
+    "AuthOtpRecord": {
+      "title": "AuthOtpRecord",
+      "description": "Secure distributed OTP record for email authentication and password reset verification",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "codeHmac": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "expiresAt": { "type": "number" },
+        "attempts": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email", "expiresAt"]
+    },
+    "AuthSessionRecord": {
+      "title": "AuthSessionRecord",
+      "description": "Cross-window authentication and password reset session tracking",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "createdAt": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "user": { "type": "object" }
+      },
+      "required": ["email", "status", "createdAt"]
     }
   },
   "firestore": {
+    "/auth_otps/{otpId}": {
+      "schema": {
+        "$ref": "#/entities/AuthOtpRecord"
+      },
+      "description": "Distributed OTP records for email authentication and password reset"
+    },
+    "/auth_sessions/{sessionId}": {
+      "schema": {
+        "$ref": "#/entities/AuthSessionRecord"
+      },
+      "description": "Distributed cross-tab and cross-window authentication synchronization sessions"
+    },
     "/publisher_registry/{nameId}": {
       "schema": {
         "$ref": "#/entities/PublisherRegistryRecord"

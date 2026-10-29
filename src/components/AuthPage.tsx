@@ -120,6 +120,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+  const [challengeToken, setChallengeToken] = useState<string>('');
 
   // Check URL query parameters on mount (direct 1-click password reset or email verification links)
   useEffect(() => {
@@ -130,6 +131,16 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       const modeParam = searchParams.get('mode');
       const emailParam = searchParams.get('email');
       const codeParam = searchParams.get('code') || searchParams.get('oobCode');
+      const tokenParam = searchParams.get('token') || searchParams.get('challengeToken');
+
+      if (tokenParam) {
+        setChallengeToken(tokenParam);
+        if (emailParam) {
+          try {
+            sessionStorage.setItem('prople_challenge_token_' + decodeURIComponent(emailParam).toLowerCase().trim(), tokenParam);
+          } catch {}
+        }
+      }
 
       // Detect in-app Android/Gmail webview to break out or show banner
       const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -346,6 +357,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setFieldErrors({});
     try {
       const res = await forgotPassword(targetEmail.trim());
+      if (res?.challengeToken) {
+        setChallengeToken(res.challengeToken);
+      }
       setEmail(targetEmail.trim());
       setStep('reset-otp');
       setResendCooldown(60);
@@ -370,22 +384,53 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setFieldErrors({});
     setIsSubmitting(true);
     try {
-      const { ok, data, error } = await safeFetchJson<{ success: boolean; error?: string }>('/api/auth/verify-reset-code', {
+      const cleanEmail = email.trim().toLowerCase();
+      const activeToken =
+        challengeToken ||
+        (typeof window !== 'undefined'
+          ? sessionStorage.getItem('prople_challenge_token_' + cleanEmail) || ''
+          : '');
+
+      const { ok, data, error } = await safeFetchJson<{
+        success: boolean;
+        challengeToken?: string;
+        error?: string;
+      }>('/api/auth/verify-reset-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), code: cleanCode }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeToken ? { 'x-challenge-token': activeToken } : {}),
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          code: cleanCode,
+          challengeToken: activeToken || undefined,
+        }),
       });
 
       if (!ok || !data?.success) {
-        const msg = sanitizeErrorMessage(data?.error || error, 'Invalid or expired verification code. Please check your email and try again.');
+        const msg = sanitizeErrorMessage(
+          data?.error || error,
+          'Incorrect verification code. Please check your email and enter the latest 6 digits.'
+        );
         setFieldErrors({ resetCode: msg });
         showToast(msg);
         return;
       }
 
+      if (data?.challengeToken) {
+        setChallengeToken(data.challengeToken);
+        try {
+          sessionStorage.setItem('prople_challenge_token_' + cleanEmail, data.challengeToken);
+        } catch {}
+      }
+
       setStep('reset-new-password');
     } catch (err: any) {
-      const msg = sanitizeErrorMessage(err, 'Invalid or expired verification code. Please check your email and try again.');
+      const msg = sanitizeErrorMessage(
+        err,
+        'Incorrect verification code. Please check your email and enter the latest 6 digits.'
+      );
       setFieldErrors({ resetCode: msg });
       showToast(msg);
     } finally {
@@ -424,6 +469,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setOtpPurpose('signup');
     try {
       const res = await sendEmailOtp(email.trim(), cleanName);
+      if (res?.challengeToken) {
+        setChallengeToken(res.challengeToken);
+      }
       setStep('verify-otp');
       setResendCooldown(60);
       showToast(res.message || 'Verification code sent to your email.', { duration: 7000 });
@@ -491,6 +539,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setFieldErrors({});
     try {
       const res = await sendEmailOtp(email.trim());
+      if (res?.challengeToken) {
+        setChallengeToken(res.challengeToken);
+      }
       setResendCooldown(60);
       showToast(res.message || 'New verification code sent to your email.');
     } catch (err: any) {
@@ -543,6 +594,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setFieldErrors({});
     try {
       const res = await forgotPassword(email.trim());
+      if (res?.challengeToken) {
+        setChallengeToken(res.challengeToken);
+      }
       setResendCooldown(60);
       showToast(res.message || 'New password reset code sent to your email.');
     } catch (err: any) {

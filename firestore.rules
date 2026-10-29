@@ -156,5 +156,15 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    match /auth_otps/{otpId} {
+      allow get, create, update, delete: if true;
+      allow list: if false;
+    }
+
+    match /auth_sessions/{sessionId} {
+      allow get, create, update, delete: if true;
+      allow list: if false;
+    }
   }
 }

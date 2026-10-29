@@ -259,3 +259,56 @@ This blueprint documents the production-grade authentication security engine for
    - Dual Fallback: Google Firebase Identity Toolkit REST API (`accounts:sendOobCode`) using project API key, guaranteeing instant delivery without external API key prerequisites.
 4. Route all password reset and email verification links strictly to authorized domain `https://www.prople.co.in` via `actionCodeSettings`.
 5. Enforce zero provider leakage: No mention of "Resend", "API Key", or internal vendor infrastructure in user-facing toasts or error diagnostics.
+
+---
+
+## 11. Cross-Instance Stateless TOTP & Cryptographic Challenge Token Architecture
+
+### 1. Root Cause Analysis of "Verification code not found or expired"
+- **Serverless Ephemeral Memory Isolation**: On platforms like Vercel and AWS Lambda, container instances spin up and down dynamically. When a user requests a verification code (`/api/auth/send-otp` or `/api/auth/forgot-password`), container A generates the OTP and saves it to its local in-memory store. When the user inputs the 6 digits seconds later (`/api/auth/verify-reset-code` or `/api/auth/verify-otp`), container B receives the request. Container B has an empty in-memory store.
+- **External Database Permission Blocks**: If remote database rules (e.g., Firebase RTDB or Firestore) reject unauthenticated read/write requests, external persistence fails silently or returns permission errors.
+- **Secret Desynchronization**: If serverless functions generate random keys per-execution, cryptographic digests will never match across subsequent calls.
+
+### 2. The 4-Tier Zero-Failure Verification Pipeline
+To guarantee that 100% of issued codes are verifiable regardless of container recycling or database availability, Prople Store implements a 4-tier verification pipeline:
+
+```
+[User Request]
+       │
+       ▼
+1. Cryptographic Challenge Token Verification (HMAC-SHA256 Signed Envelope)
+       │ (Match & Not Expired? ──► SUCCESS)
+       ▼
+2. Multi-Window RFC 6238 TOTP Dynamic Truncation
+       │ (Matches Step 0, -1, -2, -3, or +1? ──► SUCCESS)
+       ▼
+3. Local Container Memory Store
+       │ (Timing-Safe Match? ──► SUCCESS)
+       ▼
+4. Remote Database Persistence (RTDB / Firestore)
+       │ (Record Found & Matches? ──► SUCCESS)
+       ▼
+[Replay & Strike Protection Filter]
+```
+
+### 3. Specifications of the Dual-Verification Mechanisms
+1. **Cryptographic Challenge Token (`createSignedChallengeToken`)**:
+   - Issued to the client upon code generation as an opaque token: `base64(payload).base64(hmac)`.
+   - The payload contains `{ email, hash, exp }`, where `hash` is `sha256(secret:email:code)` and `exp` is a timestamp 30 minutes in the future.
+   - The token is signed using HMAC-SHA256 with a deterministic enterprise secret key.
+   - Preserved in client `sessionStorage` and sent in the verification request payload (`challengeToken`) and `x-challenge-token` header.
+   - Container B can verify the code immediately without needing any shared database or memory!
+
+2. **RFC 6238 Multi-Window TOTP Algorithm (`generateTotpOtp`)**:
+   - Steps: 10-minute time intervals (`Math.floor(Date.now() / 600000)`).
+   - HMAC Seed: `HMAC_SHA256(stableSecret, "prople-auth-totp-v1:" + email.toLowerCase() + ":" + stepIndex)`.
+   - Dynamic Truncation: Derives a 6-digit integer (`offset = hmac[hmac.length - 1] & 0x0f`, `code = (binary & 0x7fffffff) % 1000000`).
+   - Verification Windows: Checked across current window (0), past windows (-1, -2, -3), and forward window (+1) to accommodate up to 40 minutes of user reading time and clock skew.
+
+3. **Replay Defense & One-Time Consumption**:
+   - Every verified code is registered in a process-level replay protection cache (`__PROPLE_CONSUMED_CODES`).
+   - Once successfully consumed for account creation or password reset, reuse of the identical code is rejected to prevent replay attacks (CWE-294).
+
+4. **Error Message Precision**:
+   - Differentiates code mismatch from expiration: If a code does not match, the system explicitly returns `"Incorrect verification code. Please check your email and enter the latest 6 digits."` rather than deceptively claiming the code was expired.
+

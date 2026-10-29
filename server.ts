@@ -51,7 +51,8 @@ import {
   createAuthSession,
   completeAuthSession,
   getAuthSessionStatus,
-  consumeAuthSession
+  consumeAuthSession,
+  createSignedChallengeToken
 } from "./server/otpStore";
 import {
   initAuthSecurity,
@@ -1364,9 +1365,10 @@ async function startServer() {
         return res.status(429).json({ success: false, error: otpCheck.reason });
       }
 
-      const code = generateOtp();
+      const code = generateOtp(cleanEmail);
+      const challengeToken = createSignedChallengeToken(cleanEmail, code, 30);
       await Promise.all([
-        storeOtp(cleanEmail, code, 15),
+        storeOtp(cleanEmail, code, 30),
         createAuthSession(cleanEmail),
       ]);
 
@@ -1389,6 +1391,7 @@ async function startServer() {
       return res.json({
         success: true,
         delivered: true,
+        challengeToken,
         message: emailResult.message || `A verification code has been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
@@ -1425,13 +1428,14 @@ async function startServer() {
         });
       }
 
-      const { email, code } = req.body || {};
+      const { email, code, challengeToken: bodyToken } = req.body || {};
       if (!email || !code) {
         return res.status(400).json({ success: false, error: "Email and verification code are required." });
       }
 
       const cleanEmail = email.toLowerCase().trim();
-      const verification = await verifyStoredOtp(cleanEmail, String(code));
+      const clientChallengeToken = bodyToken || req.headers["x-challenge-token"];
+      const verification = await verifyStoredOtp(cleanEmail, String(code), true, typeof clientChallengeToken === "string" ? clientChallengeToken : undefined);
 
       if (!verification.valid) {
         // Register failed verification strike in database
@@ -1530,16 +1534,17 @@ async function startServer() {
         return res.status(429).json({ success: false, error: otpCheck.reason });
       }
 
-      const code = generateOtp();
+      const code = generateOtp(cleanEmail);
+      const challengeToken = createSignedChallengeToken(cleanEmail, code, 30);
       await Promise.all([
-        storeOtp(cleanEmail, code, 15),
+        storeOtp(cleanEmail, code, 30),
         createAuthSession(cleanEmail),
       ]);
 
       const host = req.headers["x-forwarded-host"] || req.headers.host || "www.prople.co.in";
       const proto = (req.headers["x-forwarded-proto"] as string) || (String(host).includes("localhost") ? "http" : "https");
       const baseUrl = `${proto}://${host}`;
-      const directResetUrl = `${baseUrl}/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${code}`;
+      const directResetUrl = `${baseUrl}/?auth=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${code}&token=${encodeURIComponent(challengeToken)}`;
 
       const emailResult = await sendPasswordResetEmailTemplate(cleanEmail, code, directResetUrl, name);
       if (!emailResult.success) {
@@ -1555,6 +1560,7 @@ async function startServer() {
       return res.json({
         success: true,
         delivered: true,
+        challengeToken,
         message: emailResult.message || `A password reset code and link have been dispatched to ${cleanEmail}. Please check your inbox or spam folder.`,
       });
     } catch (err: any) {
@@ -1574,13 +1580,14 @@ async function startServer() {
         });
       }
 
-      const { email, code } = req.body || {};
+      const { email, code, challengeToken: bodyToken } = req.body || {};
       if (!email || !code) {
         return res.status(400).json({ success: false, error: "Email and verification code are required." });
       }
 
       const cleanEmail = String(email).toLowerCase().trim();
-      const verification = await verifyStoredOtp(cleanEmail, String(code), false);
+      const clientChallengeToken = bodyToken || req.headers["x-challenge-token"];
+      const verification = await verifyStoredOtp(cleanEmail, String(code), false, typeof clientChallengeToken === "string" ? clientChallengeToken : undefined);
 
       if (!verification.valid) {
         const strikeRes = await registerFailedSecurityEvent(serverDb, {
@@ -1597,11 +1604,11 @@ async function startServer() {
 
         return res.status(400).json({
           success: false,
-          error: verification.error || "Invalid or expired verification code.",
+          error: verification.error || "Incorrect verification code. Please check your email and enter the latest 6 digits.",
         });
       }
 
-      return res.json({ success: true });
+      return res.json({ success: true, challengeToken: clientChallengeToken });
     } catch (err: any) {
       console.warn("[Auth API] verify-reset-code notice:", err.message);
       return res.status(500).json({ success: false, error: err.message });
@@ -1619,7 +1626,7 @@ async function startServer() {
         });
       }
 
-      const { email, code, newPassword } = req.body || {};
+      const { email, code, newPassword, challengeToken: bodyToken } = req.body || {};
       if (!email || !code || !newPassword) {
         return res.status(400).json({ success: false, error: "Email, code, and new password are required." });
       }
@@ -1629,7 +1636,8 @@ async function startServer() {
       }
 
       const cleanEmail = email.toLowerCase().trim();
-      let verification = await verifyStoredOtp(cleanEmail, String(code));
+      const clientChallengeToken = bodyToken || req.headers["x-challenge-token"];
+      let verification = await verifyStoredOtp(cleanEmail, String(code), true, typeof clientChallengeToken === "string" ? clientChallengeToken : undefined);
 
       // If code is not in OTP store, check if it is a Firebase oobCode from email action link
       if (!verification.valid && (String(code).length > 8 || !/^\d{6}$/.test(String(code).trim()))) {

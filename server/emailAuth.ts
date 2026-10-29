@@ -83,7 +83,7 @@ interface StoredOtp {
 
 const otpStore = new Map<string, StoredOtp>();
 
-import { persistOtp, verifyAndConsumeOtp } from './otpStore';
+import { persistOtp, verifyAndConsumeOtp, generateTotpOtp, createSignedChallengeToken } from './otpStore';
 
 // Cleanup expired OTPs every 5 minutes
 setInterval(() => {
@@ -95,12 +95,15 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-export function generateOtp(): string {
+export function generateOtp(email?: string): string {
+  if (email && typeof email === 'string' && email.includes('@')) {
+    return generateTotpOtp(email);
+  }
   // Generate cryptographically secure 6-digit number using CSPRNG
   return crypto.randomInt(100000, 1000000).toString();
 }
 
-export async function storeOtp(email: string, code: string, ttlMinutes = 15): Promise<void> {
+export async function storeOtp(email: string, code: string, ttlMinutes = 30): Promise<void> {
   const norm = email.toLowerCase().trim();
   otpStore.set(norm, {
     code,
@@ -111,15 +114,20 @@ export async function storeOtp(email: string, code: string, ttlMinutes = 15): Pr
   await persistOtp(norm, code, ttlMinutes);
 }
 
-export async function verifyStoredOtp(email: string, inputCode: string, consume = true): Promise<{ valid: boolean; error?: string }> {
+export async function verifyStoredOtp(
+  email: string, 
+  inputCode: string, 
+  consume = true,
+  challengeToken?: string
+): Promise<{ valid: boolean; error?: string }> {
   const norm = email.toLowerCase().trim();
   const cleanCode = String(inputCode || '').trim();
   if (!cleanCode || !/^\d{6}$/.test(cleanCode)) {
     return { valid: false, error: 'Please enter a valid 6-digit verification code.' };
   }
 
-  // First check the distributed store (memory + RTDB)
-  const distributedResult = await verifyAndConsumeOtp(norm, cleanCode, consume);
+  // Check the multi-tier distributed store (signed challenge token, memory, multi-window TOTP, RTDB)
+  const distributedResult = await verifyAndConsumeOtp(norm, cleanCode, consume, challengeToken);
   if (distributedResult.valid) {
     if (consume) {
       otpStore.delete(norm);
@@ -133,19 +141,19 @@ export async function verifyStoredOtp(email: string, inputCode: string, consume 
     return distributedResult;
   }
 
-  if (Date.now() > entry.expiresAt) {
+  if (Date.now() > entry.expiresAt + 3 * 60 * 1000) {
     otpStore.delete(norm);
-    return { valid: false, error: 'Verification code has expired. Please request a new code.' };
+    return { valid: false, error: 'Verification code has expired. Please request a new verification code.' };
   }
 
   if (entry.attempts >= 5) {
     otpStore.delete(norm);
-    return { valid: false, error: 'Too many incorrect attempts. Please request a new code.' };
+    return { valid: false, error: 'Too many incorrect attempts. Please request a new verification code.' };
   }
 
   if (!timingSafeCompare(String(entry.code), cleanCode)) {
     entry.attempts += 1;
-    return { valid: false, error: 'Invalid verification code. Please check your email and try again.' };
+    return { valid: false, error: 'Incorrect verification code. Please check your email and enter the latest 6 digits.' };
   }
 
   // Success: consume OTP if requested
@@ -480,6 +488,21 @@ export async function sendFirebaseOobCode(
     const data = await res.json();
     if (!res.ok) {
       const fbMsg = data?.error?.message || 'Failed to dispatch email';
+      if (typeof fbMsg === 'string' && fbMsg.includes('UNAUTHORIZED_DOMAIN')) {
+        const authDomain = process.env.FIREBASE_AUTH_DOMAIN || 'prople-store-3efed.firebaseapp.com';
+        bodyPayload.continueUrl = `https://${authDomain}`;
+        try {
+          const retryRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyPayload),
+          });
+          const retryData = await retryRes.json();
+          if (retryRes.ok) {
+            return { success: true };
+          }
+        } catch {}
+      }
       return { success: false, error: fbMsg };
     }
     return { success: true };

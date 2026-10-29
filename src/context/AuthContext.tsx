@@ -886,6 +886,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { ok, data, error } = await safeFetchJson<{ 
         success: boolean; 
         delivered?: boolean;
+        challengeToken?: string;
         message?: string; 
         error?: string;
       }>('/api/auth/send-otp', {
@@ -898,9 +899,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data?.error || error || 'Failed to dispatch verification code. Please try again.');
       }
 
+      if (data?.challengeToken) {
+        try {
+          sessionStorage.setItem('prople_challenge_token_' + cleanEmail, data.challengeToken);
+        } catch {}
+      }
+
       return { 
         success: true, 
         delivered: data?.delivered ?? true,
+        challengeToken: data?.challengeToken,
         message: data?.message || `A verification code has been dispatched to ${cleanEmail}.`
       };
     } finally {
@@ -917,14 +925,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Please enter a valid 6-digit verification code.');
       }
 
+      let challengeToken: string | undefined;
+      try {
+        challengeToken = sessionStorage.getItem('prople_challenge_token_' + cleanEmail) || undefined;
+      } catch {}
+
       const { ok, data, error } = await safeFetchJson<{ success: boolean; user?: any; error?: string }>('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode, challengeToken }),
       });
 
       if (!ok || !data?.success || !data?.user) {
-        throw new Error(data?.error || error || 'Invalid or expired verification code. Please check your email and try again.');
+        throw new Error(data?.error || error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.');
       }
 
       const verifiedUser = data.user;
@@ -933,6 +946,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pendingTwoFactorRef.current = false;
       try {
         sessionStorage.removeItem(SESSION_PENDING_2FA_KEY);
+        sessionStorage.removeItem('prople_challenge_token_' + cleanEmail);
       } catch {}
 
       const activeFbUid = auth.currentUser?.uid;
@@ -972,7 +986,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { ok, data, error } = await safeFetchJson<{
         success: boolean;
         delivered?: boolean;
-        message?: string;
+        challengeToken?: string;
+        message?: string; 
         error?: string;
       }>('/api/auth/forgot-password', {
         method: 'POST',
@@ -984,9 +999,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data?.error || error || 'Failed to dispatch password reset code. Please try again.');
       }
 
+      if (data?.challengeToken) {
+        try {
+          sessionStorage.setItem('prople_challenge_token_' + cleanEmail, data.challengeToken);
+        } catch {}
+      }
+
       return {
         success: true,
         delivered: data?.delivered ?? true,
+        challengeToken: data?.challengeToken,
         message: data?.message || `Password reset link and verification code sent to ${cleanEmail}. Please check your inbox or spam folder.`,
       };
     } finally {
@@ -1009,6 +1031,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      let challengeToken: string | undefined;
+      try {
+        challengeToken = sessionStorage.getItem('prople_challenge_token_' + cleanEmail) || undefined;
+      } catch {}
+
       const { ok, data, error } = await safeFetchJson<{
         success: boolean;
         message?: string;
@@ -1017,11 +1044,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }>('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, code: cleanCode, newPassword }),
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode, newPassword, challengeToken }),
       });
 
       if (!ok || !data?.success || !data?.user) {
-        throw new Error(data?.error || error || 'Invalid or expired reset code. Please check your email and try again.');
+        throw new Error(data?.error || error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.');
       }
 
       const verifiedUser = data.user;
