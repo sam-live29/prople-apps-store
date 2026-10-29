@@ -127,6 +127,7 @@ export interface UserProfile {
   bio?: string;
   isEmailVerified?: boolean;
   isPublisher?: boolean;
+  isAdmin?: boolean;
   publisherName?: string;
   publisherRole?: string;
   publisherBio?: string;

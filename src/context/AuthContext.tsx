@@ -48,33 +48,26 @@ export const isDeveloperEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
   return (
-    norm === 'sahanurmolla3131@gmail.com' ||
-    norm.startsWith('sahanurmolla') ||
-    norm.startsWith('sahinurmolla') ||
-    norm === 'msahajan1290@gmail.com' ||
-    norm === 'sahanurmolla3545@gmail.com' ||
-    norm === 'yoursahabhai@gmail.com' ||
-    norm === 'sahanurmolla1290@gmail.com' ||
-    norm === 'sahanurmolla190@gmail.com' ||
-    norm === 'sahinurmolla190@gmail.com' ||
-    norm === 'bengalsocietyofscience2025@gmail.com' ||
-    norm === 'prople.site@gmail.com'
+    norm.endsWith('@prople.co.in') ||
+    norm === 'prople.org@gmail.com' ||
+    norm === 'cloaktailofficial@gmail.com' ||
+    norm === 'cloaktailsupport@gmail.com'
   );
 };
 
 export const isAdminEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
-  return (
-    norm === 'sahanurmolla3131@gmail.com' ||
-    norm.startsWith('sahanurmolla') ||
-    norm.startsWith('sahinurmolla') ||
-    norm === 'sahinurmolla190@gmail.com' ||
-    norm === 'sahanurmolla190@gmail.com' ||
-    norm === 'prople.site@gmail.com' ||
-    norm.includes('admin') ||
-    isDeveloperEmail(norm)
-  );
+  if (
+    norm === 'prople.org@gmail.com' ||
+    norm === 'cloaktailofficial@gmail.com' ||
+    norm === 'cloaktailsupport@gmail.com'
+  ) return true;
+  if (norm.endsWith('@prople.co.in')) {
+    const local = norm.slice(0, -'@prople.co.in'.length);
+    return ['admin', 'security', 'moderator', 'executive', 'root', 'dev'].includes(local);
+  }
+  return false;
 };
 
 // Unified bi-directional account profile resolution across Google and Email authentication

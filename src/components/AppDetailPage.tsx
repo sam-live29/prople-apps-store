@@ -766,7 +766,7 @@ export default function AppDetailPage({
 
   // Support email: preserved authenticated publisher email, non-hideable
   const supportEmail = app?.developerInfo?.email || app?.developerEmail || app?.publisherEmail || (user?.email && isPublisherAccount ? user.email : '');
-  const effectiveSupportEmail = supportEmail || (user?.email && isPublisherAccount ? user.email : (publisherDisplayName === 'Sahanur Molla' ? 'sahanurmolla190@gmail.com' : 'support@prople.co.in'));
+  const effectiveSupportEmail = supportEmail || (user?.email && isPublisherAccount ? user.email : 'support@prople.co.in');
   const effectivePublisher = publisherDisplayName || app?.developer || 'Verified Publisher';
   const effectiveRepoOwner = repoOwner || '';
   const effectiveSha256 = useMemo(() => {

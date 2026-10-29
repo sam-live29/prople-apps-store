@@ -598,12 +598,7 @@ async function startServer() {
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      service: "prople-store-backend",
-      firebase: {
-        projectId: process.env.FIREBASE_PROJECT_ID || "prople-store-3efed",
-        databaseURL: process.env.FIREBASE_DATABASE_URL || "https://prople-store-3efed-default-rtdb.firebaseio.com",
-        authDomain: process.env.FIREBASE_AUTH_DOMAIN || "prople-store-3efed.firebaseapp.com"
-      }
+      service: "prople-store-backend"
     });
   });
 
@@ -1110,19 +1105,6 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-
-  // Administrator email definitions for backend access control
-  const ADMIN_EMAILS_SET = new Set([
-    'sahanurmolla3131@gmail.com',
-    'msahajan1290@gmail.com',
-    'sahanurmolla3545@gmail.com',
-    'yoursahabhai@gmail.com',
-    'sahanurmolla1290@gmail.com',
-    'sahanurmolla190@gmail.com',
-    'sahinurmolla190@gmail.com',
-    'bengalsocietyofscience2025@gmail.com',
-    'prople.site@gmail.com'
-  ]);
 
   function isServerAdminEmail(email?: string): boolean {
     return isStrictAdminEmail(email);

@@ -21,19 +21,11 @@ import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } 
 // 1. Strict Administrator Whitelist Verification
 // ==========================================
 
-const VERIFIED_ADMIN_EMAILS = new Set<string>([
-  "sahinurmolla190@gmail.com",
-  "sahanurmolla190@gmail.com",
-  "sahanurmolla1290@gmail.com",
-  "msahajan1290@gmail.com",
-  "sahanurmolla3545@gmail.com",
-  "sahanurmolla3131@gmail.com",
-  "yoursahabhai@gmail.com",
-  "bengalsocietyofscience2025@gmail.com",
-  "prople.site@gmail.com",
+const DEFAULT_ADMIN_EMAILS = [
   "cloaktailsupport@gmail.com",
   "cloaktailofficial@gmail.com",
-]);
+  "prople.org@gmail.com",
+];
 
 const VERIFIED_ADMIN_DOMAIN = "@prople.co.in";
 
@@ -44,7 +36,15 @@ const VERIFIED_ADMIN_DOMAIN = "@prople.co.in";
 export function isStrictAdminEmail(email?: string | null): boolean {
   if (!email || typeof email !== "string") return false;
   const norm = email.toLowerCase().trim();
-  if (VERIFIED_ADMIN_EMAILS.has(norm)) return true;
+  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
+
+  // Dynamically allow admins specified via environment variables
+  const envAdmins = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .toLowerCase()
+    .split(',')
+    .map(e => e.trim())
+    .filter(Boolean);
+  if (envAdmins.includes(norm)) return true;
   if (norm.endsWith(VERIFIED_ADMIN_DOMAIN)) {
     const local = norm.slice(0, -VERIFIED_ADMIN_DOMAIN.length);
     if (["admin", "security", "moderator", "executive", "root", "dev"].includes(local)) {

@@ -4,21 +4,11 @@
     ".write": false,
     "_auth_otps": {
       ".read": false,
-      ".write": false,
-      "$otpKey": {
-        ".read": true,
-        ".write": true,
-        ".validate": "newData.hasChildren(['email', 'expiresAt', 'attempts']) && newData.child('email').isString() && newData.child('expiresAt').isNumber() && newData.child('attempts').isNumber()"
-      }
+      ".write": false
     },
     "_auth_sessions": {
       ".read": false,
-      ".write": false,
-      "$sessionKey": {
-        ".read": true,
-        ".write": true,
-        ".validate": "newData.hasChildren(['email', 'status', 'createdAt']) && newData.child('email').isString() && newData.child('createdAt').isNumber()"
-      }
+      ".write": false
     },
     "users": {
       "$uid": {
@@ -52,11 +42,11 @@
     },
     "broadcasts": {
       ".read": true,
-      ".write": "auth != null && (auth.token.email === 'yoursahabhai@gmail.com' || auth.token.email === 'sahanurmolla1290@gmail.com' || auth.token.email === 'bengalsocietyofscience2025@gmail.com')"
+      ".write": "auth != null && (auth.token.email.matches('.*@prople\\\\.co\\\\.in$') || auth.token.email === 'prople.org@gmail.com' || auth.token.email === 'cloaktailofficial@gmail.com')"
     },
     "test": {
-      ".read": true,
-      ".write": "auth != null"
+      ".read": false,
+      ".write": false
     }
   }
 }

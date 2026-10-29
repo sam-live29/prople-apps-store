@@ -260,7 +260,7 @@ export async function addNotificationToFirestore(
       } catch {}
     }
     if (!email) {
-      email = 'sahanurmolla1777@gmail.com';
+      email = auth.currentUser?.email || 'admin@prople.co.in';
     }
     if (email) {
       fetch('/api/admin/broadcast', {
@@ -1263,7 +1263,7 @@ export async function deleteBroadcastNotification(notificationId: string, sender
   // Server-authoritative fallback for administrators
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem('appmarket_user_profile') : null;
-    const email = senderEmail || auth.currentUser?.email || (raw ? JSON.parse(raw)?.email : '') || 'sahanurmolla1777@gmail.com';
+    const email = senderEmail || auth.currentUser?.email || (raw ? JSON.parse(raw)?.email : '') || 'admin@prople.co.in';
     if (email) {
       fetch('/api/admin/broadcast', {
         method: 'POST',
@@ -1673,16 +1673,14 @@ export async function deleteNotificationFromFirestore(id: string, user?: UserPro
 
   // Check if user is an administrator
   const userEmail = (user?.email || auth.currentUser?.email || '').toLowerCase().trim();
-  const isAdmin = userEmail && (
-    userEmail === 'sahanurmolla3131@gmail.com' ||
-    userEmail === 'sahanurmolla190@gmail.com' ||
-    userEmail === 'sahinurmolla190@gmail.com' ||
-    userEmail === 'msahajan1290@gmail.com' ||
-    userEmail === 'sahanurmolla3545@gmail.com' ||
-    userEmail === 'yoursahabhai@gmail.com' ||
-    userEmail === 'sahanurmolla1290@gmail.com' ||
-    userEmail === 'bengalsocietyofscience2025@gmail.com' ||
-    userEmail === 'prople.site@gmail.com'
+  const isAdmin = Boolean(
+    user?.isAdmin ||
+    (userEmail && (
+      userEmail.endsWith('@prople.co.in') ||
+      userEmail === 'prople.org@gmail.com' ||
+      userEmail === 'cloaktailofficial@gmail.com' ||
+      userEmail === 'cloaktailsupport@gmail.com'
+    ))
   );
 
   // If administrator, attempt server-authoritative broadcast delete
@@ -1719,16 +1717,14 @@ export async function clearAllNotificationsInFirestore(ids: string[], user?: Use
   }
 
   const userEmail = (user?.email || auth.currentUser?.email || '').toLowerCase().trim();
-  const isAdmin = userEmail && (
-    userEmail === 'sahanurmolla3131@gmail.com' ||
-    userEmail === 'sahanurmolla190@gmail.com' ||
-    userEmail === 'sahinurmolla190@gmail.com' ||
-    userEmail === 'msahajan1290@gmail.com' ||
-    userEmail === 'sahanurmolla3545@gmail.com' ||
-    userEmail === 'yoursahabhai@gmail.com' ||
-    userEmail === 'sahanurmolla1290@gmail.com' ||
-    userEmail === 'bengalsocietyofscience2025@gmail.com' ||
-    userEmail === 'prople.site@gmail.com'
+  const isAdmin = Boolean(
+    user?.isAdmin ||
+    (userEmail && (
+      userEmail.endsWith('@prople.co.in') ||
+      userEmail === 'prople.org@gmail.com' ||
+      userEmail === 'cloaktailofficial@gmail.com' ||
+      userEmail === 'cloaktailsupport@gmail.com'
+    ))
   );
 
   if (isAdmin) {

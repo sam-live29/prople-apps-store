@@ -9,16 +9,10 @@ service cloud.firestore {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (request.auth.token.email_verified == true && (
-          request.auth.token.email == 'msahajan1290@gmail.com' ||
-          request.auth.token.email == 'sahanurmolla3545@gmail.com' ||
-          request.auth.token.email == 'yoursahabhai@gmail.com' ||
-          request.auth.token.email == 'sahanurmolla1290@gmail.com' ||
-          request.auth.token.email == 'sahanurmolla3131@gmail.com' ||
-          request.auth.token.email == 'sahanurmolla190@gmail.com' ||
-          request.auth.token.email == 'sahinurmolla190@gmail.com' ||
-          request.auth.token.email == 'bengalsocietyofscience2025@gmail.com' ||
-          request.auth.token.email == 'prople.site@gmail.com' ||
-          request.auth.token.email.matches('(?i)^(sahanurmolla[0-9]*@gmail\\.com|sahinurmolla[0-9]*@gmail\\.com|msahajan1290@gmail\\.com|yoursahabhai@gmail\\.com|bengalsocietyofscience2025@gmail\\.com|prople\\.site@gmail\\.com|(admin|security|moderator|executive|root|dev)@prople\\.co\\.in)$')
+          request.auth.token.email == 'prople.org@gmail.com' ||
+          request.auth.token.email == 'cloaktailofficial@gmail.com' ||
+          request.auth.token.email == 'cloaktailsupport@gmail.com' ||
+          request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@prople\\.co\\.in$')
         ))
       );
     }
@@ -28,7 +22,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if true;
+      allow read: if isOwner(userId) || (isAuthenticated() && request.auth.token.email != null && resource.data.email == request.auth.token.email) || isAdmin();
       allow write: if isOwner(userId) || isAdmin() || (request.auth != null && request.auth.token.email != null && resource.data.email == request.auth.token.email);
 
       match /dismissed_notifications/{notificationId} {
@@ -121,9 +115,7 @@ service cloud.firestore {
     }
 
     match /auth_failed_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if true;
-      allow update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     match /locked_ips/{ipId} {
@@ -173,13 +165,11 @@ service cloud.firestore {
     }
 
     match /auth_otps/{otpId} {
-      allow get, create, update, delete: if true;
-      allow list: if false;
+      allow read, write: if false;
     }
 
     match /auth_sessions/{sessionId} {
-      allow get, create, update, delete: if true;
-      allow list: if false;
+      allow read, write: if false;
     }
   }
 }

@@ -740,7 +740,7 @@ export default function AdminControlPanel({
         setConfirmAction(prev => ({ ...prev, isOpen: false }));
         setIsBroadcasting(true);
         try {
-          const adminEmail = user?.email || 'sahanurmolla1777@gmail.com';
+          const adminEmail = user?.email || 'admin@prople.co.in';
           const sentId = await sendGlobalBroadcastNotice({
             title,
             message,
@@ -795,7 +795,7 @@ export default function AdminControlPanel({
       onConfirm: async () => {
         setConfirmAction(prev => ({ ...prev, isOpen: false }));
         try {
-          await deleteBroadcastNotification(item.id, user?.email || 'sahanurmolla1777@gmail.com');
+          await deleteBroadcastNotification(item.id, user?.email || 'admin@prople.co.in');
           setStoreNotifications(prev => prev.filter(n => n.id !== item.id));
           showToast('Broadcast notice revoked from platform', { type: 'success' });
         } catch (err) {

@@ -794,13 +794,7 @@ export async function deleteAppFromFirestore(
         data.creatorUid === currentAuthUid
       )) ||
       isMatchingEmail ||
-      (currentAuthEmail && (
-        isAdminEmail(currentAuthEmail) ||
-        currentAuthEmail.startsWith('sahanurmolla') ||
-        currentAuthEmail.startsWith('sahinurmolla') ||
-        currentAuthEmail === 'prople.site@gmail.com' ||
-        currentAuthEmail.includes('admin')
-      ));
+      (currentAuthEmail && isAdminEmail(currentAuthEmail));
 
     if (!isOwner) {
       throw new Error('Forbidden: You do not own this application and cannot delete it.');
