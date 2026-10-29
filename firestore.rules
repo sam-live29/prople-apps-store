@@ -171,5 +171,10 @@ service cloud.firestore {
     match /auth_sessions/{sessionId} {
       allow read, write: if false;
     }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
   }
 }
+

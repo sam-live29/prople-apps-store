@@ -439,16 +439,9 @@ export async function sendFirebaseOobCode(
   idToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    let apiKey = process.env.FIREBASE_API_KEY || '';
-    if (!apiKey) {
-      try {
-        const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-        if (fs.existsSync(configPath)) {
-          const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-          apiKey = cfg.apiKey || '';
-        }
-      } catch {}
-    }
+    const { getServerFirebaseConfig } = await import("./firebaseConfig");
+    const fbConfig = getServerFirebaseConfig();
+    const apiKey = !fbConfig.isExampleConfig ? fbConfig.apiKey : "";
 
     if (!apiKey) {
       return { success: false, error: 'Firebase service is temporarily unreachable' };

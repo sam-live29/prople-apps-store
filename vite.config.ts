@@ -2,14 +2,33 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
+
   return {
+    define: {
+      '__FIREBASE_ENV_CONFIG__': JSON.stringify({
+        apiKey: env.FIREBASE_API_KEY || env.VITE_FIREBASE_API_KEY || '',
+        projectId: env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || '',
+        appId: env.FIREBASE_APP_ID || env.VITE_FIREBASE_APP_ID || '',
+        authDomain: env.FIREBASE_AUTH_DOMAIN || env.VITE_FIREBASE_AUTH_DOMAIN || '',
+        firestoreDatabaseId: env.FIRESTORE_DATABASE_ID || env.FIREBASE_DATABASE_ID || env.VITE_FIRESTORE_DATABASE_ID || '',
+        storageBucket: env.FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || '',
+        messagingSenderId: env.FIREBASE_MESSAGING_SENDER_ID || env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+        measurementId: env.FIREBASE_MEASUREMENT_ID || env.VITE_FIREBASE_MEASUREMENT_ID || '',
+        oAuthClientId: env.FIREBASE_OAUTH_CLIENT_ID || env.VITE_FIREBASE_OAUTH_CLIENT_ID || '',
+        databaseURL: env.FIREBASE_DATABASE_URL || env.VITE_FIREBASE_DATABASE_URL || '',
+      }),
+    },
     plugins: [
       react(),
       tailwindcss(),

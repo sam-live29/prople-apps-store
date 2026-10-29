@@ -65,16 +65,11 @@ export default async function handler(req: any, res: any) {
   const cleanSlug = cleanId.replace(/[^a-z0-9]/g, '');
 
   try {
-    let databaseId = '(default)';
-    try {
-      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-      if (fs.existsSync(configPath)) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
-      }
-    } catch {}
-    const projectId = process.env.FIREBASE_PROJECT_ID || 'prople-store-3efed';
-    const baseFirestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
+    const { getServerFirebaseConfig } = await import('../../server/firebaseConfig');
+    const fbConfig = getServerFirebaseConfig();
+    const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
+    const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
+    const baseFirestoreUrl = projectId ? `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents` : '';
 
     const parseFirestoreDoc = (doc: any) => {
       if (!doc || !doc.fields) return null;
@@ -98,6 +93,10 @@ export default async function handler(req: any, res: any) {
       }
       return parsed;
     };
+
+    if (!baseFirestoreUrl) {
+      return res.status(200).json({ success: true, app: null });
+    }
 
     // Handle DELETE method
     if (req.method === 'DELETE') {

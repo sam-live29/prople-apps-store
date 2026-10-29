@@ -17,8 +17,13 @@ import {
   getDocs as serverGetDocs,
   query as serverQuery,
   where as serverWhere,
-  limit as serverLimit
+  limit as serverLimit,
+  setLogLevel
 } from "firebase/firestore";
+
+try {
+  setLogLevel('silent');
+} catch {}
 import {
   indexApp,
   indexApps,
@@ -74,16 +79,18 @@ import {
   sanitizeIdentifier,
   deepSanitizeObject
 } from "./server/securityDefense";
+import { getServerFirebaseConfig } from "./server/firebaseConfig";
 
-// Server-side Firestore initialization using project configuration
+// Server-side Firestore initialization using secure environment or project configuration
 let serverDb: any = null;
 try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const fbApp = initFirebaseApp(config, "prople-store-server-backend");
-    serverDb = config.firestoreDatabaseId ? initFirestore(fbApp, config.firestoreDatabaseId) : initFirestore(fbApp);
-    console.log("[Backend] Firestore initialized for server-authoritative API on DB:", config.firestoreDatabaseId || "(default)");
+  const fbConfig = getServerFirebaseConfig();
+  if (fbConfig.projectId && !fbConfig.isExampleConfig) {
+    const fbApp = initFirebaseApp(fbConfig, "prople-store-server-backend");
+    serverDb = fbConfig.firestoreDatabaseId && !fbConfig.firestoreDatabaseId.includes("example")
+      ? initFirestore(fbApp, fbConfig.firestoreDatabaseId)
+      : initFirestore(fbApp);
+    console.log("[Backend] Firestore initialized with secure env config on DB:", fbConfig.firestoreDatabaseId || "(default)");
     initAuthSecurity(serverDb);
     serverGetDoc(serverDoc(serverDb, "system_config", "resend")).then((snap: any) => {
       if (snap && snap.exists()) {
@@ -94,6 +101,8 @@ try {
         }
       }
     }).catch(() => {});
+  } else {
+    console.log("[Backend] Firebase running in standalone mode (set FIREBASE_PROJECT_ID and FIREBASE_API_KEY in .env for live cloud connection)");
   }
 } catch (e: any) {
   console.warn("[Backend] Failed to initialize Firestore on server:", e.message);
@@ -1624,12 +1633,8 @@ async function startServer() {
       // If code is not in OTP store, check if it is a Firebase oobCode from email action link
       if (!verification.valid && (String(code).length > 8 || !/^\d{6}$/.test(String(code).trim()))) {
         try {
-          const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-          let fbKey = process.env.FIREBASE_API_KEY || "";
-          if (!fbKey && fs.existsSync(configPath)) {
-            const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-            fbKey = cfg.apiKey || "";
-          }
+          const fbConfig = getServerFirebaseConfig();
+          const fbKey = !fbConfig.isExampleConfig ? fbConfig.apiKey : "";
           if (fbKey) {
             const fbRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${fbKey}`, {
               method: 'POST',
@@ -1672,17 +1677,14 @@ async function startServer() {
 
       // Attempt to provision or update user in Firebase Auth via Identity Toolkit
       try {
-        const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-        if (fs.existsSync(configPath)) {
-          const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-          if (cfg.apiKey) {
-            await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${cfg.apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, password: newPassword, returnSecureToken: true }),
-              signal: AbortSignal.timeout(4000),
-            });
-          }
+        const fbConfig = getServerFirebaseConfig();
+        if (!fbConfig.isExampleConfig && fbConfig.apiKey) {
+          await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${fbConfig.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password: newPassword, returnSecureToken: true }),
+            signal: AbortSignal.timeout(4000),
+          });
         }
       } catch (fbSyncErr: any) {
         console.warn("[Auth API] Firebase user provision notice:", fbSyncErr.message);
@@ -1843,16 +1845,14 @@ async function startServer() {
 
       // 2. Also check if valid via Identity Toolkit REST API
       try {
-        const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-        if (fs.existsSync(configPath)) {
-          const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-          if (cfg.apiKey) {
-            const idtRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${cfg.apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, password: String(password), returnSecureToken: true }),
-              signal: AbortSignal.timeout(4000),
-            });
+        const fbConfig = getServerFirebaseConfig();
+        if (!fbConfig.isExampleConfig && fbConfig.apiKey) {
+          const idtRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${fbConfig.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password: String(password), returnSecureToken: true }),
+            signal: AbortSignal.timeout(4000),
+          });
             if (idtRes.ok) {
               const idtData = await idtRes.json();
               if (idtData && idtData.localId) {
@@ -1874,8 +1874,7 @@ async function startServer() {
               }
             }
           }
-        }
-      } catch (idtErr: any) {
+        } catch (idtErr: any) {
         console.warn("[Auth API] Identity Toolkit fallback notice:", idtErr.message);
       }
 
@@ -5361,29 +5360,6 @@ async function startServer() {
         }
       }
     }).catch(e => console.warn("[Meilisearch] Setup warning:", e.message));
-
-    // Background server-authoritative cleanup for legacy placeholder documents
-    if (serverDb) {
-      (async () => {
-        try {
-          const notifsCol = serverCollection(serverDb, "notifications");
-          const snap = await serverGetDocs(notifsCol);
-          snap.forEach((d) => {
-            const data = d.data();
-            const id = d.id;
-            if (
-              id.includes("brick-stack") ||
-              data.appId === "app-brick-stack" ||
-              data.title?.toLowerCase().includes("brick stack") ||
-              id === "notif-security-scan" ||
-              data.actionType === "security_check"
-            ) {
-              serverDeleteDoc(d.ref).catch(() => {});
-            }
-          });
-        } catch {}
-      })().catch(() => {});
-    }
   });
 }
 

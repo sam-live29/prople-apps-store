@@ -18,3 +18,16 @@
 - **O(1) App Insertion**: Eliminates full-table collection scans during app publishing, leveraging direct document references and parallelized batch writes.
 - **Client-Side Asset Pre-Optimization**: WebP and modern image formats bypass redundant canvas reprocessing, dramatically accelerating app submission latency.
 - **Stateless Search Indexing**: Asynchronous Meilisearch synchronization with exponential retry queues guarantees fast indexing without blocking user HTTP threads.
+
+## 5. Zero-Committed-Secret Architecture & Secret Manager Precedence
+- **Repository-Committed Placeholder Configs**: `firebase-applet-config.json` and client metadata files committed to version control contain exclusively sanitized placeholder schemas and example values (`example-prople-store`, synthetic non-functional API key structures).
+- **Environment Variable Precedence**: The server and client runtime (`server/firebaseConfig.ts`, `vite.config.ts`, `src/firebase.ts`) programmatically resolve real credentials dynamically from runtime environment variables (`FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID`, `FIRESTORE_DATABASE_ID`, etc.) and cloud secret managers.
+- **Elimination of Git Secret Exposure**: Sensitive keys, project IDs, and service tokens are completely excluded from git revisions, eliminating repository exposure vectors and automated credential harvesting.
+
+## 6. Industrial Outbound Proxy Hardening & Redirect Chain Defense
+- **Strict Host Allowlists**: Server-side binary fetching and asset resolution are strictly bounded to verified platform CDNs (GitHub releases, AWS S3, CloudFront, Google Cloud Storage / Firebase Storage, GitLab, SourceForge, and authorized domains).
+- **Per-Hop Redirect Gating**: The `safeFetchWithRedirectCheck` engine validates every intermediate redirect location against the strict host allowlist and RFC 1918 / Cloud Metadata blocklists.
+- **Protocol Downgrade Mitigation**: Outbound redirect chains are mathematically forbidden from downgrading transport security (e.g. HTTPS to HTTP).
+- **Cross-Origin Header Stripping**: Sensitive authentication headers (`Authorization`, `Cookie`, `X-Internal-Security-Key`) are automatically purged whenever an upstream service redirects across origins.
+- **Mandatory Env-Secret Gating**: Security-critical operations (including IP unlock, strike resets, and moderation overrides) fail closed unless authenticated with high-entropy environment secrets (`INTERNAL_SECURITY_KEY` / `SESSION_SECRET`).
+

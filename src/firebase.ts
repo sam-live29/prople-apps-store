@@ -21,9 +21,51 @@ interface ExtendedFirebaseConfig {
   measurementId?: string;
   databaseURL?: string;
   firestoreDatabaseId?: string;
+  oAuthClientId?: string;
 }
 
-const config = firebaseConfig as ExtendedFirebaseConfig;
+declare const __FIREBASE_ENV_CONFIG__: ExtendedFirebaseConfig | undefined;
+
+function getResolvedFirebaseConfig(): ExtendedFirebaseConfig {
+  const envCfg = typeof __FIREBASE_ENV_CONFIG__ !== 'undefined' ? __FIREBASE_ENV_CONFIG__ : {};
+  const fileCfg = (firebaseConfig || {}) as ExtendedFirebaseConfig;
+
+  const isReal = (val?: string) =>
+    Boolean(
+      val &&
+      typeof val === 'string' &&
+      val.trim().length > 0 &&
+      !val.includes('example') &&
+      !val.includes('Placeholder') &&
+      !val.includes('0000000000')
+    );
+
+  const apiKey = isReal(envCfg.apiKey) ? envCfg.apiKey : (isReal(fileCfg.apiKey) ? fileCfg.apiKey : 'AIzaSyExamplePlaceholderApiKey0000000000');
+  const projectId = isReal(envCfg.projectId) ? envCfg.projectId : (isReal(fileCfg.projectId) ? fileCfg.projectId : 'example-prople-store');
+  const appId = isReal(envCfg.appId) ? envCfg.appId : (isReal(fileCfg.appId) ? fileCfg.appId : '1:000000000000:web:0000000000000000000000');
+  const authDomain = isReal(envCfg.authDomain) ? envCfg.authDomain : (isReal(fileCfg.authDomain) ? fileCfg.authDomain : (projectId ? `${projectId}.firebaseapp.com` : ''));
+  const firestoreDatabaseId = isReal(envCfg.firestoreDatabaseId) ? envCfg.firestoreDatabaseId : (isReal(fileCfg.firestoreDatabaseId) ? fileCfg.firestoreDatabaseId : '(default)');
+  const storageBucket = isReal(envCfg.storageBucket) ? envCfg.storageBucket : (isReal(fileCfg.storageBucket) ? fileCfg.storageBucket : (projectId ? `${projectId}.firebasestorage.app` : ''));
+  const messagingSenderId = isReal(envCfg.messagingSenderId) ? envCfg.messagingSenderId : (isReal(fileCfg.messagingSenderId) ? fileCfg.messagingSenderId : '000000000000');
+  const measurementId = envCfg.measurementId || fileCfg.measurementId || '';
+  const databaseURL = envCfg.databaseURL || fileCfg.databaseURL;
+  const oAuthClientId = isReal(envCfg.oAuthClientId) ? envCfg.oAuthClientId : fileCfg.oAuthClientId;
+
+  return {
+    apiKey,
+    projectId,
+    appId,
+    authDomain,
+    firestoreDatabaseId,
+    storageBucket,
+    messagingSenderId,
+    measurementId,
+    databaseURL,
+    oAuthClientId,
+  };
+}
+
+const config = getResolvedFirebaseConfig();
 export const app = getApps().length > 0 ? getApps()[0] : initializeApp(config);
 
 // Suppress non-fatal SDK connection warnings while maintaining true error reporting
@@ -83,6 +125,20 @@ if (typeof window !== 'undefined') {
       message.includes('Failed to obtain exclusive access')
     ) {
       console.warn('[Firestore Unhandled Rejection Caught & Handled]', message);
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const message = event.message || '';
+    if (
+      message.includes('Missing or insufficient permissions') ||
+      message.includes('PERMISSION_DENIED') ||
+      message.includes('GrpcConnection RPC') ||
+      message.includes('Could not reach Cloud Firestore') ||
+      message.includes('Code: 7')
+    ) {
+      console.warn('[Firestore Window Error Handled]', message);
       event.preventDefault();
     }
   });

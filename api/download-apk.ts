@@ -103,41 +103,8 @@ function selectMainPackageAsset(rawAssets: any[], platform?: string) {
   return null;
 }
 
-function isSafePublicUrl(candidateUrl: string): boolean {
-  if (!candidateUrl || typeof candidateUrl !== 'string') return false;
-  try {
-    const parsed = new URL(candidateUrl.trim());
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-    if (parsed.username || parsed.password) return false;
-    const host = parsed.hostname.toLowerCase().trim();
-    if (!host) return false;
-    if (['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254'].includes(host)) return false;
-    if (host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.16.') || host.includes('.local')) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { isSafePublicUrl, safeFetchWithRedirectCheck } from '../server/securityDefense';
 
-async function safeFetchWithRedirectCheck(targetUrl: string, options: RequestInit = {}, maxRedirects = 5): Promise<Response> {
-  let currentUrl = targetUrl;
-  let redirectsCount = 0;
-  while (redirectsCount <= maxRedirects) {
-    if (!isSafePublicUrl(currentUrl)) {
-      throw new Error(`SSRF blocked: ${currentUrl}`);
-    }
-    const res = await fetch(currentUrl, { ...options, redirect: 'manual' });
-    if ([301, 302, 303, 307, 308].includes(res.status)) {
-      const loc = res.headers.get('location');
-      if (!loc) return res;
-      currentUrl = new URL(loc, currentUrl).toString();
-      redirectsCount++;
-      continue;
-    }
-    return res;
-  }
-  return fetch(currentUrl, options);
-}
 
 function getExactMimeType(fileName: string, upstreamContentType?: string | null): string {
   const lower = (fileName || '').toLowerCase();

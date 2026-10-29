@@ -153,8 +153,75 @@ function parseAnyIpv4(host: string): [number, number, number, number] | null {
 }
 
 /**
+ * Strict Host Allowlists for outbound HTTP requests, binary downloads, and proxy fetches.
+ * Ensures the server only connects to verified download sources, package repositories,
+ * cloud storage CDNs, and verified platform endpoints.
+ */
+export const DEFAULT_ALLOWED_OUTBOUND_HOST_PATTERNS: RegExp[] = [
+  // GitHub releases, raw assets, codeload, binary downloads
+  /^([a-z0-9-]+\.)?github\.com$/i,
+  /^([a-z0-9-]+\.)?githubusercontent\.com$/i,
+  // AWS S3 & CloudFront CDNs
+  /^([a-z0-9-]+\.)?amazonaws\.com$/i,
+  /^([a-z0-9-]+\.)?cloudfront\.net$/i,
+  // Firebase Storage & Google Cloud Storage
+  /^([a-z0-9-]+\.)?firebasestorage\.app$/i,
+  /^([a-z0-9-]+\.)?storage\.googleapis\.com$/i,
+  /^([a-z0-9-]+\.)?googleapis\.com$/i,
+  /^([a-z0-9-]+\.)?googleusercontent\.com$/i,
+  // GitLab releases & binary assets
+  /^([a-z0-9-]+\.)?gitlab\.com$/i,
+  // SourceForge
+  /^([a-z0-9-]+\.)?sourceforge\.net$/i,
+  // Official Prople Store domains & verified app platforms
+  /^([a-z0-9-]+\.)?prople\.(co\.in|store)$/i,
+];
+
+/**
+ * Validates a hostname against the strict outbound host allowlist.
+ * Combines default approved platform CDNs with any additional operator-specified
+ * domains from process.env.ALLOWED_OUTBOUND_HOSTS or process.env.OUTBOUND_FETCH_ALLOWLIST.
+ */
+export function isAllowedOutboundHost(hostname: string, customAllowlist?: string[]): boolean {
+  if (!hostname || typeof hostname !== "string") return false;
+  const cleanHost = hostname.toLowerCase().trim();
+
+  // Check custom caller allowlist if provided
+  if (customAllowlist && customAllowlist.length > 0) {
+    for (const h of customAllowlist) {
+      const cleanH = h.toLowerCase().trim();
+      if (cleanH === cleanHost) return true;
+      if (cleanH.startsWith("*.") && cleanHost.endsWith(cleanH.slice(1))) return true;
+      if (cleanH.startsWith(".") && cleanHost.endsWith(cleanH)) return true;
+    }
+  }
+
+  // Check environment-configured allowlist (comma-separated list of approved domains/wildcards)
+  const envAllowed = (process.env.ALLOWED_OUTBOUND_HOSTS || process.env.OUTBOUND_FETCH_ALLOWLIST || "")
+    .toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const pattern of envAllowed) {
+    if (pattern === cleanHost) return true;
+    if (pattern.startsWith("*.") && cleanHost.endsWith(pattern.slice(1))) return true;
+    if (pattern.startsWith(".") && cleanHost.endsWith(pattern)) return true;
+  }
+
+  // Check default pattern list
+  return DEFAULT_ALLOWED_OUTBOUND_HOST_PATTERNS.some((pat) => pat.test(cleanHost));
+}
+
+export interface SafeUrlValidationOptions {
+  requireAllowlist?: boolean;
+  allowedHosts?: string[];
+  allowHttp?: boolean;
+}
+
+/**
  * Validates whether an external URL is safe to fetch from server-side.
  * Defends against all known SSRF bypasses:
+ * - Strict Host Allowlist enforcement for outbound proxies and binary downloads
  * - Localhost / Loopback (IPv4 & IPv6)
  * - Cloud metadata (AWS, GCP, Azure, Alibaba, DigitalOcean, OpenStack)
  * - Private RFC 1918 & Carrier-Grade NAT
@@ -164,7 +231,10 @@ function parseAnyIpv4(host: string): [number, number, number, number] | null {
  * - Non-standard ports (prevents internal port scanning)
  * - Internal TLDs (.local, .internal, .lan, etc.)
  */
-export function isSafePublicUrl(candidateUrl: string): boolean {
+export function isSafePublicUrl(
+  candidateUrl: string,
+  options?: SafeUrlValidationOptions
+): boolean {
   if (!candidateUrl || typeof candidateUrl !== "string") return false;
   const trimmed = candidateUrl.trim();
 
@@ -178,9 +248,14 @@ export function isSafePublicUrl(candidateUrl: string): boolean {
     return false;
   }
 
-  // 1. Protocol restriction: Only HTTP & HTTPS
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return false;
+  // 1. Protocol restriction: HTTPS preferred; HTTP only permitted if explicitly enabled
+  if (options?.allowHttp) {
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  } else {
+    // In production or default mode, enforce HTTPS
+    if (parsed.protocol !== "https:" && (process.env.NODE_ENV === "production" || parsed.protocol !== "http:")) {
+      return false;
+    }
   }
 
   // 2. Reject credentials in URL (e.g. http://attacker.com@127.0.0.1/)
@@ -268,30 +343,87 @@ export function isSafePublicUrl(candidateUrl: string): boolean {
     }
   }
 
+  // 8. Strict Host Allowlist check
+  if (options?.requireAllowlist) {
+    if (!isAllowedOutboundHost(hostname, options.allowedHosts)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
 /**
- * Safe HTTP fetch that protects against SSRF Redirect Chaining.
- * Tracks each redirect and verifies the target URL against `isSafePublicUrl` before following it.
+ * Validates that a URL is both SSRF-safe AND conforms to the strict outbound host allowlist.
+ */
+export function isStrictAllowlistedUrl(candidateUrl: string, allowedHosts?: string[]): boolean {
+  return isSafePublicUrl(candidateUrl, { requireAllowlist: true, allowedHosts });
+}
+
+export interface SafeFetchOptions extends RequestInit {
+  requireAllowlist?: boolean;
+  allowedHosts?: string[];
+  maxRedirects?: number;
+}
+
+/**
+ * Safe HTTP fetch that protects against SSRF Redirect Chaining, Host Confusion,
+ * and Cross-Origin Credential Leaks.
+ *
+ * Enforces:
+ * 1. Strict pre-fetch URL validation (protocol, IP range, cloud metadata, and allowlist).
+ * 2. Strict per-hop redirect validation against the host allowlist.
+ * 3. Protocol downgrade prevention (HTTPS cannot downgrade to HTTP).
+ * 4. Header stripping on cross-origin redirects (Authorization, Cookies, internal API keys).
+ * 5. Maximum redirect hop constraint (default: 3 hops) and circular loop detection.
  */
 export async function safeFetchWithRedirectCheck(
   targetUrl: string,
-  options: RequestInit = {},
-  maxRedirects = 5
+  options: SafeFetchOptions = {},
+  maxRedirects = 3
 ): Promise<Response> {
   let currentUrl = targetUrl;
   let redirectsCount = 0;
+  const effectiveMaxRedirects = Math.min(options.maxRedirects || maxRedirects, 5);
+  const seenUrls = new Set<string>();
 
-  while (redirectsCount <= maxRedirects) {
-    if (!isSafePublicUrl(currentUrl)) {
-      throw new Error(`SSRF blocked: Destination URL '${currentUrl}' is not a permitted public host.`);
+  // Outbound fetching defaults to requiring the strict host allowlist for defense-in-depth
+  const requireAllowlist = options.requireAllowlist !== false;
+
+  while (redirectsCount <= effectiveMaxRedirects) {
+    if (seenUrls.has(currentUrl)) {
+      throw new Error(`SSRF blocked: Circular redirect loop detected at '${currentUrl}'.`);
+    }
+    seenUrls.add(currentUrl);
+
+    if (!isSafePublicUrl(currentUrl, { requireAllowlist, allowedHosts: options.allowedHosts })) {
+      throw new Error(`SSRF blocked: Destination URL '${currentUrl}' is not permitted by host allowlist or security policies.`);
     }
 
+    const currentOrigin = new URL(currentUrl).origin;
     const fetchOptions: any = {
       ...options,
       redirect: "manual", // Intercept redirects manually
     };
+
+    // If following a cross-origin redirect, strip sensitive authentication headers
+    if (redirectsCount > 0 && currentOrigin !== new URL(targetUrl).origin) {
+      if (fetchOptions.headers) {
+        if (typeof fetchOptions.headers.delete === "function") {
+          fetchOptions.headers.delete("authorization");
+          fetchOptions.headers.delete("cookie");
+          fetchOptions.headers.delete("x-internal-security-key");
+          fetchOptions.headers.delete("x-api-key");
+        } else if (typeof fetchOptions.headers === "object") {
+          delete fetchOptions.headers["authorization"];
+          delete fetchOptions.headers["Authorization"];
+          delete fetchOptions.headers["cookie"];
+          delete fetchOptions.headers["Cookie"];
+          delete fetchOptions.headers["x-internal-security-key"];
+          delete fetchOptions.headers["x-api-key"];
+        }
+      }
+    }
 
     const res = await fetch(currentUrl, fetchOptions);
 
@@ -310,9 +442,16 @@ export async function safeFetchWithRedirectCheck(
         throw new Error(`SSRF blocked: Malformed redirect location header.`);
       }
 
+      // Prevent HTTPS to HTTP protocol downgrade
+      const prevProto = new URL(currentUrl).protocol;
+      const nextProto = new URL(nextUrl).protocol;
+      if (prevProto === "https:" && nextProto === "http:") {
+        throw new Error(`SSRF blocked: Insecure protocol downgrade from HTTPS to HTTP on redirect.`);
+      }
+
       // Validate redirect destination BEFORE making next request
-      if (!isSafePublicUrl(nextUrl)) {
-        throw new Error(`SSRF blocked: Redirect to forbidden host '${nextUrl}'.`);
+      if (!isSafePublicUrl(nextUrl, { requireAllowlist, allowedHosts: options.allowedHosts })) {
+        throw new Error(`SSRF blocked: Redirect to non-allowlisted or forbidden host '${nextUrl}'.`);
       }
 
       currentUrl = nextUrl;
@@ -323,7 +462,7 @@ export async function safeFetchWithRedirectCheck(
     return res;
   }
 
-  throw new Error(`Too many redirects (exceeded limit of ${maxRedirects}).`);
+  throw new Error(`Too many redirects (exceeded limit of ${effectiveMaxRedirects}).`);
 }
 
 // ==========================================
@@ -546,3 +685,39 @@ export function timingSafeEqualString(a: string, b: string): boolean {
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
 }
+
+// ==========================================
+// 8. Mandatory Environment Secrets for Critical Operations
+// ==========================================
+
+/**
+ * Returns the environment-configured internal security secret.
+ * Enforces that all security-critical administrative, IP-unlock, and token operations
+ * require an explicit, high-entropy secret configured in environment variables.
+ * Fails closed if neither INTERNAL_SECURITY_KEY nor SESSION_SECRET is configured.
+ */
+export function requireConfiguredSecuritySecret(): string {
+  const secret = process.env.INTERNAL_SECURITY_KEY || process.env.SESSION_SECRET;
+  if (!secret || secret.trim().length < 16) {
+    throw new Error(
+      "SECURITY POLICY VIOLATION: A valid environment secret (INTERNAL_SECURITY_KEY or SESSION_SECRET) of at least 16 characters must be configured in environment variables for security-critical operations."
+    );
+  }
+  return secret.trim();
+}
+
+/**
+ * Validates a provided secret key against the environment-configured secret.
+ * Uses timing-safe constant-time comparison (CWE-208).
+ * Fails closed if no secret is configured in the environment.
+ */
+export function verifySecuritySecret(providedSecret?: string | null): boolean {
+  if (!providedSecret || typeof providedSecret !== "string") return false;
+  try {
+    const configured = requireConfiguredSecuritySecret();
+    return timingSafeEqualString(providedSecret.trim(), configured);
+  } catch {
+    return false; // Fails closed if not configured
+  }
+}
+

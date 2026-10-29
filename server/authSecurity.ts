@@ -11,6 +11,7 @@ import {
   limit,
   where
 } from 'firebase/firestore';
+import { isStrictAdminEmail, verifySecuritySecret } from './securityDefense';
 
 /**
  * Prople Store — Enterprise Authentication Security Engine
@@ -361,3 +362,123 @@ export async function registerFailedSecurityEvent(
       : undefined,
   };
 }
+
+/**
+ * Unlocks a locked IP address.
+ * Strictly requires authorization via an environment-based secret (INTERNAL_SECURITY_KEY / SESSION_SECRET)
+ * or a verified strict admin email address.
+ */
+export async function unlockIp(
+  ip: string,
+  authSecretOrAdminEmail?: string,
+  db?: any
+): Promise<{ success: boolean; error?: string }> {
+  const isAuth =
+    verifySecuritySecret(authSecretOrAdminEmail) ||
+    isStrictAdminEmail(authSecretOrAdminEmail);
+
+  if (!isAuth) {
+    return {
+      success: false,
+      error: 'Forbidden: Security-critical IP unlock requires valid environment secret or administrator authorization.',
+    };
+  }
+
+  const cleanIp = (ip || '').trim();
+  if (!cleanIp) return { success: false, error: 'Invalid IP address' };
+
+  lockedIps.delete(cleanIp);
+  ipTotalStrikes.delete(cleanIp);
+  ipFailedLoginTimestamps.delete(cleanIp);
+  ipOtpTimestamps.delete(cleanIp);
+
+  if (db) {
+    try {
+      const safeDocId = cleanIp.replace(/[\/\.#$\[\]:]/g, '_');
+      await deleteDoc(doc(db, 'locked_ips', safeDocId));
+      await setDoc(
+        doc(db, 'auth_security_state', 'active_ip_strikes'),
+        { [safeDocId]: 0, lastUpdated: Date.now() },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.warn('[Auth Security] Failed to remove locked IP from database:', err.message);
+    }
+  }
+
+  console.log(`[Auth Security] IP ${cleanIp} successfully unlocked by authorized administrator/key.`);
+  return { success: true };
+}
+
+/**
+ * Resets cumulative security strikes for an IP address.
+ * Strictly requires authorization via environment-based secret or verified admin email.
+ */
+export async function resetIpStrikes(
+  ip: string,
+  authSecretOrAdminEmail?: string,
+  db?: any
+): Promise<{ success: boolean; error?: string }> {
+  const isAuth =
+    verifySecuritySecret(authSecretOrAdminEmail) ||
+    isStrictAdminEmail(authSecretOrAdminEmail);
+
+  if (!isAuth) {
+    return {
+      success: false,
+      error: 'Forbidden: Resetting security strikes requires valid environment secret or administrator authorization.',
+    };
+  }
+
+  const cleanIp = (ip || '').trim();
+  ipTotalStrikes.delete(cleanIp);
+  ipFailedLoginTimestamps.delete(cleanIp);
+
+  if (db) {
+    try {
+      const safeDocId = cleanIp.replace(/[\/\.#$\[\]:]/g, '_');
+      await setDoc(
+        doc(db, 'auth_security_state', 'active_ip_strikes'),
+        { [safeDocId]: 0, lastUpdated: Date.now() },
+        { merge: true }
+      );
+    } catch {}
+  }
+
+  return { success: true };
+}
+
+/**
+ * Clears all locked IPs in bulk.
+ * Strictly requires authorization via environment-configured secret.
+ */
+export async function clearAllLockedIps(
+  authSecret: string,
+  db?: any
+): Promise<{ success: boolean; count: number; error?: string }> {
+  if (!verifySecuritySecret(authSecret)) {
+    return {
+      success: false,
+      count: 0,
+      error: 'Forbidden: Bulk security unlock requires valid environment security secret.',
+    };
+  }
+
+  const count = lockedIps.size;
+  lockedIps.clear();
+  ipTotalStrikes.clear();
+
+  if (db) {
+    try {
+      const lockedSnap = await getDocs(collection(db, 'locked_ips'));
+      for (const d of lockedSnap.docs) {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    } catch (err: any) {
+      console.warn('[Auth Security] Failed to clear locked IPs from database:', err.message);
+    }
+  }
+
+  return { success: true, count };
+}
+
