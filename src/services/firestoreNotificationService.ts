@@ -1619,24 +1619,130 @@ export async function markAllNotificationsAsReadInFirestore(ids: string[]): Prom
 }
 
 /**
- * Delete a notification from Firestore
+ * Persist dismissed notification ID for the active user across sessions and devices
  */
-export async function deleteNotificationFromFirestore(id: string): Promise<void> {
+export async function dismissNotificationForUser(id: string, user?: UserProfile | null): Promise<void> {
   if (!id) return;
+  // 1. Local device storage
   try {
-    const docRef = doc(db, NOTIFS_COLLECTION, id);
-    await deleteDoc(docRef);
-  } catch (e) {
-    console.warn('deleteNotificationFromFirestore error:', e);
-    throw e;
+    const raw = localStorage.getItem('prople_store_dismissed_notifs_v1');
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    if (!list.includes(id)) {
+      list.push(id);
+      localStorage.setItem('prople_store_dismissed_notifs_v1', JSON.stringify(list.slice(-500)));
+    }
+  } catch {}
+
+  // 2. Remote Firestore sync to user profile subcollection if authenticated
+  if (user?.uid && user.uid !== 'developer' && user.uid !== 'dev-publisher') {
+    try {
+      const dismissRef = doc(db, 'users', user.uid, 'dismissed_notifications', id);
+      await setDoc(dismissRef, { notificationId: id, dismissedAt: Date.now() }, { merge: true });
+    } catch (err) {
+      console.warn('dismissNotificationForUser remote sync warning:', err);
+    }
   }
 }
 
 /**
- * Clear all notifications in Firestore
+ * Load remote dismissed notification IDs from user profile
  */
-export async function clearAllNotificationsInFirestore(ids: string[]): Promise<void> {
+export async function loadDismissedNotificationsFromFirestore(user?: UserProfile | null): Promise<string[]> {
+  if (!user?.uid || user.uid === 'developer' || user.uid === 'dev-publisher') return [];
+  try {
+    const colRef = collection(db, 'users', user.uid, 'dismissed_notifications');
+    const snap = await getDocs(colRef);
+    const ids: string[] = [];
+    snap.forEach(d => ids.push(d.id));
+    return ids;
+  } catch (err) {
+    console.warn('loadDismissedNotificationsFromFirestore notice:', err);
+    return [];
+  }
+}
+
+/**
+ * Delete a notification from Firestore if user is authorized, or sync dismissal.
+ * Never throws permission-denied errors to the UI when a user dismisses shared announcements.
+ */
+export async function deleteNotificationFromFirestore(id: string, user?: UserProfile | null): Promise<void> {
+  if (!id) return;
+  
+  // Always register as dismissed for this user
+  await dismissNotificationForUser(id, user);
+
+  // Check if user is an administrator
+  const userEmail = (user?.email || auth.currentUser?.email || '').toLowerCase().trim();
+  const isAdmin = userEmail && (
+    userEmail === 'sahanurmolla3131@gmail.com' ||
+    userEmail === 'sahanurmolla190@gmail.com' ||
+    userEmail === 'sahinurmolla190@gmail.com' ||
+    userEmail === 'msahajan1290@gmail.com' ||
+    userEmail === 'sahanurmolla3545@gmail.com' ||
+    userEmail === 'yoursahabhai@gmail.com' ||
+    userEmail === 'sahanurmolla1290@gmail.com' ||
+    userEmail === 'bengalsocietyofscience2025@gmail.com' ||
+    userEmail === 'prople.site@gmail.com'
+  );
+
+  // If administrator, attempt server-authoritative broadcast delete
+  if (isAdmin) {
+    try {
+      await fetch('/api/admin/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail, action: 'delete', notificationId: id })
+      });
+    } catch {}
+  }
+
+  // Attempt client-side Firestore document delete if user owns the document or has admin permissions
+  try {
+    const docRef = doc(db, NOTIFS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (e: any) {
+    // Non-blocking: Shared catalog notices and broadcast releases cannot (and should not)
+    // be erased from the global database by individual users; user dismissal is safely preserved.
+    console.warn('deleteNotificationFromFirestore non-fatal notice:', e?.message || e);
+  }
+}
+
+/**
+ * Clear all notifications in Firestore or mark all as dismissed
+ */
+export async function clearAllNotificationsInFirestore(ids: string[], user?: UserProfile | null): Promise<void> {
   if (!ids || ids.length === 0) return;
+  
+  // Persist all dismissals
+  for (const id of ids) {
+    await dismissNotificationForUser(id, user).catch(() => {});
+  }
+
+  const userEmail = (user?.email || auth.currentUser?.email || '').toLowerCase().trim();
+  const isAdmin = userEmail && (
+    userEmail === 'sahanurmolla3131@gmail.com' ||
+    userEmail === 'sahanurmolla190@gmail.com' ||
+    userEmail === 'sahinurmolla190@gmail.com' ||
+    userEmail === 'msahajan1290@gmail.com' ||
+    userEmail === 'sahanurmolla3545@gmail.com' ||
+    userEmail === 'yoursahabhai@gmail.com' ||
+    userEmail === 'sahanurmolla1290@gmail.com' ||
+    userEmail === 'bengalsocietyofscience2025@gmail.com' ||
+    userEmail === 'prople.site@gmail.com'
+  );
+
+  if (isAdmin) {
+    for (const id of ids) {
+      try {
+        await fetch('/api/admin/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userEmail, action: 'delete', notificationId: id })
+        });
+      } catch {}
+    }
+  }
+
   try {
     for (let i = 0; i < ids.length; i += 450) {
       const chunk = ids.slice(i, i + 450);
@@ -1648,7 +1754,6 @@ export async function clearAllNotificationsInFirestore(ids: string[]): Promise<v
       await batch.commit();
     }
   } catch (e) {
-    console.warn('clearAllNotificationsInFirestore error:', e);
-    throw e;
+    console.warn('clearAllNotificationsInFirestore non-fatal notice:', e);
   }
 }

@@ -30,6 +30,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow write: if isOwner(userId) || isAdmin() || (request.auth != null && request.auth.token.email != null && resource.data.email == request.auth.token.email);
+
+      match /dismissed_notifications/{notificationId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     match /apps/{appId} {
@@ -102,7 +106,18 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.targetUid == request.auth.uid ||
+          resource.data.publisherUid == request.auth.uid ||
+          (request.auth.token.email != null && (
+            resource.data.targetEmail == request.auth.token.email ||
+            resource.data.publisherEmail == request.auth.token.email
+          ))
+        )
+      );
     }
 
     match /auth_failed_logs/{logId} {

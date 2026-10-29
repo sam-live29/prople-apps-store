@@ -12,6 +12,8 @@ import {
   markAllNotificationsAsReadInFirestore, 
   deleteNotificationFromFirestore, 
   clearAllNotificationsInFirestore,
+  dismissNotificationForUser,
+  loadDismissedNotificationsFromFirestore,
   notifyPublisherDownloadVerified,
   checkAndTriggerDownloadMilestones,
   isNotificationVisibleToUser,
@@ -567,6 +569,21 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  // Synchronize remote dismissed notification IDs from user profile in Firestore
+  useEffect(() => {
+    if (user?.uid) {
+      loadDismissedNotificationsFromFirestore(user).then((remoteIds) => {
+        if (remoteIds && remoteIds.length > 0) {
+          setDismissedNotifIds(prev => {
+            const merged = Array.from(new Set([...prev, ...remoteIds])).slice(-500);
+            try { localStorage.setItem('prople_store_dismissed_notifs_v1', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [user]);
+
   // Loading Theme Variant State with LocalStorage Persistence
   const [loadingStyleVariant, setLoadingStyleVariantState] = useState<LoadingStyleVariant>(() => {
     try {
@@ -821,15 +838,8 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     }
     inFlightClearIdsRef.current.add(id);
 
-    // Save snapshot for potential rollback on network/database failure
-    let targetItem: NotificationItem | undefined;
-    let targetIndex = -1;
-
+    // 1. Immediately remove from local state & cache
     setRawNotifications(prev => {
-      targetIndex = prev.findIndex(n => n.id === id);
-      if (targetIndex !== -1) {
-        targetItem = prev[targetIndex];
-      }
       const updated = prev.filter(n => n.id !== id);
       try {
         localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(updated));
@@ -843,6 +853,7 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       return updated;
     });
 
+    // 2. Register in dismissed set so it never reappears from live query snapshots
     setDismissedNotifIds(prev => {
       if (prev.includes(id)) return prev;
       const next = [...prev, id].slice(-500);
@@ -850,36 +861,15 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       return next;
     });
 
-    // Background sync with Firestore
-    deleteNotificationFromFirestore(id)
+    // 3. Background sync with Firestore: persists dismissal & deletes doc if authorized
+    deleteNotificationFromFirestore(id, user)
       .catch((err) => {
-        console.warn('deleteNotificationFromFirestore failed, restoring item:', err);
-        // Rollback optimistic state changes
-        if (targetItem) {
-          const itemToRestore = targetItem;
-          const idxToRestore = targetIndex;
-          setDismissedNotifIds(prev => {
-            const next = prev.filter(x => x !== id);
-            try { localStorage.setItem('prople_store_dismissed_notifs_v1', JSON.stringify(next)); } catch {}
-            return next;
-          });
-          setRawNotifications(prev => {
-            if (prev.some(n => n.id === id)) return prev;
-            const next = [...prev];
-            const safeIdx = idxToRestore >= 0 && idxToRestore <= next.length ? idxToRestore : 0;
-            next.splice(safeIdx, 0, itemToRestore);
-            try {
-              localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(next));
-            } catch {}
-            return next;
-          });
-          showToast('Could not clear notification. Restored.');
-        }
+        console.warn('deleteNotificationFromFirestore notice:', err);
       })
       .finally(() => {
         inFlightClearIdsRef.current.delete(id);
       });
-  }, [showToast]);
+  }, [user]);
 
   const clearAllNotifications = useCallback(() => {
     if (isClearingAllRef.current) return;
@@ -890,13 +880,14 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     const targetIds = targetItems.map(n => n.id);
     const targetIdSet = new Set(targetIds);
 
-    // Optimistic local state update
+    // 1. Register in dismissed set
     setDismissedNotifIds(prev => {
       const next = Array.from(new Set([...prev, ...targetIds])).slice(-500);
       try { localStorage.setItem('prople_store_dismissed_notifs_v1', JSON.stringify(next)); } catch {}
       return next;
     });
 
+    // 2. Immediately remove from local state & cache
     setRawNotifications(prev => {
       const updated = prev.filter(n => !targetIdSet.has(n.id));
       try {
@@ -911,29 +902,15 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       return updated;
     });
 
-    // Background sync with Firestore
-    clearAllNotificationsInFirestore(targetIds)
+    // 3. Background sync with Firestore: persists dismissals
+    clearAllNotificationsInFirestore(targetIds, user)
       .catch((err) => {
-        console.warn('clearAllNotificationsInFirestore failed, restoring items:', err);
-        // Rollback on failure
-        setDismissedNotifIds(prev => {
-          const next = prev.filter(x => !targetIdSet.has(x));
-          try { localStorage.setItem('prople_store_dismissed_notifs_v1', JSON.stringify(next)); } catch {}
-          return next;
-        });
-        setRawNotifications(prev => {
-          const existingIds = new Set(prev.map(n => n.id));
-          const toRestore = targetItems.filter(n => !existingIds.has(n.id));
-          const restored = [...prev, ...toRestore].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          try { localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(restored)); } catch {}
-          return restored;
-        });
-        showToast('Could not clear all notifications. Restored.');
+        console.warn('clearAllNotificationsInFirestore notice:', err);
       })
       .finally(() => {
         isClearingAllRef.current = false;
       });
-  }, [visibleNotifications, showToast]);
+  }, [visibleNotifications, user]);
 
   const startInstall = useCallback((appId: string, options?: InstallOptions | string, legacyAppName?: string) => {
     let opts: InstallOptions = {};

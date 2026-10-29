@@ -215,6 +215,16 @@
         "user": { "type": "object" }
       },
       "required": ["email", "status", "createdAt"]
+    },
+    "DismissedNotification": {
+      "title": "DismissedNotification",
+      "description": "User-specific dismissed notification records",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string" },
+        "dismissedAt": { "type": "number" }
+      },
+      "required": ["notificationId", "dismissedAt"]
     }
   },
   "firestore": {
@@ -271,6 +281,12 @@
         "$ref": "#/entities/Notification"
       },
       "description": "User-specific notifications and release alerts"
+    },
+    "/users/{userId}/dismissed_notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/DismissedNotification"
+      },
+      "description": "User-specific dismissed notification records"
     },
     "/notifications/{notificationId}": {
       "schema": {

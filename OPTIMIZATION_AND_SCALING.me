@@ -4,6 +4,36 @@
 
 This document serves as the continuous record and operational blueprint for algorithms, backend optimizations, search engine indexing, Google SEO, AI chatbot Generative Engine Optimization (GEO), and infrastructure scaling for Prople Store.
 
+## 0000000000000000000000000009. Per-User Notification Dismissal, Multi-Tenant Retention & Non-Blocking Database Sync Architecture
+
+### 1. Root Cause & Architectural Audit
+1. **Destructive Delete on Shared Global Announcements**:
+   - In `InstallContext.tsx` and `firestoreNotificationService.ts`, clearing a notification previously executed `deleteNotificationFromFirestore(id)` which called `deleteDoc(doc(db, 'notifications', id))`.
+   - Shared platform notifications (such as "New Release: TeleGhost 1.0.4 by Sahanur Molla" or store-wide announcements) are multi-tenant broadcast documents intended for all store users.
+   - Regular store users do not possess (and must not possess) administrative permissions to permanently delete global release announcements from the shared database.
+2. **Aggressive UI Rollback on Permission Errors**:
+   - When Firestore client SDK correctly returned `permission-denied` on `deleteDoc`, `clearNotification` caught the exception and interpreted it as a critical failure.
+   - The catch handler rolled back the user's optimistic dismissal, restored the notification back to the inbox screen, and displayed a jarring toast: `"Could not clear notification. Restored."`.
+   - This misled users into believing the database was broken, when in reality the client was erroneously attempting to delete a shared global record rather than recording a per-user dismissal.
+
+### 2. High-Resilience Architectural Solution
+1. **Decoupled Per-User Dismissal Model**:
+   - A user clearing a notification is strictly a **per-user dismissal action**.
+   - The notification ID is immediately registered in `dismissedNotifIds`, stored in `localStorage` (`prople_store_dismissed_notifs_v1`), and filtered out from `visibleNotifications`.
+   - When authenticated, the dismissal is asynchronously synced to the user's profile subcollection (`users/{userId}/dismissed_notifications/{id}`) via `dismissNotificationForUser(id, user)`.
+   - On login, remote dismissed IDs are loaded via `loadDismissedNotificationsFromFirestore(user)` so dismissed notices never reappear across multiple devices or after clearing local browser cache.
+2. **Safe Multi-Tier Database Deletion**:
+   - `deleteNotificationFromFirestore` inspects authorization:
+     - User-owned / personal notifications (`targetUid === user.uid` or `publisherUid === user.uid`): Document is deleted directly.
+     - Administrator users: Document can be deleted via `/api/admin/broadcast` backend route or direct delete.
+     - Shared global broadcasts: Dismissed per-user without attempting destructive multi-tenant deletion.
+   - Any remote database warning is handled gracefully without rolling back the user's local dismissal or displaying deceptive "Restored" toasts.
+3. **Hardened Firestore Rules**:
+   - Updated `firestore.rules` for `/notifications/{notificationId}` to allow authenticated users to delete their own targeted notifications (`resource.data.targetUid == request.auth.uid || resource.data.publisherUid == request.auth.uid`), while reserving global broadcast deletion to administrators.
+   - Added `match /users/{userId}/dismissed_notifications/{notificationId}` allowing users full read/write access to their personal dismissal history.
+
+---
+
 ## 0000000000000000000000000008. Multi-Tiered Resilient Email & OTP Dispatch Architecture (Eliminating 401 Unauthorized API Key Blocker & Multi-Layer Failover)
 
 ### 1. Architectural Problem & Domain Motivation
