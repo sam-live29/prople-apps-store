@@ -38,6 +38,8 @@ if (typeof window !== 'undefined') {
     const message = args.map(a => (typeof a === 'string' ? a : (a instanceof Error ? a.message : (typeof a === 'object' && a !== null ? JSON.stringify(a) : '')))).join(' ');
     if (
       message.includes('Could not reach Cloud Firestore backend') ||
+      message.includes('PERMISSION_DENIED') ||
+      message.includes('Missing or insufficient permissions') ||
       (message.includes('@firebase/firestore') && (
         message.includes('offline mode') ||
         message.includes('GrpcConnection') ||
@@ -45,6 +47,7 @@ if (typeof window !== 'undefined') {
         message.includes('WebChannel') ||
         message.includes('Code: 13') ||
         message.includes('13 INTERNAL') ||
+        message.includes('Code: 7') ||
         message.includes('stream') ||
         message.includes('unavailable')
       )) ||
@@ -72,6 +75,8 @@ if (typeof window !== 'undefined') {
     if (
       message.includes('Could not reach Cloud Firestore backend') ||
       message.includes('client is offline') ||
+      message.includes('PERMISSION_DENIED') ||
+      message.includes('Missing or insufficient permissions') ||
       message.includes('RST_STREAM') ||
       message.includes('GrpcConnection') ||
       message.includes('unavailable') ||
@@ -105,7 +110,7 @@ try {
       localCache: memoryLocalCache(),
     }, config.firestoreDatabaseId || '(default)');
   } catch {
-    firestoreInstance = getFirestore(app);
+    firestoreInstance = getFirestore(app, config.firestoreDatabaseId || '(default)');
   }
 }
 

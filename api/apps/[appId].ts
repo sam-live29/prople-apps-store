@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 function getSecureCorsHeaders(origin?: string): Record<string, string> {
   const allowOrigin = origin || '*';
   return {
@@ -37,8 +40,16 @@ export default async function handler(req: any, res: any) {
   const cleanSlug = cleanId.replace(/[^a-z0-9]/g, '');
 
   try {
+    let databaseId = '(default)';
+    try {
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
+      }
+    } catch {}
     const projectId = process.env.FIREBASE_PROJECT_ID || 'prople-store-3efed';
-    const baseFirestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+    const baseFirestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
 
     const parseFirestoreDoc = (doc: any) => {
       if (!doc || !doc.fields) return null;

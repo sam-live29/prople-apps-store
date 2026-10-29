@@ -256,31 +256,35 @@ async function syncUserProfileToFirestore(profile: UserProfile): Promise<void> {
     return;
   }
   try {
-    const userRef = doc(db, 'users', profile.uid);
-    await setDoc(userRef, {
-      uid: profile.uid,
-      email: profile.email || '',
-      displayName: profile.publisherName || profile.displayName || '',
-      photoURL: profile.photoURL || null,
-      age: profile.age || '25',
-      gender: profile.gender || 'Prefer not to say',
-      location: profile.location || 'Global',
-      bio: profile.bio || '',
-      isEmailVerified: Boolean(profile.isEmailVerified),
-      isPublisher: Boolean(profile.isPublisher),
-      publisherName: profile.publisherName || profile.displayName || '',
-      publisherRole: profile.publisherRole || (isDeveloperEmail(profile.email) ? 'Store Administrator' : (profile.isPublisher ? 'Verified Developer' : 'Standard User')),
-      publishedAppIds: profile.publishedAppIds || [],
-      developerKeystore: profile.developerKeystore || null,
-      publisherBio: profile.publisherBio || '',
-      publisherWebsite: profile.publisherWebsite || '',
-      publisherEmail: profile.publisherEmail || profile.email || '',
-      publisherGithub: profile.publisherGithub || '',
-      publisherLocation: profile.publisherLocation || profile.location || '',
-      lastNameChangedAt: profile.lastNameChangedAt || null,
-      nameChangeSessionStartedAt: profile.nameChangeSessionStartedAt || null,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+    // Only write directly to Firestore from the client if the user is authenticated in Firebase Auth
+    // and matches the document UID. Unauthenticated client writes are correctly rejected by security rules.
+    if (auth.currentUser && auth.currentUser.uid === profile.uid) {
+      const userRef = doc(db, 'users', profile.uid);
+      await setDoc(userRef, {
+        uid: profile.uid,
+        email: profile.email || '',
+        displayName: profile.publisherName || profile.displayName || '',
+        photoURL: profile.photoURL || null,
+        age: profile.age || '25',
+        gender: profile.gender || 'Prefer not to say',
+        location: profile.location || 'Global',
+        bio: profile.bio || '',
+        isEmailVerified: Boolean(profile.isEmailVerified),
+        isPublisher: Boolean(profile.isPublisher),
+        publisherName: profile.publisherName || profile.displayName || '',
+        publisherRole: profile.publisherRole || (isDeveloperEmail(profile.email) ? 'Store Administrator' : (profile.isPublisher ? 'Verified Developer' : 'Standard User')),
+        publishedAppIds: profile.publishedAppIds || [],
+        developerKeystore: profile.developerKeystore || null,
+        publisherBio: profile.publisherBio || '',
+        publisherWebsite: profile.publisherWebsite || '',
+        publisherEmail: profile.publisherEmail || profile.email || '',
+        publisherGithub: profile.publisherGithub || '',
+        publisherLocation: profile.publisherLocation || profile.location || '',
+        lastNameChangedAt: profile.lastNameChangedAt || null,
+        nameChangeSessionStartedAt: profile.nameChangeSessionStartedAt || null,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
 
     // Ensure all apps and rights matching this verified email have ownership and profile migrated to current user's UID
     if (profile.email) {

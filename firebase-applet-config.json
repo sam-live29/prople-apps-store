@@ -1,10 +1,12 @@
 {
   "projectId": "prople-store-3efed",
-  "appId": "1:374295310162:web:dcd5f14a552ddbf96dd48b",
+  "appId": "1:374295310162:web:f5f7b857c2c8bc726dd48b",
   "apiKey": "AIzaSyC5iotZL4UVF7QcdVn1ps3gIcetBDt9sc4",
   "authDomain": "prople-store-3efed.firebaseapp.com",
-  "databaseURL": "https://prople-store-3efed-default-rtdb.firebaseio.com",
+  "firestoreDatabaseId": "ai-studio-propleappsstore-4d19d2a3-eb86-4e65-b516-f36ed2be36fd",
   "storageBucket": "prople-store-3efed.firebasestorage.app",
   "messagingSenderId": "374295310162",
-  "measurementId": "G-XSBPGFEZSG"
+  "measurementId": "",
+  "oAuthClientId": "374295310162-tc7fkcs9tjj4mbrnrs80psu68obsmp0l.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }
