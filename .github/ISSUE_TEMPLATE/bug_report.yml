@@ -1,0 +1,99 @@
+name: "🐛 Bug Report"
+description: "File an actionable bug report to help improve Prople Store"
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please search existing issues before filing a duplicate.
+        *If this report involves a security vulnerability or credential leak, please report it via [SECURITY.md](https://github.com/sam-live2c/prople-apps-store-/blob/main/SECURITY.md) instead of creating a public issue.*
+
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Navigate to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+      placeholder: Describe what should have occurred...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually occurred? Include error messages or console logs if available.
+      placeholder: Error message, blank screen, crash stack trace...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-platform
+    attributes:
+      label: Affected Platform / Surface
+      description: Which platform or client surface is encountering this bug?
+      multiple: true
+      options:
+        - Web Store (Browser / Desktop)
+        - Web Store (Mobile Browser / Touch)
+        - Progressive Web App (PWA installed)
+        - Android APK Download / Install Flow
+        - Windows Executable (.exe / .msi) Flow
+        - Linux Package (.deb / .AppImage / .rpm) Flow
+        - Apple iOS (.ipa) / macOS (.dmg / .pkg) Flow
+        - Developer Console / Publishing Portal
+        - Backend API (/api/*) / Server SSR
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment-details
+    attributes:
+      label: Environment & Device Details
+      description: Please specify the device, operating system, and browser or Node runtime.
+      placeholder: |
+        - OS: [e.g. Android 14, Ubuntu 24.04, Windows 11, macOS Sequoia]
+        - Browser: [e.g. Chrome 130, Firefox 132, Safari 18, Brave]
+        - Node.js Version: [e.g. v20.18.0, v22.11.0]
+        - App Version / Commit: [e.g. main branch, commit SHA]
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Recordings
+      description: Drag and drop screenshots or screen recordings demonstrating the bug (if applicable).
+      placeholder: Paste images or links here...
+
+  - type: checkboxes
+    id: verification-checklist
+    attributes:
+      label: Contributor Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate.
+          required: true
+        - label: This report does NOT disclose sensitive private security credentials or exploitable vulnerabilities (use SECURITY.md for those).
+          required: true

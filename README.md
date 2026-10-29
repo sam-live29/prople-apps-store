@@ -1,5 +1,6 @@
 # Prople Store — Multi-Platform App Store & Web Store
 
+[![CI](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v22%2B-brightgreen)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
@@ -13,6 +14,8 @@
 - **Parent Organization**: Cloaktail Industries
 - **Official Marketplace**: [www.prople.co.in](https://www.prople.co.in)
 - **Security Policy**: [SECURITY.md](SECURITY.md)
+- **Roadmap & Priorities**: [ROADMAP.md](ROADMAP.md)
+- **Beginner Issues**: [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
 
 ---
 
@@ -55,11 +58,17 @@
 ## Project Structure
 
 ```text
+├── .github/                   # GitHub workflows, PR templates, and issue forms
+│   ├── ISSUE_TEMPLATE/        # Structured YAML issue forms (bugs, features)
+│   ├── workflows/ci.yml       # Automated GitHub Actions CI (lint, typecheck, build)
+│   └── PULL_REQUEST_TEMPLATE.md # Contributor pull request guidelines
 ├── api/                       # Serverless API endpoints (Vercel & cloud functions)
 │   ├── apps.ts                # Catalog retrieval endpoint
 │   ├── auth/[action].ts       # 2FA OTP and authentication gateway
 │   ├── download-apk.ts        # Secure binary stream proxy
 │   └── github-release-meta.ts # GitHub release asset metadata resolver
+├── docs/                      # Contributor and community documentation
+│   └── GOOD_FIRST_ISSUES.md   # Beginner-friendly starter tasks with acceptance criteria
 ├── public/                    # Static public assets, PWA manifests, icons
 │   ├── manifest.webmanifest   # Progressive Web App manifest
 │   ├── robots.txt             # Search crawler directives & GEO permissions
@@ -79,6 +88,7 @@
 │   ├── utils/                 # Security validators, search algorithms, media helpers
 │   ├── App.tsx                # Main view router and overlay shell
 │   └── main.tsx               # Application bootstrap and PWA service worker mount
+├── ROADMAP.md                 # Public product roadmap, priorities, and RFCs
 ├── server.ts                  # Unified full-stack Express server entry point
 ├── package.json               # Project manifest, dependencies, and build scripts
 ├── vite.config.ts             # Vite configuration with PWA and Tailwind plugins
@@ -153,7 +163,13 @@ Please review our [SECURITY.md](SECURITY.md) policy for instructions on coordina
 
 ## Contributing
 
-We welcome community contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before submitting pull requests.
+We welcome community contributions from developers, designers, and security researchers worldwide!
+
+- ⚡ **Zero-Config Setup**: Contribute to frontend and UI features with zero cloud API keys using our built-in offline mock mode.
+- 📖 [**Good First Issues**](docs/GOOD_FIRST_ISSUES.md): Check out small, well-scoped tasks with clear acceptance criteria.
+- 🗺️ [**Roadmap**](ROADMAP.md): Read our strategic milestones and active RFCs.
+- 📋 [**Contribution Guidelines**](CONTRIBUTING.md): Review our development setup, coding standards, and PR workflows.
+- 🤝 [**Code of Conduct**](CODE_OF_CONDUCT.md): Community behavioral standards.
 
 ---
 

@@ -1,0 +1,67 @@
+name: "✨ Feature Request"
+description: "Suggest an idea or new capability for Prople Store"
+title: "[Feature]: "
+labels: ["enhancement", "proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping make Prople Store better! Please outline your proposal with user workflows, design intent, and architectural considerations.
+
+  - type: textarea
+    id: problem-or-usecase
+    attributes:
+      label: Problem or Use Case
+      description: Is your feature request related to a specific problem or unmet need?
+      placeholder: |
+        I am always frustrated when... / As a publisher, I need to... / As an Android user, I want...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution / Feature Specification
+      description: Describe your proposed solution and how it should look or behave.
+      placeholder: Provide a clear breakdown of the proposed feature, UI interactions, and API behavior...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform-scope
+    attributes:
+      label: Target Platforms
+      description: Which platforms will benefit from this feature?
+      multiple: true
+      options:
+        - All Platforms
+        - Android (.apk / .aab)
+        - Windows (.exe / .msi)
+        - Linux (.deb / .AppImage / .rpm / .flatpak)
+        - Apple macOS / iOS
+        - Web App & PWA
+        - Developer Console & Publishing
+        - Server & Search Architecture
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions, libraries, or workarounds have you evaluated?
+      placeholder: Describe alternative approaches you have considered...
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context & Mockups
+      description: Add any relevant design references, mockups, or API links.
+      placeholder: Links, diagrams, or wireframes...
+
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be interested in contributing code to implement this feature under maintainer guidance!
