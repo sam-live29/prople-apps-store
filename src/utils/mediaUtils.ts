@@ -442,40 +442,68 @@ export async function optimizeAppMediaForStorage(app: Record<string, any>): Prom
   const optimized = { ...app };
 
   try {
+    const shouldCompress = (url: any, maxLen = 450_000): boolean => {
+      if (!url || typeof url !== 'string' || !url.startsWith('data:image/')) return false;
+      // If it's already WebP and within reasonable byte size, skip heavy Canvas decode/re-encode
+      if (url.startsWith('data:image/webp') && url.length <= maxLen) return false;
+      return true;
+    };
+
+    const tasks: Promise<void>[] = [];
+
     // 1. Icon: Max 512x512
-    if (optimized.iconUrl && optimized.iconUrl.startsWith('data:image/')) {
-      optimized.iconUrl = await compressImage(optimized.iconUrl, 512, 0.85);
+    if (shouldCompress(optimized.iconUrl, 250_000)) {
+      tasks.push(
+        compressImage(optimized.iconUrl, 512, 0.85).then(res => {
+          optimized.iconUrl = res;
+        })
+      );
     }
 
     // 2. Feature Graphic: Exact 16:9 up to 1920px
-    if (optimized.featureGraphicUrl && optimized.featureGraphicUrl.startsWith('data:image/')) {
-      optimized.featureGraphicUrl = await compressImage(optimized.featureGraphicUrl, 1920, 0.85);
+    if (shouldCompress(optimized.featureGraphicUrl, 650_000)) {
+      tasks.push(
+        compressImage(optimized.featureGraphicUrl, 1920, 0.85).then(res => {
+          optimized.featureGraphicUrl = res;
+        })
+      );
     }
 
     // 2.1 Details Banner: Exact 16:9 up to 1920px
-    if (optimized.detailsBannerUrl && optimized.detailsBannerUrl.startsWith('data:image/')) {
-      optimized.detailsBannerUrl = await compressImage(optimized.detailsBannerUrl, 1920, 0.85);
+    if (shouldCompress(optimized.detailsBannerUrl, 650_000)) {
+      tasks.push(
+        compressImage(optimized.detailsBannerUrl, 1920, 0.85).then(res => {
+          optimized.detailsBannerUrl = res;
+        })
+      );
     }
 
     // 2.2 Hero Banner: Exact 16:9 up to 1920px
-    if (optimized.heroBannerUrl && optimized.heroBannerUrl.startsWith('data:image/')) {
-      optimized.heroBannerUrl = await compressImage(optimized.heroBannerUrl, 1920, 0.85);
+    if (shouldCompress(optimized.heroBannerUrl, 650_000)) {
+      tasks.push(
+        compressImage(optimized.heroBannerUrl, 1920, 0.85).then(res => {
+          optimized.heroBannerUrl = res;
+        })
+      );
     }
 
     // 2.5 Video Custom Thumbnail: Max 1080px
-    if (optimized.videoThumbnailUrl && typeof optimized.videoThumbnailUrl === 'string' && optimized.videoThumbnailUrl.startsWith('data:image/')) {
-      optimized.videoThumbnailUrl = await compressImage(optimized.videoThumbnailUrl, 1080, 0.80);
+    if (shouldCompress(optimized.videoThumbnailUrl, 450_000)) {
+      tasks.push(
+        compressImage(optimized.videoThumbnailUrl, 1080, 0.80).then(res => {
+          optimized.videoThumbnailUrl = res;
+        })
+      );
     }
 
     // 3. Screenshots (Phone): Max 8 items, max 1080px
     if (Array.isArray(optimized.screenshots) && optimized.screenshots.length > 0) {
       const limitedScreenshots = optimized.screenshots.slice(0, 8);
-      optimized.screenshots = await Promise.all(
-        limitedScreenshots.map(async (shot: string) => {
-          if (shot && typeof shot === 'string' && shot.startsWith('data:image/')) {
-            return await compressImage(shot, 1080, 0.80);
-          }
-          return shot;
+      tasks.push(
+        Promise.all(
+          limitedScreenshots.map(shot => shouldCompress(shot, 450_000) ? compressImage(shot, 1080, 0.80) : Promise.resolve(shot))
+        ).then(res => {
+          optimized.screenshots = res;
         })
       );
     }
@@ -483,12 +511,11 @@ export async function optimizeAppMediaForStorage(app: Record<string, any>): Prom
     // 4. Screenshots (Tablet): Max 4 items, max 1080px
     if (Array.isArray(optimized.tabletScreenshots) && optimized.tabletScreenshots.length > 0) {
       const limitedTablet = optimized.tabletScreenshots.slice(0, 4);
-      optimized.tabletScreenshots = await Promise.all(
-        limitedTablet.map(async (shot: string) => {
-          if (shot && typeof shot === 'string' && shot.startsWith('data:image/')) {
-            return await compressImage(shot, 1080, 0.80);
-          }
-          return shot;
+      tasks.push(
+        Promise.all(
+          limitedTablet.map(shot => shouldCompress(shot, 450_000) ? compressImage(shot, 1080, 0.80) : Promise.resolve(shot))
+        ).then(res => {
+          optimized.tabletScreenshots = res;
         })
       );
     }
@@ -496,15 +523,16 @@ export async function optimizeAppMediaForStorage(app: Record<string, any>): Prom
     // 5. Screenshots (Desktop): Max 4 items, max 1080px
     if (Array.isArray(optimized.desktopScreenshots) && optimized.desktopScreenshots.length > 0) {
       const limitedDesktop = optimized.desktopScreenshots.slice(0, 4);
-      optimized.desktopScreenshots = await Promise.all(
-        limitedDesktop.map(async (shot: string) => {
-          if (shot && typeof shot === 'string' && shot.startsWith('data:image/')) {
-            return await compressImage(shot, 1080, 0.80);
-          }
-          return shot;
+      tasks.push(
+        Promise.all(
+          limitedDesktop.map(shot => shouldCompress(shot, 450_000) ? compressImage(shot, 1080, 0.80) : Promise.resolve(shot))
+        ).then(res => {
+          optimized.desktopScreenshots = res;
         })
       );
     }
+
+    await Promise.all(tasks);
   } catch (err) {
     console.warn('[MediaOptimization] Error optimizing media for storage:', err);
   }

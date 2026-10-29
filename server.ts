@@ -2244,13 +2244,28 @@ async function startServer() {
           });
         }
 
-        // Generate guaranteed collision-free unique slug across entire catalog
+        // Generate guaranteed collision-free unique slug efficiently without full DB scan
         const baseSlug = slugifyAppName(appPayload.name || '') || 'app';
         let uniqueSlug = baseSlug;
         try {
           const appsCol = serverCollection(serverDb, "apps");
-          const allSnap = await serverGetDocs(appsCol);
-          const existingSlugs = new Set(allSnap.docs.map(d => (d.data().slug || slugifyAppName(d.data().name || '')).toLowerCase()));
+          const existingSlugs = new Set<string>();
+
+          // 1. Fast-path: Check existing in-memory catalog cache (0ms)
+          if (Array.isArray(serverAppsCatalogCache) && serverAppsCatalogCache.length > 0) {
+            for (const a of serverAppsCatalogCache) {
+              if (a.slug) existingSlugs.add(a.slug.toLowerCase());
+              else if (a.name) existingSlugs.add(slugifyAppName(a.name).toLowerCase());
+            }
+          } else {
+            // 2. Query only this specific slug from Firestore (1-doc indexed query instead of all docs)
+            const slugQuery = serverQuery(appsCol, serverWhere("slug", "==", uniqueSlug), serverLimit(1));
+            const slugSnap = await serverGetDocs(slugQuery);
+            if (!slugSnap.empty) {
+              existingSlugs.add(uniqueSlug.toLowerCase());
+            }
+          }
+
           if (existingSlugs.has(uniqueSlug.toLowerCase())) {
             const plat = slugifyAppName(appPayload.platform || '');
             if (plat && !existingSlugs.has(`${baseSlug}-${plat}`.toLowerCase())) {
@@ -2263,7 +2278,9 @@ async function startServer() {
               uniqueSlug = `${baseSlug}-${counter}`;
             }
           }
-        } catch {}
+        } catch (slugErr) {
+          console.warn("[Backend] Non-fatal slug resolution warning:", slugErr);
+        }
 
         const nowIso = new Date().toISOString();
         const cleanDoc = sanitizeObject({
@@ -2285,7 +2302,54 @@ async function startServer() {
           ratingBreakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1 }
         });
 
-        await serverSetDoc(appRef, cleanDoc, { merge: true });
+        // Parallelize primary app persistence, spotlight banner write, and publisher profile link
+        const publishTasks: Promise<any>[] = [
+          serverSetDoc(appRef, cleanDoc, { merge: true })
+        ];
+
+        if (featureOnSpotlight) {
+          const bannerRef = serverDoc(serverDb, "banners", `banner-${appId}`);
+          publishTasks.push(
+            serverSetDoc(bannerRef, {
+              id: `banner-${appId}`,
+              appId: appId,
+              title: appPayload.name,
+              tagline: spotlightHeadline || appPayload.tagline || `Experience ${appPayload.name} on your device.`,
+              badge: spotlightBadge || 'Featured Release',
+              badgeBg: 'bg-emerald-600',
+              iconUrl: appPayload.iconUrl,
+              featureGraphicUrl: appPayload.featureGraphicUrl || appPayload.iconUrl,
+              targetUrl: `/app/${appId}`,
+              developer: appPayload.developer,
+              rating: appPayload.rating || 5.0,
+              active: true,
+              displayOrder: 1,
+              createdAt: nowIso,
+              updatedAt: nowIso
+            }, { merge: true })
+          );
+        }
+
+        if (userId && serverDb) {
+          const userRef = serverDoc(serverDb, "users", userId);
+          publishTasks.push(
+            serverGetDoc(userRef).then(async (uSnap) => {
+              const existingPubs = uSnap.exists() ? (uSnap.data().publishedAppIds || []) : [];
+              if (!existingPubs.includes(appId)) {
+                await serverSetDoc(userRef, {
+                  publishedAppIds: [...existingPubs, appId],
+                  isPublisher: true,
+                  updatedAt: nowIso
+                }, { merge: true });
+              }
+            }).catch(uErr => {
+              console.warn("[Backend] Could not sync user publishedAppIds:", uErr);
+            })
+          );
+        }
+
+        await Promise.all(publishTasks);
+
         recordPublishRateLimit(userId);
         recordPublishRateLimit(clientIp);
         serverAppsCatalogCache = [];
@@ -2293,50 +2357,8 @@ async function startServer() {
         seoAppsCache.delete(appId);
         if (cleanDoc.slug) seoAppsCache.delete(cleanDoc.slug.toLowerCase());
 
-        // Index newly published app in Meilisearch
+        // Asynchronously index in Meilisearch & notify search engines
         indexApp(cleanDoc).catch(() => {});
-
-        // Sync publishedAppIds to user document in Firestore
-        if (userId && serverDb) {
-          try {
-            const userRef = serverDoc(serverDb, "users", userId);
-            const uSnap = await serverGetDoc(userRef);
-            const existingPubs = uSnap.exists() ? (uSnap.data().publishedAppIds || []) : [];
-            if (!existingPubs.includes(appId)) {
-              await serverSetDoc(userRef, {
-                publishedAppIds: [...existingPubs, appId],
-                isPublisher: true,
-                updatedAt: nowIso
-              }, { merge: true });
-            }
-          } catch (uErr) {
-            console.warn("[Backend] Could not sync user publishedAppIds:", uErr);
-          }
-        }
-
-        // Feature on Spotlight banner if requested
-        if (featureOnSpotlight) {
-          const bannerRef = serverDoc(serverDb, "banners", `banner-${appId}`);
-          await serverSetDoc(bannerRef, {
-            id: `banner-${appId}`,
-            appId: appId,
-            title: appPayload.name,
-            tagline: spotlightHeadline || appPayload.tagline || `Experience ${appPayload.name} on your device.`,
-            badge: spotlightBadge || 'Featured Release',
-            badgeBg: 'bg-emerald-600',
-            iconUrl: appPayload.iconUrl,
-            featureGraphicUrl: appPayload.featureGraphicUrl || appPayload.iconUrl,
-            targetUrl: `/app/${appId}`,
-            developer: appPayload.developer,
-            rating: appPayload.rating || 5.0,
-            active: true,
-            displayOrder: 1,
-            createdAt: nowIso,
-            updatedAt: nowIso
-          }, { merge: true });
-        }
-
-        // Notify search engines of sitemap changes
         const host = req.get("host") || "prople-store.web.app";
         const protocol = req.protocol || "https";
         pingSearchEngines(`${protocol}://${host}/sitemap.xml`);

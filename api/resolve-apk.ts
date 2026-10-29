@@ -1,13 +1,38 @@
+const TRUSTED_ORIGIN_PATTERNS = [
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+  /^https:\/\/([a-z0-9-]+\.)?prople\.(co\.in|store)$/i,
+  /^https:\/\/([a-z0-9-]+\.)?run\.app$/i,
+  /^https:\/\/([a-z0-9-]+\.)?google\.com$/i,
+  /^https:\/\/([a-z0-9-]+\.)?googleusercontent\.com$/i,
+  /^https:\/\/([a-z0-9-]+\.)?aistudio\.google\.com$/i,
+  /^https:\/\/([a-z0-9-]+\.)?vercel\.app$/i,
+  /^https:\/\/prople-store(-[a-z0-9-]+)?\.web\.app$/i,
+  /^https:\/\/prople-store(-[a-z0-9-]+)?\.firebaseapp\.com$/i,
+];
+
+function isTrustedOrigin(origin?: string): boolean {
+  if (!origin || typeof origin !== 'string') return false;
+  const clean = origin.trim();
+  if (clean === 'null') return false;
+  return TRUSTED_ORIGIN_PATTERNS.some((pattern) => pattern.test(clean));
+}
+
 function getSecureCorsHeaders(origin?: string): Record<string, string> {
-  const allowOrigin = origin || '*';
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Credentials': 'false',
+  const trusted = isTrustedOrigin(origin);
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers':
       'Content-Type, Authorization, X-Requested-With, Accept, X-User-Id, X-User-Email, X-Entity-Ref-ID',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
+
+  if (trusted && origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
+
+  return headers;
 }
 
 function sanitizeIdentifier(input: any, maxLength = 100): string {

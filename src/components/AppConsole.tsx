@@ -2774,13 +2774,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       editingAppId 
         ? 'Updating application... Processing verification and store deployment' 
         : 'Publishing application... Processing verification and store deployment', 
-      { type: 'info', duration: 4000 }
+      { type: 'info', duration: 3000 }
     );
-
-    // Brief realistic pause to allow the user to view the processing toast and spinning state
-    await new Promise((resolve) => setTimeout(resolve, 1400));
-
-    setIsPublishing(true);
 
     try {
       const isUpdateMode = Boolean(editingAppId && appsList.some(a => a.id === editingAppId));

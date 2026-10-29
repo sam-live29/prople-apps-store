@@ -1,0 +1,20 @@
+# Prople Store — Enterprise Architecture, Security & Scaling Blueprint
+
+## 1. Zero-Plaintext Credential & OTP Architecture
+- **HMAC-SHA256 Code Hashing**: Active OTP codes are never stored in plaintext across in-memory stores, persistent caches, or Firebase Realtime Database (`/_auth_otps`).
+- **Timing-Safe Comparison**: All token verification routines utilize `crypto.timingSafeEqual` over fixed-length buffer digests to prevent side-channel timing attacks (CWE-208).
+- **Stateless Challenge Tokens**: Multi-window TOTP and signed HMAC challenge tokens enable resilient authentication across distributed, serverless, and multi-region deployment topologies without central bottleneck contention.
+
+## 2. Strict CORS & Cross-Origin Defense
+- **Origin Whitelist Enforcement**: `Access-Control-Allow-Origin` is strictly bounded to verified corporate domains (`*.prople.co.in`, `*.prople.store`, authorized Cloud Run services, and development loopbacks).
+- **Zero Wildcard Credential Reflection**: Untrusted or missing origins never receive credential reflections (`Access-Control-Allow-Credentials: true` with wildcard `*` is explicitly eliminated).
+- **Header Omission on Untrusted Origins**: Cross-origin requests from arbitrary third-party origins are completely denied cross-origin read capabilities by omitting origin headers or rejecting preflights.
+
+## 3. Cryptographic Entropy & Fail-Closed Secrets
+- **Fail-Closed Secret Model**: In production runtimes (`NODE_ENV === "production"`), the server strictly enforces that `SESSION_SECRET` or `INTERNAL_SECURITY_KEY` must be configured with a minimum of 16 characters, failing closed on boot if absent.
+- **Unguessable Per-Instance Ephemeral Fallbacks**: Non-production environments generate unique 256-bit cryptographically secure random keys (`crypto.randomBytes(32).toString('hex')`) per process instance, preventing instances from ever sharing static fallback constants.
+
+## 4. High-Throughput Publishing & Media Pipeline
+- **O(1) App Insertion**: Eliminates full-table collection scans during app publishing, leveraging direct document references and parallelized batch writes.
+- **Client-Side Asset Pre-Optimization**: WebP and modern image formats bypass redundant canvas reprocessing, dramatically accelerating app submission latency.
+- **Stateless Search Indexing**: Asynchronous Meilisearch synchronization with exponential retry queues guarantees fast indexing without blocking user HTTP threads.

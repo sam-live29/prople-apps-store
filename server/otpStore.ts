@@ -3,14 +3,13 @@
 // Ensures OTPs persist across serverless function instances, Vercel lambdas, and reboots.
 
 import crypto from 'crypto';
-import { hmacDigest, timingSafeEqualString } from './securityDefense';
+import { hmacDigest, timingSafeEqualString, getInternalHmacSecret } from './securityDefense';
 
 function timingSafeStringMatch(a: string, b: string): boolean {
   return timingSafeEqualString(a, b);
 }
 
 interface StoredOtpRecord {
-  code?: string;
   codeHmac?: string;
   email: string;
   expiresAt: number;
@@ -65,17 +64,8 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000).unref();
 
-let ephemeralInternalSecret: string | null = null;
-
 export function getStableInternalSecret(): string {
-  const envKey = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
-  if (envKey && envKey.trim()) {
-    return envKey.trim();
-  }
-  if (!ephemeralInternalSecret) {
-    ephemeralInternalSecret = crypto.randomBytes(32).toString('hex');
-  }
-  return ephemeralInternalSecret;
+  return getInternalHmacSecret();
 }
 
 /**
@@ -188,7 +178,6 @@ export async function persistOtp(
   const expiresAt = now + ttlMs;
 
   const record: StoredOtpRecord = {
-    code: cleanCode,
     codeHmac: hmacDigest(cleanCode, norm),
     email: norm,
     expiresAt,
@@ -199,7 +188,7 @@ export async function persistOtp(
   // 1. In-memory cache
   memoryStore.set(norm, record);
 
-  // 2. Realtime Database persistent store (stores both code and codeHmac)
+  // 2. Realtime Database persistent store (stores only cryptographic codeHmac, expiry, and metadata)
   try {
     const key = getOtpKey(norm);
     const url = `${RTDB_URL}/_auth_otps/${key}.json`;
@@ -207,7 +196,6 @@ export async function persistOtp(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: cleanCode,
         codeHmac: record.codeHmac,
         email: norm,
         expiresAt,
@@ -262,9 +250,8 @@ export async function verifyAndConsumeOtp(
   if (memRecord) {
     const isExpired = now > memRecord.expiresAt + 3 * 60 * 1000;
     if (!isExpired) {
-      const matchesPlain = memRecord.code ? timingSafeEqualString(String(memRecord.code), cleanCode) : false;
       const matchesHmac = memRecord.codeHmac ? timingSafeEqualString(memRecord.codeHmac, hmacDigest(cleanCode, norm)) : false;
-      if (matchesPlain || matchesHmac) {
+      if (matchesHmac) {
         if (consume) {
           await deleteOtpRecord(norm, key);
           consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);
@@ -307,8 +294,7 @@ export async function verifyAndConsumeOtp(
         const rtdbRecord = data as StoredOtpRecord;
         if (now <= (rtdbRecord.expiresAt || 0) + 3 * 60 * 1000) {
           const matchesHmac = rtdbRecord.codeHmac ? timingSafeEqualString(rtdbRecord.codeHmac, hmacDigest(cleanCode, norm)) : false;
-          const matchesPlain = rtdbRecord.code ? timingSafeEqualString(String(rtdbRecord.code), cleanCode) : false;
-          if (matchesHmac || matchesPlain) {
+          if (matchesHmac) {
             if (consume) {
               await deleteOtpRecord(norm, key);
               consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);

@@ -23,25 +23,33 @@ function isTrustedOrigin(origin?: string): boolean {
 
 function getSecureCorsHeaders(origin?: string): Record<string, string> {
   const trusted = isTrustedOrigin(origin);
-  const allowOrigin = trusted && origin ? origin : '*';
-  const allowCredentials = trusted ? 'true' : 'false';
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Credentials': allowCredentials,
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers':
       'Content-Type, Authorization, X-Requested-With, Accept, X-User-Id, X-User-Email, X-Entity-Ref-ID',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
+
+  if (trusted && origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
+
+  return headers;
 }
 
 let ephemeralSessionSecret: string | null = null;
 
 function getSessionSecret(): string {
   const configured = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
-  if (configured && configured.trim()) {
+  if (configured && configured.trim().length >= 16) {
     return configured.trim();
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'FATAL SECURITY CONFIGURATION: SESSION_SECRET or INTERNAL_SECURITY_KEY must be configured with at least 16 characters in production.'
+    );
   }
   if (!ephemeralSessionSecret) {
     ephemeralSessionSecret = crypto.randomBytes(32).toString('hex');
@@ -301,7 +309,6 @@ const RTDB_URL = (
 ).replace(/\/$/, '');
 
 interface StoredOtpRecord {
-  code?: string;
   codeHmac?: string;
   email: string;
   expiresAt: number;
@@ -412,7 +419,6 @@ async function persistOtp(email: string, code: string, ttlMinutes = 30): Promise
   const expiresAt = now + Math.round(ttlMinutes * 60 * 1000);
 
   const record: StoredOtpRecord = {
-    code: cleanCode,
     codeHmac: hmacDigest(cleanCode, norm),
     email: norm,
     expiresAt,
@@ -433,7 +439,6 @@ async function persistOtp(email: string, code: string, ttlMinutes = 30): Promise
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: cleanCode,
         codeHmac: record.codeHmac,
         email: norm,
         expiresAt,
@@ -480,9 +485,8 @@ async function verifyAndConsumeOtpRecord(
   const memRec = memoryStore.get(norm) || null;
   if (memRec) {
     if (now <= memRec.expiresAt + 3 * 60 * 1000) {
-      const matchesPlain = memRec.code ? timingSafeEqualString(String(memRec.code), cleanCode) : false;
       const matchesHmac = memRec.codeHmac ? timingSafeEqualString(memRec.codeHmac, hmacDigest(cleanCode, norm)) : false;
-      if (matchesPlain || matchesHmac) {
+      if (matchesHmac) {
         if (consume) {
           memoryStore.delete(norm);
           consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);
@@ -526,8 +530,7 @@ async function verifyAndConsumeOtpRecord(
           const rtdbRec = data as StoredOtpRecord;
           if (now <= (rtdbRec.expiresAt || 0) + 3 * 60 * 1000) {
             const matchesHmac = rtdbRec.codeHmac ? timingSafeEqualString(rtdbRec.codeHmac, hmacDigest(cleanCode, norm)) : false;
-            const matchesPlain = rtdbRec.code ? timingSafeEqualString(String(rtdbRec.code), cleanCode) : false;
-            if (matchesHmac || matchesPlain) {
+            if (matchesHmac) {
               if (consume) {
                 memoryStore.delete(norm);
                 consumedCodesStore.set(`${norm}:${cleanCode}`, now + 45 * 60 * 1000);

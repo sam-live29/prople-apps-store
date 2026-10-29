@@ -418,18 +418,16 @@ export async function publishAppToFirestore(
     };
     appDetailsMock[appId] = savedApp;
 
-    // Sync user's publishedAppIds in user profile document
+    // Sync user's publishedAppIds in user profile document in background
     if (currentAuthUid) {
-      try {
-        const userRef = doc(db, 'users', currentAuthUid);
-        await setDoc(userRef, {
-          publishedAppIds: arrayUnion(appId),
-          isPublisher: true,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } catch (e) {
+      const userRef = doc(db, 'users', currentAuthUid);
+      setDoc(userRef, {
+        publishedAppIds: arrayUnion(appId),
+        isPublisher: true,
+        updatedAt: serverTimestamp()
+      }, { merge: true }).catch(e => {
         console.warn('Could not sync publishedAppIds to user document:', e);
-      }
+      });
     }
 
     if (resData.isNew) {

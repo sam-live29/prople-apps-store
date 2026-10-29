@@ -356,17 +356,20 @@ export function isTrustedOrigin(origin?: string): boolean {
  */
 export function getSecureCorsHeaders(origin?: string): Record<string, string> {
   const trusted = isTrustedOrigin(origin);
-  const allowOrigin = trusted && origin ? origin : "*";
-  const allowCredentials = trusted ? "true" : "false";
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Credentials": allowCredentials,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, X-Requested-With, Accept, X-User-Id, X-User-Email, X-Entity-Ref-ID",
     "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
   };
+
+  if (trusted && origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
+  return headers;
 }
 
 // ==========================================
@@ -496,17 +499,39 @@ export function sanitizeIdentifier(
 // 7. HMAC-SHA256 Token & OTP Protection
 // ==========================================
 
-const INTERNAL_HMAC_SECRET =
-  process.env.SESSION_SECRET ||
-  process.env.INTERNAL_SECURITY_KEY ||
-  "prople-store-high-entropy-security-key-2026";
+let ephemeralInternalSecret: string | null = null;
+
+/**
+ * Retrieves the cryptographic internal secret for HMAC signatures and token validation.
+ * Fails closed in production if SESSION_SECRET or INTERNAL_SECURITY_KEY is not configured with high entropy.
+ * In non-production environments, generates an ephemeral unguessable 256-bit random key
+ * to guarantee that instances never share any static or predictable secret.
+ */
+export function getInternalHmacSecret(): string {
+  const secret = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
+  if (secret && secret.trim().length >= 16) {
+    return secret.trim();
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "FATAL SECURITY CONFIGURATION: SESSION_SECRET or INTERNAL_SECURITY_KEY environment variable must be set with at least 16 characters in production."
+    );
+  }
+  if (!ephemeralInternalSecret) {
+    ephemeralInternalSecret = crypto.randomBytes(32).toString("hex");
+    console.warn(
+      "[Security Notice] No strong SESSION_SECRET or INTERNAL_SECURITY_KEY configured in environment. Generated ephemeral 256-bit random secret for this instance."
+    );
+  }
+  return ephemeralInternalSecret;
+}
 
 /**
  * Computes an HMAC digest for an OTP or session token to prevent database leak enumeration.
  */
 export function hmacDigest(value: string, salt = ""): string {
   return crypto
-    .createHmac("sha256", INTERNAL_HMAC_SECRET)
+    .createHmac("sha256", getInternalHmacSecret())
     .update(`${salt}:${value}`)
     .digest("hex");
 }
