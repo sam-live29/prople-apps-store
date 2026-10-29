@@ -824,15 +824,13 @@ export default function AppDetailPage({
     return true;
   };
 
-  // If user didn't upload a banner for the app details page, strictly do NOT use app logo as banner
+  // App details page app banners should be only banner image, if no banner image just don't show
   const candidateBanner =
     (app?.detailsBannerUrl && isValidBanner(app.detailsBannerUrl) ? app.detailsBannerUrl.trim() : '') ||
     (app?.featureGraphicUrl && isValidBanner(app.featureGraphicUrl) ? app.featureGraphicUrl.trim() : '') ||
+    ((app as any)?.heroBannerUrl && isValidBanner((app as any).heroBannerUrl) ? (app as any).heroBannerUrl.trim() : '') ||
     ((app as any)?.bannerUrl && isValidBanner((app as any).bannerUrl) ? (app as any).bannerUrl.trim() : '') ||
     (matchingBanner?.imageUrl && isValidBanner(matchingBanner.imageUrl) ? matchingBanner.imageUrl.trim() : '') ||
-    (app?.videoThumbnailUrl && isValidBanner(app.videoThumbnailUrl) ? app.videoThumbnailUrl.trim() : '') ||
-    (app?.promoVideoUrl && customThumbnails[app.promoVideoUrl] && isValidBanner(customThumbnails[app.promoVideoUrl]) ? customThumbnails[app.promoVideoUrl] : '') ||
-    (promoYtId ? getYouTubeThumbnail(promoYtId, 'maxres') || getYouTubeThumbnail(promoYtId, 'hq') : '') ||
     '';
 
   const bannerGraphic = isValidBanner(candidateBanner) ? candidateBanner : '';
@@ -1131,105 +1129,45 @@ export default function AppDetailPage({
         {bannerGraphic ? (
           <div className="block md:hidden relative w-full border-0 border-none shadow-none">
             {/* True 16:9 Banner Card with Ambient Gradients */}
-            <div ref={bannerVideoRef} className="relative aspect-[16/9] w-full overflow-hidden select-none border-0 border-none shadow-none ring-0 outline-none sm:rounded-b-2xl bg-black">
-              {isPlayingBannerVideo && promoYtId ? (
-                /* Inline YouTube Player inside Header Banner */
-                <div className="relative w-full h-full bg-black">
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${promoYtId}?autoplay=1&rel=0&playsinline=1`}
-                    title={`${app.name} Trailer`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    className="w-full h-full border-0 block"
-                  />
-                  {/* Controls: Close and Fullscreen */}
-                  <div className="absolute top-3 right-3 flex items-center gap-2 z-30 pointer-events-auto">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLightboxIndex(0);
-                        setLightboxOpen(true);
-                      }}
-                      title="Fullscreen Theater Mode"
-                      className="p-2 rounded-full bg-black/75 hover:bg-black/90 text-white backdrop-blur-md transition-colors cursor-pointer shadow-lg"
-                      aria-label="Open fullscreen"
-                    >
-                      <Maximize2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsPlayingBannerVideo(false);
-                      }}
-                      title="Close Video"
-                      className="p-2 rounded-full bg-black/75 hover:bg-black/90 text-white backdrop-blur-md transition-colors cursor-pointer shadow-lg"
-                      aria-label="Close video"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative w-full h-full group">
-                  <AppLazyImage
-                    src={bannerGraphic}
-                    alt={app.name}
-                    className="w-full h-full object-cover object-center select-none pointer-events-none brightness-[1.03] contrast-[1.02]"
-                    containerClassName="w-full h-full"
-                  />
+            <div className="relative aspect-[16/9] w-full overflow-hidden select-none border-0 border-none shadow-none ring-0 outline-none sm:rounded-b-2xl bg-black">
+              <div className="relative w-full h-full group">
+                <AppLazyImage
+                  src={bannerGraphic}
+                  alt={app.name}
+                  className="w-full h-full object-cover object-center select-none pointer-events-none brightness-[1.03] contrast-[1.02]"
+                  containerClassName="w-full h-full"
+                />
 
-                  {/* Banner Ambient Color Wash (Only in dark mode to preserve dark appearance; omitted in light mode to prevent muddy dark artifacts) */}
-                  <div 
-                    className="absolute inset-0 pointer-events-none z-10 hidden dark:block"
-                    style={ambientColors.titleBackgroundStyle}
-                  />
+                {/* Banner Ambient Color Wash (Only in dark mode to preserve dark appearance) */}
+                <div 
+                  className="absolute inset-0 pointer-events-none z-10 hidden dark:block"
+                  style={ambientColors.titleBackgroundStyle}
+                />
 
-                  {/* Upside Ambient Gradient for crystal-clear header button legibility */}
-                  <div 
-                    className="absolute inset-x-0 top-0 h-24 sm:h-28 pointer-events-none z-10 bg-gradient-to-b from-black/60 via-black/25 to-transparent dark:from-black/75 dark:via-black/30"
-                  />
+                {/* Upside Ambient Gradient for crystal-clear header button legibility */}
+                <div 
+                  className="absolute inset-x-0 top-0 h-24 sm:h-28 pointer-events-none z-10 bg-gradient-to-b from-black/60 via-black/25 to-transparent dark:from-black/75 dark:via-black/30"
+                />
 
-                  {/* Light Mode Play Store Atmospheric Cloud Mist Fade (Dissolves banner seamlessly into pure white background) */}
-                  <div 
-                    className="absolute inset-x-0 bottom-0 h-36 sm:h-44 md:h-52 pointer-events-none z-10 block dark:hidden"
-                    style={{
-                      background: [
-                        'linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.32) 42%, rgba(255,255,255,0.68) 65%, rgba(255,255,255,0.92) 84%, #ffffff 100%)',
-                        'radial-gradient(ellipse 135% 85% at 50% 100%, #ffffff 0%, rgba(255,255,255,0.96) 48%, rgba(255,255,255,0.55) 76%, transparent 100%)',
-                      ].join(', ')
-                    }}
-                  />
+                {/* Light Mode Play Store Atmospheric Cloud Mist Fade */}
+                <div 
+                  className="absolute inset-x-0 bottom-0 h-36 sm:h-44 md:h-52 pointer-events-none z-10 block dark:hidden"
+                  style={{
+                    background: [
+                      'linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.32) 42%, rgba(255,255,255,0.68) 65%, rgba(255,255,255,0.92) 84%, #ffffff 100%)',
+                      'radial-gradient(ellipse 135% 85% at 50% 100%, #ffffff 0%, rgba(255,255,255,0.96) 48%, rgba(255,255,255,0.55) 76%, transparent 100%)',
+                    ].join(', ')
+                  }}
+                />
 
-                  {/* Downside Ambient Gradient seamlessly blending into background (Strictly preserved for dark mode) */}
-                  <div 
-                    className="absolute inset-x-0 bottom-0 h-28 sm:h-36 md:h-44 pointer-events-none z-10 hidden dark:block"
-                    style={{
-                      background: 'linear-gradient(to top, var(--theme-bg) 0%, color-mix(in srgb, var(--theme-bg) 92%, transparent) 40%, color-mix(in srgb, var(--theme-bg) 40%, transparent) 72%, transparent 100%)'
-                    }}
-                  />
-
-                  {/* Play Button on Header Banner if app has video */}
-                  {promoYtId && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (inlinePlayingVideo) setInlinePlayingVideo(null);
-                          setIsPlayingBannerVideo(true);
-                        }}
-                        className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer pointer-events-auto"
-                        title="Play Trailer"
-                        aria-label="Play Trailer"
-                      >
-                        <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white translate-x-0.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                {/* Downside Ambient Gradient seamlessly blending into background */}
+                <div 
+                  className="absolute inset-x-0 bottom-0 h-28 sm:h-36 md:h-44 pointer-events-none z-10 hidden dark:block"
+                  style={{
+                    background: 'linear-gradient(to top, var(--theme-bg) 0%, color-mix(in srgb, var(--theme-bg) 92%, transparent) 40%, color-mix(in srgb, var(--theme-bg) 40%, transparent) 72%, transparent 100%)'
+                  }}
+                />
+              </div>
             </div>
 
             {/* Header buttons directly on the image - completely transparent background, scrolls away naturally. Hidden in image viewer state */}

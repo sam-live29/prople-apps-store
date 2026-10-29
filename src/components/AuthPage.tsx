@@ -34,6 +34,7 @@ interface AuthPageProps {
 
 export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }: AuthPageProps) {
   const { 
+    user,
     login, 
     verifyPasswordStep,
     cancelPendingTwoFactor,
@@ -61,16 +62,29 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   }, [initialMode]);
 
   const handleAuthSuccess = () => {
+    try {
+      resetToHome?.();
+    } catch {}
     if (onSuccess) {
       onSuccess();
     } else if (onClose) {
       onClose();
-    } else {
+    }
+  };
+
+  // Immediate redirect to home page when user is authenticated
+  useEffect(() => {
+    if (user) {
       try {
         resetToHome?.();
       } catch {}
+      if (onSuccess) {
+        onSuccess();
+      } else if (onClose) {
+        onClose();
+      }
     }
-  };
+  }, [user]);
 
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll(`auth-${mode}-${step}`, scrollRef);

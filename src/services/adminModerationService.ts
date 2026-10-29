@@ -291,7 +291,7 @@ export function initModerationFirestoreSync() {
         if (data && (data.urlOrRepo || data.targetIdentifier)) {
           const target = (data.urlOrRepo || data.targetIdentifier || '').trim();
           
-          // Purge corrupted/invalid legacy test entries automatically from Firestore
+          // Filter out corrupted/invalid legacy test entries in memory
           const check = validateBannedLinkInput(target);
           if (
             !check.isValid ||
@@ -299,9 +299,6 @@ export function initModerationFirestoreSync() {
             target.includes('give here') ||
             (target.includes(' ') && !target.startsWith('@'))
           ) {
-            try {
-              deleteDoc(doc(db, 'banned_releases', docSnap.id)).catch(() => {});
-            } catch {}
             return;
           }
 

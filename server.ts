@@ -411,6 +411,10 @@ function validateAppPayload(app: any): { valid: boolean; error?: string } {
     const v = validateImageSource(app.heroBannerUrl, 'heroBannerUrl');
     if (!v.valid) return v;
   }
+  if (app.videoThumbnailUrl) {
+    const v = validateImageSource(app.videoThumbnailUrl, 'videoThumbnailUrl');
+    if (!v.valid) return v;
+  }
   if (Array.isArray(app.screenshots)) {
     if (app.screenshots.length > 25) {
       return { valid: false, error: 'Maximum 25 screenshots allowed.' };
@@ -5298,6 +5302,29 @@ async function startServer() {
         }
       }
     }).catch(e => console.warn("[Meilisearch] Setup warning:", e.message));
+
+    // Background server-authoritative cleanup for legacy placeholder documents
+    if (serverDb) {
+      (async () => {
+        try {
+          const notifsCol = serverCollection(serverDb, "notifications");
+          const snap = await serverGetDocs(notifsCol);
+          snap.forEach((d) => {
+            const data = d.data();
+            const id = d.id;
+            if (
+              id.includes("brick-stack") ||
+              data.appId === "app-brick-stack" ||
+              data.title?.toLowerCase().includes("brick stack") ||
+              id === "notif-security-scan" ||
+              data.actionType === "security_check"
+            ) {
+              serverDeleteDoc(d.ref).catch(() => {});
+            }
+          });
+        } catch {}
+      })().catch(() => {});
+    }
   });
 }
 

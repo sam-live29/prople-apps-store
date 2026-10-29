@@ -87,7 +87,7 @@ export function listenToStoreNotifications(
           const data = d.data();
           const docId = d.id;
 
-          // Auto-purge any legacy hardcoded placeholder documents from Firestore
+          // Filter out legacy hardcoded placeholder documents in memory
           if (
             docId.includes('brick-stack') || 
             data.appId === 'app-brick-stack' || 
@@ -95,7 +95,6 @@ export function listenToStoreNotifications(
             docId === 'notif-security-scan' ||
             data.actionType === 'security_check'
           ) {
-            deleteDoc(d.ref).catch(() => {});
             return;
           }
 

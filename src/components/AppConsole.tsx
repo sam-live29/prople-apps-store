@@ -2984,20 +2984,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         showToast(`"${newApp.name}" published successfully! App is now live on Prople Store.`, { type: 'success', duration: 4000 });
       }
 
-      // Check if developer has reached donation reminder milestones (2, then 10, 20, 30, 40...)
-      try {
-        const alreadyInList = myApps.some(a => a.id === appId);
-        const totalAfterPublish = alreadyInList ? myApps.length : myApps.length + 1;
-        const shown = getShownDonationMilestones();
-        const eligible = getEligibleDonationMilestone(totalAfterPublish, shown);
-        if (eligible !== null) {
-          recordDonationMilestoneShown(eligible);
-          setCurrentDonationMilestone(eligible);
-          setShowDonationModal(true);
-        }
-      } catch (e) {
-        // ignore
-      }
 
       // Clear the published app's draft and active session
       isDiscardedRef.current = true;
@@ -5832,12 +5818,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         </div>
       )}
 
-      {/* Developer Donation Sustainability Modal */}
-      <DeveloperDonationModal
-        isOpen={showDonationModal}
-        milestone={currentDonationMilestone}
-        onClose={() => setShowDonationModal(false)}
-      />
     </div>
   );
 }

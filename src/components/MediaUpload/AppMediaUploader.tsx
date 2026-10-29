@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Upload, Pencil, Video, AlertCircle, Check } from 'lucide-react';
+import { Plus, Upload, Pencil, Video, AlertCircle, Check, Play, X } from 'lucide-react';
 import { 
   inspectImage, 
   fileToDataUrl, 
@@ -108,6 +108,7 @@ export default function AppMediaUploader({
   const [showAllBannerSections, setShowAllBannerSections] = useState(false);
   const [iconMask, setIconMask] = useState<'squircle' | 'circle' | 'square'>('squircle');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVideoPreviewPlaying, setIsVideoPreviewPlaying] = useState(false);
 
   // Diagnostics
   const [iconDiagnostics, setIconDiagnostics] = useState<ImageDimensionResult | null>(null);
@@ -136,6 +137,7 @@ export default function AppMediaUploader({
       setIsProcessing(true);
       const dataUrl = await compressImage(file, 1280, 0.85);
       setVideoThumbnailUrl(dataUrl);
+      setIsVideoPreviewPlaying(false);
       showToast('Video thumbnail updated from gallery');
     } catch (err) {
       console.error('Failed to load thumbnail image:', err);
@@ -1397,26 +1399,69 @@ export default function AppMediaUploader({
 
             <div className="aspect-video w-full max-w-sm rounded-xl overflow-hidden bg-black/40 shadow-md relative group border border-theme-border/60">
               {youtubeId ? (
-                <>
-                  <iframe
-                    src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
-                    title="Promo Video Preview"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full border-0"
-                  />
-
-                  {/* Colorless pen icon button on top of the video: no border, no label, opens phone gallery directly */}
-                  <button
-                    type="button"
-                    onClick={() => videoThumbnailInputRef.current?.click()}
-                    title="Select video thumbnail from gallery"
-                    aria-label="Select video thumbnail from gallery"
-                    className="absolute top-2.5 right-2.5 z-20 p-2 bg-transparent text-white/90 hover:text-white transition-transform hover:scale-110 active:scale-95 cursor-pointer drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
+                isVideoPreviewPlaying ? (
+                  <div className="relative w-full h-full bg-black">
+                    <iframe
+                      src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0`}
+                      title="Promo Video Preview"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full border-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsVideoPreviewPlaying(false)}
+                      title="Stop video preview"
+                      aria-label="Stop video preview"
+                      className="absolute top-2.5 right-2.5 z-30 p-1.5 rounded-full bg-black/75 hover:bg-black/90 text-white backdrop-blur-md transition-colors cursor-pointer shadow-md"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div 
+                    className="relative w-full h-full cursor-pointer group"
+                    onClick={() => setIsVideoPreviewPlaying(true)}
+                    title="Click to play promo video preview"
                   >
-                    <Pencil className="w-5 h-5" />
-                  </button>
-                </>
+                    <img
+                      src={videoThumbnailUrl || `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`}
+                      alt="Selected video thumbnail"
+                      className="w-full h-full object-cover select-none brightness-95 group-hover:brightness-100 transition-all"
+                    />
+                    {/* Dark gradient overlay */}
+                    <div className="absolute inset-0 bg-black/25 group-hover:bg-black/15 transition-colors" />
+
+                    {/* Play button overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-black/60 group-hover:bg-black/80 backdrop-blur-md text-white flex items-center justify-center shadow-lg group-hover:scale-105 transition-all">
+                        <Play className="w-6 h-6 fill-white text-white translate-x-0.5" />
+                      </div>
+                    </div>
+
+                    {/* Custom thumbnail active badge right on the video */}
+                    {videoThumbnailUrl && (
+                      <div className="absolute bottom-2.5 left-2.5 z-20 px-2 py-1 bg-black/75 backdrop-blur-md rounded-md text-[10.5px] text-white flex items-center gap-1.5 shadow-sm border border-white/10 pointer-events-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span className="font-medium">Custom Thumbnail</span>
+                      </div>
+                    )}
+
+                    {/* Colorless pen icon button on top of the video to change thumbnail */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        videoThumbnailInputRef.current?.click();
+                      }}
+                      title="Select video thumbnail from gallery"
+                      aria-label="Select video thumbnail from gallery"
+                      className="absolute top-2.5 right-2.5 z-20 p-2 bg-black/60 hover:bg-black/80 text-white/90 hover:text-white rounded-full transition-transform hover:scale-110 active:scale-95 cursor-pointer shadow-md drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-theme-border/70 rounded-xl bg-theme-hover/10 select-none">
                   <div className="w-10 h-10 rounded-full bg-theme-hover flex items-center justify-center mb-1.5 text-theme-text-muted">

@@ -208,15 +208,10 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
           setActiveView(dest as any);
         }} 
         onSuccess={() => {
-          const dest = authReturnView;
           setAuthReturnView('main');
           setAuthInitialMode('signin');
-          if (dest === 'main') {
-            setActiveView('main');
-            resetToHome?.();
-          } else {
-            setActiveView(dest as any);
-          }
+          setActiveView('main');
+          resetToHome?.();
         }} 
       />
     );

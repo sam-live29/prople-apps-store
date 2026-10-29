@@ -268,6 +268,7 @@ export interface AppListing {
   screenshots?: string[];
   tabletScreenshots?: string[];
   promoVideoUrl?: string;
+  videoThumbnailUrl?: string;
   tagline?: string;
   aboutText?: string;
   featuredImageUrl?: string;

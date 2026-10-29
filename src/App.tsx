@@ -366,11 +366,7 @@ export default function App() {
           initialMode={authMode || 'signin'}
           onClose={goBack}
           onSuccess={() => {
-            if (canGoBack && historyDepth > 1) {
-              goBack();
-            } else {
-              resetToHome();
-            }
+            resetToHome();
           }}
         />
       );

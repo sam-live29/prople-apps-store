@@ -238,8 +238,6 @@ export default function LandscapeCardsSection({
         (full as any).videoThumbnailUrl ||
         app.featureGraphicUrl ||
         full.featureGraphicUrl ||
-        (app.screenshots && app.screenshots[0]) ||
-        (full.screenshots && full.screenshots[0]) ||
         '';
       return Boolean(graphicUrl || ytId);
     });
@@ -374,12 +372,9 @@ export default function LandscapeCardsSection({
           const thumbUrl =
             app.videoThumbnailUrl ||
             full.videoThumbnailUrl ||
-            (ytId ? getYouTubeThumbnail(ytId, 'maxres') : '') ||
             app.featureGraphicUrl ||
             full.featureGraphicUrl ||
-            (ytId ? getYouTubeThumbnail(ytId, 'hq') : '') ||
-            (app.screenshots && app.screenshots[0]) ||
-            (full.screenshots && full.screenshots[0]) ||
+            (ytId ? getYouTubeThumbnail(ytId, 'maxres') || getYouTubeThumbnail(ytId, 'hq') : '') ||
             '';
           const ratingNum = typeof app.rating === 'number' ? app.rating : (typeof full.rating === 'number' ? full.rating : 0);
           const ratingVal = ratingNum > 0 ? ratingNum.toFixed(1) : null;

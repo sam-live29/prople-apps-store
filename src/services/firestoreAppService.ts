@@ -126,33 +126,18 @@ export async function incrementAppDownloadCount(appId: string): Promise<number> 
     console.warn(`[DownloadCounter] Backend API call failed for ${appId}, falling back to direct Firestore:`, backendErr);
   }
 
-  // 3. Fallback: If backend was unavailable or returned 0, increment via direct client Firestore SDK
+  // 3. Fallback: If backend was unavailable or returned 0, increment in-memory representation
   if (finalCount === 0) {
     try {
-      const appRef = doc(db, 'apps', appId);
-      const snap = await getDoc(appRef);
-
-      if (snap.exists()) {
-        const currentCount = snap.data().downloadsCount ?? parseDownloadCount(snap.data().downloads);
-        finalCount = currentCount + 1;
+      const baseApp = appDetailsMock[appId];
+      if (baseApp) {
+        finalCount = (baseApp.downloadsCount ?? parseDownloadCount(baseApp.downloads)) + 1;
         formattedDownloads = formatDownloadCount(finalCount);
-        await updateDoc(appRef, {
-          downloadsCount: finalCount,
-          downloads: formattedDownloads,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        // Guard against phantom app generation: only update in-memory mock if it exists; never create corrupt stub docs in Firestore!
-        const baseApp = appDetailsMock[appId];
-        if (baseApp && baseApp.name && (baseApp.downloadUrl || (baseApp as any).githubReleaseUrl)) {
-          finalCount = parseDownloadCount(baseApp.downloads) + 1;
-          formattedDownloads = formatDownloadCount(finalCount);
-        } else {
-          console.warn(`[DownloadCounter] App ${appId} does not exist in repository. Skipping phantom document creation.`);
-        }
+        baseApp.downloadsCount = finalCount;
+        baseApp.downloads = formattedDownloads;
       }
     } catch (err) {
-      console.warn(`[DownloadCounter] Direct Firestore increment failed for ${appId}:`, err);
+      console.warn(`[DownloadCounter] Local increment notice for ${appId}:`, err);
     }
   }
 

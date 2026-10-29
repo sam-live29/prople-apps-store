@@ -180,7 +180,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
             const nextIcon = liveApp.iconUrl || b.appIcon;
             const nextName = liveApp.name || b.appName;
             const nextDev = liveApp.developer || b.appDeveloper;
-            const nextImage = liveApp.featureGraphicUrl || (liveApp.screenshots && liveApp.screenshots[0]) || b.imageUrl;
+            const nextImage = liveApp.featureGraphicUrl || liveApp.heroBannerUrl || b.imageUrl;
             const nextRating = liveApp.rating ?? b.appRating;
             const nextDownloads = liveApp.downloads || b.appDownloads;
             if (
@@ -516,9 +516,10 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
         screenshots: app.screenshots || [],
         tabletScreenshots: app.tabletScreenshots || [],
         promoVideoUrl: app.promoVideoUrl || '',
+        videoThumbnailUrl: app.videoThumbnailUrl || '',
         tagline: app.tagline || '',
         aboutText: app.aboutText || app.description || '',
-        featuredImageUrl: app.featureGraphicUrl || (app.screenshots && app.screenshots[0]) || '',
+        featuredImageUrl: app.featureGraphicUrl || app.heroBannerUrl || '',
         featuredTitle: app.tagline || app.name,
         featuredSubtitle: app.developer,
         publisherName: app.publisherName || app.developerInfo?.publisherName,

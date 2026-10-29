@@ -4825,3 +4825,50 @@ When users initiated sign-up or 2-factor sign-in on Vercel deployment (e.g., Mum
 
 
 
+
+
+---
+
+## 0000000000000000000000000009. Media Architecture & Authentication State Machine Optimization
+
+### 1. Authentication Transition State Machine (Zero-Stall Post-Login Navigation)
+- **Problem**: When a user signed into the platform (via email/password, OTP, or Google SSO), the success toast fired but the interface remained stalled on the authentication screen (`/auth` overlay). In shallow history states or direct navigation, generic `goBack()` calls failed to unwind the overlay.
+- **Architectural Solution**:
+  - Implemented an authoritative `resetToHome()` routing flow upon successful login in `AuthPage.tsx`, `App.tsx`, `YouPage.tsx`, and `Layout.tsx`.
+  - Added an active observer on authenticated `user` state: once authenticated, any mounted `AuthPage` immediately unwinds overlays and brings the user directly to the home page with clean navigation history state.
+
+### 2. Custom Video Thumbnail Pipeline & Publisher-to-Store Fidelity
+- **Problem**: Creators who uploaded custom thumbnails for their YouTube trailers saw the raw YouTube iframe player with third-party black bars and default frames during publishing. Simultaneously, the store feed (`LandscapeCardsSection`, `VideoCardsSection`) and `AppDetailPage` failed to display the uploaded custom thumbnail because `videoThumbnailUrl` was omitted from `AppListing` type mappings and `StoreConfigContext` hydration.
+- **Architectural Solution**:
+  - **Publisher Video Preview (`AppMediaUploader.tsx`)**: Replaced raw unstyled iframe with a dedicated custom thumbnail poster cover. The uploaded custom thumbnail is displayed directly on the video player with an interactive play trigger, custom thumbnail indicator badge, and direct phone gallery replacement pencil icon.
+  - **Catalog Pipeline Propagation**: Added `videoThumbnailUrl` to `AppListing` in `src/types.ts` and mapped it across `StoreConfigContext.tsx`, `firestoreAppService.ts`, and `server.ts` payload validation.
+  - **Store Feed & Detail Page Video Cards**: Prioritized `app.videoThumbnailUrl` across `DetailPromoVideoCard`, `LandscapeCardsSection`, and `VideoCardsSection` so uploaded thumbnails serve as the authentic video cover art before playback.
+
+### 3. Strict Banner Fidelity & Zero-Screenshot Substitution Discipline
+- **Problem**: `AppDetailPage` and showcasing sections (`LandscapeCardsSection.tsx`, `StoreConfigContext.tsx`) fell back to video thumbnails or `screenshots[0]` when an app had no banner, polluting the hero space with in-game screenshots or random video frames and rendering an awkward play button over non-video banner art.
+- **Architectural Solution**:
+  - **Strict Banner Resolution (`AppDetailPage.tsx`)**: Constrained `candidateBanner` strictly to genuine banner graphics (`detailsBannerUrl`, `featureGraphicUrl`, `heroBannerUrl`, `bannerUrl`). If an app has no genuine banner, `bannerGraphic` is completely suppressed and no banner card is rendered.
+  - **Image-Only Header Banner**: Streamlined the top mobile banner to be purely an artistic graphic, removing inline video overlays and play buttons from the top banner (the trailer video maintains its dedicated 16:9 card in the media carousel below the download action).
+  - **Zero Screenshot Substitution in Showcasing Feed**: Removed `screenshots[0]` fallbacks in `LandscapeCardsSection.tsx` and `StoreConfigContext.tsx` to maintain production-grade editorial presentation standards.
+
+### 4. Removal of Post-Upload Donation Interstitials
+- **Problem**: Publishers completing app releases encountered intrusive donation reminder modals at milestone intervals (2, 10, etc.), disrupting consecutive uploads.
+- **Architectural Solution**: Removed the automatic post-upload milestone triggers and modal rendering in `AppConsole.tsx`, ensuring a clean, friction-free publishing experience.
+
+
+---
+
+## 0000000000000000000000000010. Client-Side Read Callback Purity & Firestore Write Permission Architecture
+
+### 1. Root Cause Analysis
+- **Problem**: The browser console reported multiple burst `PERMISSION_DENIED` (Code 7) errors on initial app load:
+  `@firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream error. Code: 7 Message: 7 PERMISSION_DENIED: Missing or insufficient permissions.`
+- **Underlying Mechanism**:
+  1. `src/services/firestoreNotificationService.ts` established an `onSnapshot` listener on the public `/notifications` broadcast collection. In the snapshot processing loop, it attempted to automatically call `deleteDoc(d.ref)` on 8 matching legacy placeholder documents (`brick-stack`, `notif-security-scan`).
+  2. Because Firestore security rules enforce `allow write: if isAdmin();` on broadcast notifications, unauthenticated visitors and standard clients had their `deleteDoc` calls rejected by the Firestore security layer.
+  3. A similar pattern was present in `src/services/adminModerationService.ts` on the `/banned_releases` collection listener and in `src/services/firestoreAppService.ts` download counter client fallbacks.
+
+### 2. Architectural Solution
+- **Read Callback Purity**: Enforced strict read-only purity inside all `onSnapshot` and real-time query callbacks. Read listeners must never trigger side-effect writes (`setDoc`, `updateDoc`, `deleteDoc`).
+- **In-Memory Suppression**: Unwanted or legacy documents are filtered out in memory during array compilation (`return;`), immediately removing them from user-facing views without generating illegal database mutations.
+- **Server-Authoritative Cleanup**: Shifted legacy document deletion to `server.ts` utilizing the server's backend Firestore connection on boot, ensuring admin-restricted operations remain strictly server-side.
