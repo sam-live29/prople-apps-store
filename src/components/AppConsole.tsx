@@ -3564,16 +3564,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
               Publish as New App Instead
             </button>
           </div>
-        ) : (
-          <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-3 sm:px-6 py-1.5 flex items-center justify-between gap-2 text-xs shrink-0 z-30 w-full max-w-7xl mx-auto">
-            <div className="flex items-center gap-2 text-emerald-400 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span className="truncate text-emerald-300 dark:text-emerald-400">
-                <strong>New Application Release:</strong> Each published app receives an immutable unique ID and distinct catalog listing.
-              </span>
-            </div>
-          </div>
-        )}
+        ) : null}
 
         {/* Publisher Name Conflict Banner */}
         {isPublisherNameConflict && (

@@ -98,10 +98,10 @@ export async function unifyUserProfileAcrossAccounts(
   let mergedNameChangeSessionStartedAt = initialData.nameChangeSessionStartedAt;
   let isVerifiedAdmin = isAdminHardcoded;
 
-  // 1. Authoritative server migration and rights transfer: scan all past accounts, apps, and keystore
+  // 1. Authoritative server migration and rights transfer with 3.5s timeout protection
   if (currentUid && cleanEmail) {
     try {
-      const res = await safeFetchJson<{
+      const migratePromise = safeFetchJson<{
         success: boolean;
         user?: any;
         totalAppsClaimed?: number;
@@ -116,6 +116,12 @@ export async function unifyUserProfileAcrossAccounts(
           photoURL: mergedPhotoURL
         })
       });
+
+      const timeoutPromise = new Promise<{ ok: false; status: 0; data: null; error: string }>((resolve) => 
+        setTimeout(() => resolve({ ok: false, status: 0, data: null, error: 'timeout' }), 3500)
+      );
+
+      const res = await Promise.race([migratePromise, timeoutPromise]);
 
       if (res.ok && res.data?.success && res.data.user) {
         const u = res.data.user;
@@ -155,13 +161,12 @@ export async function unifyUserProfileAcrossAccounts(
     }
   }
 
-  // 2. Client-side Firestore fallback scan across users collection for docs matching this email
-  if (cleanEmail && db) {
+  // 2. Client-side Firestore check: directly read user's doc (fast, indexed, allowed by isOwner rule)
+  if (currentUid && db) {
     try {
-      const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(10));
-      const querySnap = await getDocs(q);
-      querySnap.forEach((d) => {
-        const data = d.data();
+      const directDocSnap = await getDoc(doc(db, 'users', currentUid));
+      if (directDocSnap && directDocSnap.exists()) {
+        const data = directDocSnap.data();
         if (data) {
           if (data.isPublisher) mergedIsPublisher = true;
           if (data.publisherName && data.publisherName !== 'User' && data.publisherName !== 'Developer') {
@@ -193,9 +198,9 @@ export async function unifyUserProfileAcrossAccounts(
           if (data.bio && !mergedBio) mergedBio = data.bio;
           if (data.photoURL && !mergedPhotoURL) mergedPhotoURL = data.photoURL;
         }
-      });
+      }
     } catch (e) {
-      console.warn('[AuthContext] Firestore multi-account scan notice:', e);
+      console.warn('[AuthContext] Direct user doc check notice:', e);
     }
   }
 
@@ -351,6 +356,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Safety release: guarantee that loading state is never blocked indefinitely
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2000);
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
@@ -363,13 +373,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {}
         if (isPending2FA) {
           setIsLoading(false);
+          clearTimeout(safetyTimer);
           return;
         }
 
+        // Release loading immediately so page and modals are never blocked
+        setIsLoading(false);
+        clearTimeout(safetyTimer);
+
         let remoteData: Partial<UserProfile> = {};
         try {
-          const userSnap = await getDoc(doc(db, 'users', fbUser.uid));
-          if (userSnap.exists()) {
+          const userSnapPromise = getDoc(doc(db, 'users', fbUser.uid));
+          const timeoutPromise = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000));
+          const userSnap = await Promise.race([userSnapPromise, timeoutPromise]) as any;
+          if (userSnap && userSnap.exists()) {
             remoteData = userSnap.data() as Partial<UserProfile>;
           }
         } catch {
@@ -378,18 +395,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const email = fbUser.email || remoteData.email || '';
         if (email) {
-          const unified = await unifyUserProfileAcrossAccounts(email, fbUser.uid, {
-            email,
-            displayName: fbUser.displayName || remoteData.displayName,
-            photoURL: fbUser.photoURL || remoteData.photoURL,
-            isEmailVerified: fbUser.emailVerified || remoteData.isEmailVerified,
-            ...remoteData
-          });
-          setUser(unified);
           try {
-            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
-          } catch {}
-          syncUserProfileToFirestore(unified);
+            const unified = await unifyUserProfileAcrossAccounts(email, fbUser.uid, {
+              email,
+              displayName: fbUser.displayName || remoteData.displayName,
+              photoURL: fbUser.photoURL || remoteData.photoURL,
+              isEmailVerified: fbUser.emailVerified || remoteData.isEmailVerified,
+              ...remoteData
+            });
+            setUser(unified);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
+            } catch {}
+            syncUserProfileToFirestore(unified);
+          } catch (e) {
+            console.warn('[AuthContext] Auth state profile sync notice:', e);
+          }
         }
       } else {
         // When not authenticated with Firebase, maintain any active verified email/OTP session
@@ -408,8 +429,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch {}
           return null;
         });
+        setIsLoading(false);
+        clearTimeout(safetyTimer);
       }
-      setIsLoading(false);
     });
 
     // Cross-tab and cross-window auth broadcast listener
@@ -811,48 +833,127 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithGoogle = async () => {
     setIsLoading(true);
+    let resolvedUser: UserProfile | null = null;
     try {
       const provider = new GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
       // Enforce Google account picker so user always chooses a legitimate account
       provider.setCustomParameters({
         prompt: 'select_account'
       });
-      const cred = await signInWithPopup(auth, provider);
+
+      // 45-second timeout protection in case the browser popup is abandoned or suppressed
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const timeoutErr: any = new Error('Google sign-in timed out. Please try again.');
+          timeoutErr.code = 'auth/timeout';
+          reject(timeoutErr);
+        }, 45000);
+      });
+
+      const cred = await Promise.race([
+        signInWithPopup(auth, provider),
+        timeoutPromise
+      ]);
+
       if (!cred || !cred.user || !cred.user.email) {
         throw new Error('Please select a legitimate Google account to sign in.');
       }
-      const email = cred.user.email;
+
+      const email = cred.user.email.toLowerCase().trim();
       const displayName = cred.user.displayName || email.split('@')[0] || 'User';
 
-      let remoteData: Partial<UserProfile> = {};
+      // Clear any pending 2FA gate since Google OAuth provides verified email authentication
+      pendingTwoFactorRef.current = false;
       try {
-        const snap = await getDoc(doc(db, 'users', cred.user.uid));
-        if (snap.exists()) {
-          remoteData = snap.data() as Partial<UserProfile>;
+        sessionStorage.removeItem(SESSION_PENDING_2FA_KEY);
+      } catch {}
+
+      // Retrieve any previous local profile cache for immediate zero-latency population
+      let cachedProfile: Partial<UserProfile> = {};
+      try {
+        const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+        if (saved) {
+          const p = JSON.parse(saved);
+          if (p && p.email && p.email.toLowerCase() === email) {
+            cachedProfile = p;
+          }
         }
-      } catch (err) {
-        console.warn('Could not read existing user doc from Firestore:', err);
-      }
+      } catch {}
 
-      const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
+      const isAdminHardcoded = isAdminEmail(email);
+      const isDevHardcoded = isDeveloperEmail(email);
+
+      // 1. Fast, optimistic profile: user is logged in instantly without waiting for network roundtrips
+      resolvedUser = {
+        uid: cred.user.uid,
         email,
-        displayName,
-        photoURL: cred.user.photoURL || undefined,
-        isEmailVerified: cred.user.emailVerified,
-        ...remoteData
-      });
+        displayName: cachedProfile.displayName || displayName,
+        photoURL: cred.user.photoURL || cachedProfile.photoURL,
+        age: cachedProfile.age || '25',
+        gender: cachedProfile.gender || 'Prefer not to say',
+        location: cachedProfile.location || 'Global',
+        bio: cachedProfile.bio || '',
+        isEmailVerified: true,
+        isPublisher: cachedProfile.isPublisher ?? (isAdminHardcoded || isDevHardcoded),
+        publisherName: cachedProfile.publisherName || cachedProfile.displayName || displayName,
+        publisherRole: cachedProfile.publisherRole || (isAdminHardcoded ? 'Store Administrator' : (isDevHardcoded ? 'Verified Developer' : 'Standard User')),
+        publishedAppIds: cachedProfile.publishedAppIds || [],
+        developerKeystore: cachedProfile.developerKeystore,
+        publisherBio: cachedProfile.publisherBio || '',
+        publisherWebsite: cachedProfile.publisherWebsite || '',
+        publisherEmail: email,
+        publisherGithub: cachedProfile.publisherGithub || '',
+        publisherLocation: cachedProfile.publisherLocation || '',
+      };
 
-      setUser(unified);
-      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
-      syncUserProfileToFirestore(unified);
+      setUser(resolvedUser);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(resolvedUser));
+      } catch {}
+
+      // Immediately release loading indicator so dialog and buttons close instantly
+      setIsLoading(false);
+
+      // 2. Asynchronously enrich rights, keystore & publisher apps in background (non-blocking)
+      (async () => {
+        let remoteData: Partial<UserProfile> = {};
+        try {
+          const snapPromise = getDoc(doc(db, 'users', cred.user.uid));
+          const snapTimeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500));
+          const snap = await Promise.race([snapPromise, snapTimeout]) as any;
+          if (snap && snap.exists()) {
+            remoteData = snap.data() as Partial<UserProfile>;
+          }
+        } catch (docErr) {
+          console.warn('[AuthContext] Fast user doc check notice:', docErr);
+        }
+
+        try {
+          const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
+            ...resolvedUser,
+            ...remoteData
+          });
+          setUser(unified);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
+          } catch {}
+          syncUserProfileToFirestore(unified);
+        } catch (enrichErr) {
+          console.warn('[AuthContext] Background profile unification notice:', enrichErr);
+        }
+      })().catch(() => {});
+
     } catch (err: any) {
       console.warn('[AuthContext] Google sign-in notice:', err?.code || err?.message || err);
-      // STRICT: Never create a mock or synthetic "Google Developer" account!
-      // User must create and sign in with a legitimate Google account.
-      setUser(null);
-      try {
-        localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-      } catch {}
+      // Only reset user if credentials were not obtained
+      if (!resolvedUser) {
+        setUser(null);
+        try {
+          localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+        } catch {}
+      }
 
       let message = 'Google sign-in could not be completed.';
       if (err?.code === 'auth/popup-closed-by-user') {
@@ -861,6 +962,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message = 'Google sign-in popup was blocked by your browser. Please allow popups or open in a new window to select your Google account.';
       } else if (err?.code === 'auth/cancelled-popup-request') {
         message = 'Google sign-in was cancelled. Please try again.';
+      } else if (err?.code === 'auth/timeout') {
+        message = 'Google sign-in timed out. Please try again.';
       } else if (err?.code === 'auth/account-exists-with-different-credential') {
         message = 'An account already exists with this email address under a different login method.';
       } else if (err?.message) {

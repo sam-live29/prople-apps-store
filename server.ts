@@ -2851,9 +2851,29 @@ async function startServer() {
         console.warn("[MigrateUserRights] Admin check notice:", e.message);
       }
 
-      // 1. Find all user profile documents in Firestore matching this email or UID
+      // 1. Find user profile documents via direct UID lookup and indexed email query (fast & non-blocking)
       const usersCol = serverCollection(serverDb, "users");
-      const userSnap = await serverGetDocs(usersCol);
+      const foundUserDocs: { id: string; data: () => any }[] = [];
+      try {
+        const directUserDoc = await serverGetDoc(serverDoc(serverDb, "users", cleanUid));
+        if (directUserDoc && directUserDoc.exists()) {
+          foundUserDocs.push(directUserDoc);
+        }
+      } catch (err: any) {
+        console.warn("[MigrateUserRights] Direct user doc check notice:", err.message);
+      }
+
+      try {
+        const qEmail = serverQuery(usersCol, serverWhere("email", "==", cleanEmail), serverLimit(5));
+        const emailSnap = await serverGetDocs(qEmail);
+        emailSnap.forEach(d => {
+          if (!foundUserDocs.some(existing => existing.id === d.id)) {
+            foundUserDocs.push(d);
+          }
+        });
+      } catch (err: any) {
+        console.warn("[MigrateUserRights] Email query check notice:", err.message);
+      }
 
       let mergedPublisherName = (displayName || cleanEmail.split('@')[0]).trim();
       let mergedPublisherRole = isAdmin ? 'Store Administrator' : 'Standard User';
@@ -2870,8 +2890,8 @@ async function startServer() {
       let mergedLastNameChangedAt: any = null;
       let mergedNameChangeSessionStartedAt: any = null;
 
-      // Scan all docs for any existing profile with matching email or this UID
-      for (const d of userSnap.docs) {
+      // Scan found docs for any existing profile with matching email or this UID
+      for (const d of foundUserDocs) {
         const data = d.data();
         const dEmail = (data.email || '').toLowerCase().trim();
         const dPubEmail = (data.publisherEmail || '').toLowerCase().trim();
@@ -2922,13 +2942,12 @@ async function startServer() {
         mergedPublisherRole = 'Store Administrator';
       }
 
-      // 2. Claim all apps belonging to this email and update ownership to current cleanUid
-      const appsCol = serverCollection(serverDb, "apps");
-      const appSnap = await serverGetDocs(appsCol);
+      // 2. Claim all apps belonging to this email and update ownership using cached catalog
+      const allApps = await getAllAppsServer(1500);
       const claimedAppIds: string[] = [];
 
-      for (const d of appSnap.docs) {
-        const appData = d.data();
+      for (const appData of allApps) {
+        if (!appData || !appData.id) continue;
         const devEmail = (appData.developerEmail || '').toLowerCase().trim();
         const pubEmail = (appData.publisherEmail || '').toLowerCase().trim();
         const ownerEmail = (appData.ownerEmail || '').toLowerCase().trim();
@@ -2944,7 +2963,7 @@ async function startServer() {
         );
 
         if (matches) {
-          claimedAppIds.push(d.id);
+          claimedAppIds.push(appData.id);
           const needsUpdate = (
             appData.owner !== cleanUid ||
             appData.developerId !== cleanUid ||
@@ -2954,7 +2973,7 @@ async function startServer() {
 
           if (needsUpdate) {
             try {
-              const appRef = serverDoc(serverDb, "apps", d.id);
+              const appRef = serverDoc(serverDb, "apps", appData.id);
               const updatedPayload: Record<string, any> = {
                 owner: cleanUid,
                 developerId: cleanUid,
@@ -2979,11 +2998,10 @@ async function startServer() {
       // Only keep app IDs that strictly belong to this user (by matching developer/owner email or UID)
       const combinedAppIds = Array.from(new Set([...mergedPublishedAppIds, ...claimedAppIds]));
       const sanitizedPublishedAppIds = combinedAppIds.filter(appId => {
-        const matchingDoc = appSnap.docs.find(ad => ad.id === appId);
-        if (!matchingDoc) return false;
-        const d = matchingDoc.data();
-        const devE = (d.developerEmail || d.ownerEmail || d.publisherEmail || '').toLowerCase().trim();
-        const ownerU = (d.owner || d.developerId || d.creatorUid || '').trim();
+        const app = allApps.find(ad => ad.id === appId);
+        if (!app) return false;
+        const devE = (app.developerEmail || app.ownerEmail || app.publisherEmail || '').toLowerCase().trim();
+        const ownerU = (app.owner || app.developerId || app.creatorUid || '').trim();
         if (devE && devE !== cleanEmail) return false;
         if (ownerU && ownerU !== cleanUid && !['developer', 'dev-publisher', 'guest', ''].includes(ownerU)) return false;
         return true;
@@ -3033,7 +3051,7 @@ async function startServer() {
       }
 
       // Synchronize all alternate documents matching this email so switching back and forth is 100% persistent
-      for (const d of userSnap.docs) {
+      for (const d of foundUserDocs) {
         if (d.id !== cleanUid) {
           const dEmail = (d.data().email || '').toLowerCase().trim();
           const dPubEmail = (d.data().publisherEmail || '').toLowerCase().trim();
