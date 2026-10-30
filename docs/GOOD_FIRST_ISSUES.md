@@ -1,10 +1,14 @@
 # Beginner-Friendly Issues (Good First Issues)
 
-Welcome! If you are looking to make your first contribution to **Prople Store**, this curated list of starter tasks is designed for you. Each task is small, self-contained, clearly scoped, and does not require private cloud credentials (they can all be developed and tested in local mock mode).
+Welcome! If you are looking to make your first contribution to **Prople Store**, this curated list of starter tasks is designed for you. Each task is small, self-contained, clearly scoped, and does not require private cloud credentials (they can all be developed and tested in local zero-config mode).
+
+> ⚠️ **Looking for Deep Systems & Core Architecture Challenges?**  
+> If you are a senior engineer looking to work on streaming SHA-256 cryptographic verification, private repository distribution pipelines, S3/R2 binary upload pipelines, or Android Keystore v2/v3 signature parsing, please check out:
+> - 🚀 [**Advanced Contributor Challenges (ADV-01 to ADV-05)**](ADVANCED_CONTRIBUTOR_CHALLENGES.md)
 
 ---
 
-## Index of Starter Issues
+## Index of Starter Issues (Beginner & Intermediate)
 
 | ID | Title | Difficulty | Primary Focus | Relevant Files |
 | :--- | :--- | :--- | :--- | :--- |
@@ -13,10 +17,26 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 | **GFI-03** | [Interactive Share Link Toast & Audio Feedback](#gfi-03-interactive-share-link-toast--audio-feedback) | 🟢 Easy | Micro-interactions | `src/components/AppDetailPage.tsx`, `src/utils/shareUtils.ts` |
 | **GFI-04** | [Platform Filter Quick-Chips on Explore View](#gfi-04-platform-filter-quick-chips-on-explore-view) | 🟡 Medium-Easy | UI / State | `src/components/ExplorePage.tsx` |
 | **GFI-05** | [Static Mock Catalog Sanity Validator Script](#gfi-05-static-mock-catalog-sanity-validator-script) | 🟡 Medium-Easy | Tooling / Testing | `scripts/validate_catalog.js`, `src/data.ts` |
-| **GFI-06** | [Direct Package Binary File Upload in Console](#gfi-06-direct-package-binary-file-upload-in-console) | 🟡 Medium | Feature / Storage | `src/components/AppConsole.tsx`, `server/s3Storage.ts` |
-| **GFI-07** | [Private GitHub Release Access Token Importer](#gfi-07-private-github-release-access-token-importer) | 🟡 Medium | Backend / API | `api/resolve-apk.ts`, `api/github-release-meta.ts` |
-| **GFI-08** | [Private Repo Helper Accordion & Cloud Links in Console](#gfi-08-private-repo-helper-accordion--cloud-links-in-console) | 🟢 Easy | UI / Guidance | `src/components/AppConsole.tsx` |
-| **GFI-09** | [One-Time Binary Release Mirroring & CDN Cache Endpoint](#gfi-09-one-time-binary-release-mirroring--cdn-cache-endpoint) | 🔴 Advanced | Architecture / Proxy | `server.ts`, `api/download-apk.ts` |
+| **GFI-06** | [Private Repo & Self-Hosting Helper Accordion in Console](#gfi-06-private-repo--self-hosting-helper-accordion-in-console) | 🟢 Easy | UI / Guidance | `src/components/AppConsole.tsx` |
+
+---
+
+## Advanced Systems & Algorithm Track (For Experienced Engineers)
+
+These issues require backend streaming pipelines, cryptographic hash computation, distribution section generation, and algorithm design. They are fully documented in [**ADVANCED_CONTRIBUTOR_CHALLENGES.md**](ADVANCED_CONTRIBUTOR_CHALLENGES.md):
+
+| ID | Title | Complexity | Domain |
+| :--- | :--- | :--- | :--- |
+| **ADV-01** | [Automated Streaming SHA-256 Digest & Sidecar Verifier](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-01-automated-streaming-sha-256-digest--sidecar-verifier) | 🔴 Advanced | Backend / Crypto |
+| **ADV-02** | [Direct Binary Package Multipart Upload with S3/R2](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-02-direct-binary-package-multipart-upload-with-s3r2) | 🔴 Advanced | Cloud / Full-Stack |
+| **ADV-03** | [Scoped Private GitHub Release Importer & Token Sanitizer](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-03-scoped-private-github-release-importer--token-sanitizer) | 🔴 Advanced | Security / API |
+| **ADV-04** | [One-Time Binary Release Mirroring & Edge CDN Cache](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-04-one-time-binary-release-mirroring--edge-cdn-cache) | 🔴 Advanced | Systems / Proxy |
+| **ADV-05** | [Android Keystore Signature (v2/v3) Fingerprint Parser & Lock](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-05-android-keystore-signature-v2v3-fingerprint-parser--lock) | 🔴 Advanced | Security / Android |
+| **ADV-06** | [Dynamic Store Distribution Section Generator & Category Clustering](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-06-dynamic-store-distribution-section-generator--category-clustering) | 🔴 Advanced | Feed / Clustering |
+| **ADV-07** | [Context-Aware Dynamic Ranking & Time-Decay Feed Scoring Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-07-context-aware-dynamic-ranking--time-decay-feed-scoring-engine) | 🔴 Advanced | Ranking / Math |
+| **ADV-08** | [Anti-Gaming Download Velocity & Sybil Review Detection Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-08-anti-gaming-download-velocity--sybil-review-detection-engine) | 🔴 Advanced | Fraud / Statistics |
+| **ADV-09** | [Multi-Platform Package Asset Matching & Architecture Constraint Solver](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-09-multi-platform-package-asset-matching--architecture-constraint-solver) | 🔴 Advanced | Systems / Solver |
+| **ADV-10** | [Sub-5ms Client-Side BM25 & Fuzzy Typo-Tolerant Search Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-10-sub-5ms-client-side-bm25--fuzzy-typo-tolerant-search-engine) | 🔴 Advanced | Search / IR |
 
 ---
 
@@ -110,47 +130,7 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 
 ---
 
-### GFI-06: Direct Package Binary File Upload in Console
-
-- **Goal**: Enable developers to directly upload installation binaries (`.apk`, `.exe`, `.deb`, `.dmg`, etc.) from their local disk when their source repository is private or not hosted on public GitHub releases.
-- **Files to Inspect**:
-  - `src/components/AppConsole.tsx`
-  - `src/components/MediaUpload/AppMediaUploader.tsx`
-  - `server/s3Storage.ts`
-- **Problem Statement**:
-  Currently, publishing is optimized around public GitHub release URLs or direct web URLs. For apps with proprietary code or builds stored in private repositories, developers need a native drag-and-drop file upload zone to host binaries securely on Prople Store's storage.
-- **Acceptance Criteria**:
-  1. Add a "Upload Binary Package" drag-and-drop tab in Step 1 alongside the URL input.
-  2. Validate file extensions against recognized package formats (`.apk`, `.aar`, `.exe`, `.msi`, `.deb`, `.appimage`, `.dmg`, `.ipa`, `.zip`).
-  3. Client-side checksum generation: automatically compute SHA-256 hash using Web Crypto API (`crypto.subtle.digest`) on upload.
-  4. Display upload progress bar, uploaded filename, and detected file size.
-  5. Save the uploaded URL directly to `downloadUrl` and populate package metadata automatically.
-- **Verification**:
-  Open Developer Console, go to Publish New App, drag and drop a test `.apk` file into the upload zone, verify checksum calculation and package info autofill.
-
----
-
-### GFI-07: Private GitHub Release Access Token Importer
-
-- **Goal**: Allow publishers to input a scoped GitHub Personal Access Token (PAT) to import releases from private GitHub repositories.
-- **Files to Inspect**:
-  - `api/resolve-apk.ts`
-  - `api/github-release-meta.ts`
-  - `src/components/AppConsole.tsx`
-  - `src/utils/appMetricsAlgorithm.ts`
-- **Problem Statement**:
-  When a developer enters a release link for a private GitHub repository (`https://github.com/owner/private-repo/releases`), the server gets HTTP 404 or 401 because GitHub restricts release assets to authenticated users with repo read access.
-- **Acceptance Criteria**:
-  1. Add an optional "Private Repository Access Token" password field with a helper tooltip ("Requires fine-grained token with 'Releases: Read' permission only").
-  2. In `api/github-release-meta.ts` and `api/resolve-apk.ts`, send `Authorization: Bearer <token>` when querying GitHub API endpoints if a token is provided.
-  3. Never persist or expose the developer's personal token in public client payloads or firestore app documents.
-  4. Correctly parse release tags, release notes, and extract binary assets from the authenticated private release.
-- **Verification**:
-  Provide a test private repo release URL with a test token, verify that release tags and assets load successfully instead of 404.
-
----
-
-### GFI-08: Private Repo Helper Accordion & Cloud Links in Console
+### GFI-06: Private Repo & Self-Hosting Helper Accordion in Console
 
 - **Goal**: Add a guided help accordion in Step 1 explaining how developers can publish apps whose source code is in private repositories.
 - **Files to Inspect**:
@@ -160,31 +140,12 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 - **Acceptance Criteria**:
   1. Add an expandable "Hosting from a private repository or self-hosted server?" accordion beneath the release URL field.
   2. Include step-by-step instructions for:
-     - Method A: Direct file upload (via GFI-06).
-     - Method B: Hosting on Cloudflare R2 / AWS S3 / Firebase Storage with public read URL.
-     - Method C: Using private GitHub release tokens (via GFI-07).
+     - Hosting direct `.apk` / binary files on Cloudflare R2 / AWS S3 / Firebase Storage.
+     - Using a dedicated public releases repository (split-repo pattern).
+     - Adding `.sha256` checksums for automatic verification.
   3. Styled cleanly with subtle Google Material borders matching the dark/light theme.
 - **Verification**:
-  Click the accordion on Step 1 of Publish New App, verify smooth expand/collapse and readable, formatted instructions.
-
----
-
-### GFI-09: One-Time Binary Release Mirroring & CDN Cache Endpoint
-
-- **Goal**: Implement server-side one-time mirroring of private/external binary packages so that user downloads are delivered fast and reliably from store CDN storage.
-- **Files to Inspect**:
-  - `server.ts`
-  - `api/download-apk.ts`
-  - `server/s3Storage.ts`
-- **Problem Statement**:
-  Streaming binaries repeatedly through GitHub API using a publisher token hits GitHub API rate limits (5,000/hr) and fails if the publisher changes or revokes their token. Mirroring the binary once during release publishing decouples user downloads from GitHub credentials.
-- **Acceptance Criteria**:
-  1. Add a backend pipeline `/api/mirror-release-package` that takes an authorized release URL and streams the binary to the store's S3/CDN bucket.
-  2. Verify SHA-256 integrity after mirroring to guarantee the cached file matches the original release binary.
-  3. Point the live app's `downloadUrl` to the mirrored CDN asset.
-  4. Ensure downloads bypass GitHub rate limits and work even if the original private repository is later archived or token revoked.
-- **Verification**:
-  Trigger a mirror action on a test binary URL, verify the binary is saved in cloud storage and download delivers with HTTP 200 via store proxy.
+  Click the accordion on Step 1 of Publish New App in Developer Console, verify smooth expand/collapse and readable, formatted instructions.
 
 ---
 
