@@ -39,3 +39,4 @@ This document tracks architectural updates and algorithmic optimizations impleme
   - Replaced with `actions/cache@v5` targeting `~/.npm` and keyed on `hashFiles('package-lock.json', 'package.json')`, preserving fast dependency cache hits regardless of whether `package-lock.json` is committed.
 - **Node 24 Action Runtime Alignment & Hygiene**:
   - Upgraded `actions/checkout` and `actions/setup-node` to `v6` (`node24` runner runtime) to eliminate GitHub Actions Node 20 deprecation warnings, added `npm run test:catalog` verification into CI, and excluded `public/assets/aistudio/` from git tracking and PWA Workbox precaching.
+
