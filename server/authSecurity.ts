@@ -1,4 +1,4 @@
-import express from 'express';
+import type express from 'express';
 import {
   collection,
   doc,
@@ -11,7 +11,7 @@ import {
   limit,
   where
 } from 'firebase/firestore';
-import { isStrictAdminEmail, verifySecuritySecret } from './securityDefense';
+import { isStrictAdminEmail, verifySecuritySecret } from './securityDefense.ts';
 
 /**
  * Prople Store — Enterprise Authentication Security Engine

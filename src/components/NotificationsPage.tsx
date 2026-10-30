@@ -8,6 +8,7 @@ import { usePreserveScroll } from '../services/scrollManager';
 import { sanitizeExternalUrl } from '../utils/securityUtils';
 import { requestPhoneNotificationPermission } from '../services/firestoreNotificationService';
 import GlobalNoticeDetailModal from './GlobalNoticeDetailModal';
+import StoreCircleLoader from './StoreCircleLoader';
 
 interface NotificationsPageProps {
   onClose: () => void;
@@ -226,7 +227,7 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
     clearNotification,
     clearAllNotifications
   } = useInstall();
-  const { allAppListings } = useStoreConfig();
+  const { allAppListings, isLoadingApps, hasInitialSyncCompleted } = useStoreConfig();
 
   const [showMenu, setShowMenu] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<NotificationItem | null>(null);
@@ -364,6 +365,11 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
           </AnimatePresence>
         </div>
 
+        {(isLoadingApps || !hasInitialSyncCompleted) && notifications.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+            <StoreCircleLoader size="md" />
+          </div>
+        ) : (
         <AnimatePresence initial={false}>
           {notifications.length === 0 && (
             <motion.div
@@ -384,6 +390,7 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
 
       {/* Straight Corner Global Notice Detail Modal */}

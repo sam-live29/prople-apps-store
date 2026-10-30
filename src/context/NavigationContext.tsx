@@ -150,8 +150,7 @@ export function getInitialNavigationState(): NavigationState {
       rawPath === '/developer-console' ||
       searchParams.get('publish') === 'true' ||
       searchParams.get('view') === 'studio' ||
-      searchParams.get('view') === 'publish' ||
-      (typeof window !== 'undefined' && localStorage.getItem('prople_publish_form_open') === 'true')
+      searchParams.get('view') === 'publish'
     ) {
       return {
         ...initialNavigationState,
@@ -1048,13 +1047,19 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const setSelectedCategory = useCallback((category: string | null) => {
     pushStep({
+      ...(category
+        ? {
+            activeTab: (current.activeTab === 'apps' || current.activeTab === 'games') ? current.activeTab : 'apps',
+            activeSubTab: 'Categories',
+          }
+        : {}),
       selectedCategory: category,
       activeAppDetailsId: null,
       detailView: 'none',
       overlay: 'none',
       activePublisherName: null,
     });
-  }, [pushStep]);
+  }, [pushStep, current.activeTab]);
 
   const resetToHome = useCallback(() => {
     stackRef.current = [initialNavigationState];

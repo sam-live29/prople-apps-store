@@ -30,7 +30,13 @@ import {
   getAppPublisherName
 } from '../utils/appMetricsAlgorithm';
 import { getAppFormatBadgeLabel } from '../services/osDetectionService';
-import { isGameApp } from '../utils/productionFeedAlgorithm';
+import {
+  canonicalizeCategoryKey,
+  doesAppMatchCategory,
+  getAppLatestTimestampMs,
+  normalizeCategoryName,
+} from '../utils/productionFeedAlgorithm';
+import { appCategories } from '../data';
 import { slugifyAppName } from '../utils/shareUtils';
 
 interface TopChartsProps {
@@ -39,7 +45,7 @@ interface TopChartsProps {
 }
 
 export default function TopCharts({ onAppClick, initialCategory }: TopChartsProps) {
-  const { allAppListings, apps, refreshCatalogue, isPullRefreshing } = useStoreConfig();
+  const { allAppListings, apps, isLoadingApps, hasInitialSyncCompleted, refreshCatalogue, isPullRefreshing } = useStoreConfig();
   const { getAppReviews } = useReviews();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -65,20 +71,37 @@ export default function TopCharts({ onAppClick, initialCategory }: TopChartsProp
 
   const topFilters = ['Top rated', 'Trending', 'New releases'];
   
-  const categoriesList = [
-    { name: 'All categories', icon: null },
-    { name: 'Games', icon: Gamepad2 },
-    { name: 'Ecommerce', icon: ShoppingCart },
-    { name: 'Watch faces', icon: Clock },
-    { name: 'Art & Design', icon: PenTool },
-    { name: 'Auto & Vehicles', icon: Car },
-    { name: 'Beauty', icon: Flower2 },
-    { name: 'Books & Reference', icon: Book },
-    { name: 'Business', icon: Briefcase },
-    { name: 'Communication', icon: MessageSquare },
-    { name: 'Education', icon: GraduationCap },
-    { name: 'Entertainment', icon: Clapperboard },
-  ];
+  const categoriesList = useMemo(() => {
+    const iconByCat: Record<string, any> = {
+      'Games': Gamepad2,
+      'Shopping': ShoppingCart,
+      'Art & Design': PenTool,
+      'Auto & Vehicles': Car,
+      'Beauty': Flower2,
+      'Books & Reference': Book,
+      'Business': Briefcase,
+      'Productivity': Briefcase,
+      'Communication': MessageSquare,
+      'Education': GraduationCap,
+      'Entertainment': Clapperboard,
+    };
+    const items: Array<{ name: string; icon: any }> = [
+      { name: 'All categories', icon: null },
+      ...appCategories.map(c => ({ name: c.name, icon: iconByCat[c.name] || null })),
+    ];
+    const seen = new Set(items.map(i => canonicalizeCategoryKey(i.name)));
+    for (const app of allAppListings) {
+      const rawCat = (app.category || apps[app.id]?.category || '').trim();
+      if (!rawCat) continue;
+      const key = canonicalizeCategoryKey(rawCat);
+      if (!seen.has(key)) {
+        seen.add(key);
+        const clean = normalizeCategoryName(rawCat);
+        items.push({ name: clean, icon: iconByCat[clean] || null });
+      }
+    }
+    return items;
+  }, [allAppListings, apps]);
 
   const getAppMetrics = (listing: AppListing) => {
     const fullApp = apps[listing.id];
@@ -105,15 +128,9 @@ export default function TopCharts({ onAppClick, initialCategory }: TopChartsProp
   };
 
   const filteredApps = useMemo(() => {
-    let result = allAppListings.filter(app => {
-      if (selectedCategory === 'All categories') return true;
-      const catLower = (app.category || '').toLowerCase();
-      const targetCatLower = selectedCategory.toLowerCase();
-      if (targetCatLower === 'games') {
-        return isGameApp(app, apps[app.id]);
-      }
-      return catLower.includes(targetCatLower);
-    });
+    let result = allAppListings.filter(app =>
+      doesAppMatchCategory(app, apps[app.id], selectedCategory, initialCategory === 'games')
+    );
 
     if (selectedTopFilter === 'Top rated') {
       result = [...result].sort((a, b) => {
@@ -121,18 +138,26 @@ export default function TopCharts({ onAppClick, initialCategory }: TopChartsProp
         const metricsB = getAppMetrics(b);
         const ratingA = metricsA.isRated ? parseFloat(metricsA.averageRating) : (a.rating || 0);
         const ratingB = metricsB.isRated ? parseFloat(metricsB.averageRating) : (b.rating || 0);
-        return ratingB - ratingA;
+        if (ratingB !== ratingA) return ratingB - ratingA;
+        return getAppLatestTimestampMs(b, apps[b.id]) - getAppLatestTimestampMs(a, apps[a.id]);
       });
     } else if (selectedTopFilter === 'Trending') {
       result = [...result].sort((a, b) => {
         const dCountA = a.downloadsCount ?? parseDownloadCount(a.downloads);
         const dCountB = b.downloadsCount ?? parseDownloadCount(b.downloads);
-        return dCountB - dCountA;
+        if (dCountB !== dCountA) return dCountB - dCountA;
+        return getAppLatestTimestampMs(b, apps[b.id]) - getAppLatestTimestampMs(a, apps[a.id]);
+      });
+    } else if (selectedTopFilter === 'New releases') {
+      result = [...result].sort((a, b) => {
+        const tsDiff = getAppLatestTimestampMs(b, apps[b.id]) - getAppLatestTimestampMs(a, apps[a.id]);
+        if (tsDiff !== 0) return tsDiff;
+        return b.id.localeCompare(a.id);
       });
     }
 
     return result;
-  }, [allAppListings, selectedCategory, selectedTopFilter]);
+  }, [allAppListings, apps, selectedCategory, selectedTopFilter, initialCategory]);
 
   // Progressive vertical loading (initial 30, loads 30 more)
   const [displayLimit, setDisplayLimit] = useState(30);
@@ -209,30 +234,9 @@ export default function TopCharts({ onAppClick, initialCategory }: TopChartsProp
 
       {/* Edge-to-Edge List Rows */}
       <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 pt-2">
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-3 w-full animate-pulse select-none">
-            {Array.from({ length: 9 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="w-full flex items-center gap-3.5 py-2 px-1 rounded-xl"
-              >
-                <span className="w-6 text-center font-semibold text-sm text-theme-text-muted/60 shrink-0">
-                  {idx + 1}
-                </span>
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[18px] shrink-0 bg-theme-hover shadow-xs border-0" />
-                <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1.5">
-                  <div className="h-4 w-36 sm:w-44 rounded bg-theme-hover" />
-                  <div className="h-3 w-28 sm:w-36 rounded bg-theme-hover/70" />
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-3 w-8 rounded bg-theme-hover/80" />
-                    <div className="h-1.5 w-1.5 rounded-full bg-theme-hover/50" />
-                    <div className="h-3 w-12 rounded bg-theme-hover/60" />
-                    <div className="h-1.5 w-1.5 rounded-full bg-theme-hover/50" />
-                    <div className="h-3 w-10 rounded bg-theme-hover/60" />
-                  </div>
-                </div>
-              </div>
-            ))}
+        {isLoading || ((isLoadingApps || !hasInitialSyncCompleted) && allAppListings.length === 0) ? (
+          <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+            <StoreCircleLoader size="md" />
           </div>
         ) : displayedApps.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 mt-12 text-center w-full">

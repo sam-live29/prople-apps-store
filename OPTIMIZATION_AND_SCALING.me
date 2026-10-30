@@ -1,0 +1,34 @@
+# Prople Store — Feed Algorithm, Category Indexing & Scaling Blueprint
+
+This document tracks architectural updates and algorithmic optimizations implemented across Prople Store's catalog pipeline, Home showcase generation, Category indexing, routing persistence, and search/recommendation freshness.
+
+## 1. Firestore Timestamp Normalization & Full Catalog Sync
+- **Server REST Adapter (`/api/apps.ts`)**:
+  - Upgraded `parseFirestoreField` to recursively parse `timestampValue`, `mapValue`, `nullValue`, and nested `arrayValue` fields returned by the Firestore REST API.
+  - Preserved Firestore document metadata (`doc.createTime` and `doc.updateTime`) as fallbacks for `createdAt` and `updatedAt`, and expanded query pagination (`?pageSize=500`) so newly published apps are never truncated or missing recency metadata.
+- **Realtime Client Listener (`/src/services/firestoreAppService.ts` & `/src/context/StoreConfigContext.tsx`)**:
+  - Normalized Firestore `Timestamp` instances (`toMillis()` / `{ seconds, nanoseconds }`) into deterministic numeric timestamps or ISO strings.
+  - Synced `createdAt`, `updatedAt`, `releaseDate`, `initialReleaseDate`, `slug`, `isIndie`, and `isPublished` into `allAppListings` so every feed surface (Home, Explore, Categories, Top Charts, Latest Releases) receives identical metadata.
+
+## 2. Home Showcase Section Generation (`/src/utils/productionFeedAlgorithm.ts`)
+- **Strict Unique ID Deduplication**:
+  - Replaced lowercase app-name deduplication with strict `app.id` deduplication (`seenIds`). Distinct apps or multi-edition releases sharing a display name are no longer dropped from Home showcases.
+- **Icon-Optional Eligibility**:
+  - Removed the hard `iconUrl` exclusion filter in `generateProductionHomeFeed` so newly published apps using fallback monogram icons appear immediately on Home shelves.
+- **Cold-Start & New Release Surfacing**:
+  - Added a high-priority `New & updated releases` (`section-indie-cold-start`) showcase shelf sorted by parsed `updatedAt` / `createdAt` / `releaseDate` descending.
+  - Lowered category and cold-start shelf thresholds (`minRequired = 1`) and dynamically scaled `MAX_APPEARANCES_PER_APP` for emerging catalogs so single-app categories and newly published releases reliably generate showcase sections without starving downstream shelves.
+- **Freshness Boost in Personalized Ranking (`/src/services/recommendationService.ts`)**:
+  - Added time-decay freshness boosts (`+35` points within 14 days, `+20` points within 45 days) using normalized timestamp parsing so newly published apps surface prominently in `Recommended for you`.
+
+## 3. Canonical Category Indexing (`/src/components/CategoriesPage.tsx` & `/src/components/TopCharts.tsx`)
+- **Eliminated Substring False Positives**:
+  - Replaced broad description substring keyword matching with `doesAppMatchCategory` and `canonicalizeCategoryKey`, ensuring apps only appear under their true assigned category and explicit category tags.
+- **Dynamic Custom Category Discovery & URL Slug Resolution**:
+  - Merged custom categories from published apps into `CategoriesPage` and `TopCharts` filter chips, and mapped URL slugs (`/categories/:slug`) back to canonical category names on hard browser reloads.
+
+## 4. Browser Refresh Routing & Unified Loading States
+- **Solid Refresh Route Preservation (`/src/context/NavigationContext.tsx` & `/src/components/AppConsole.tsx`)**:
+  - Removed the `localStorage.getItem('prople_publish_form_open')` override from `getInitialNavigationState()` and ensured `prople_publish_form_open` / `prople_publish_form_session` are cleared whenever exiting unchanged or empty publish sessions, keeping browser refreshes anchored to the active URL pathname.
+- **Unified `StoreCircleLoader` Reuse**:
+  - Reused the existing `StoreCircleLoader` (`SearchResultsPage` spinner) across `AppConsole` (`/studio`), `CategoriesPage`, `TopCharts`, `YouPage`, `WishlistPage`, `NotificationsPage`, `EditProfilePage`, and `RatingsAndReviewsPage` during initial auth and Firestore catalog hydration.

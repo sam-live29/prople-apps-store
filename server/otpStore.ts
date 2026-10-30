@@ -3,7 +3,7 @@
 // Ensures OTPs persist across serverless function instances, Vercel lambdas, and reboots.
 
 import crypto from 'crypto';
-import { hmacDigest, timingSafeEqualString, getInternalHmacSecret } from './securityDefense';
+import { hmacDigest, timingSafeEqualString, getInternalHmacSecret } from './securityDefense.ts';
 
 function timingSafeStringMatch(a: string, b: string): boolean {
   return timingSafeEqualString(a, b);

@@ -31,7 +31,7 @@ import {
   searchApps,
   getMeilisearchStatus,
   ensureAppsIndexConfigured
-} from "./server/meilisearch";
+} from "./server/meilisearch.ts";
 import { 
   injectAppSeoIntoHtml, 
   injectCategorySeoIntoHtml,
@@ -40,8 +40,8 @@ import {
   injectHomeSeoIntoHtml,
   renderNotFoundHtml,
   slugifyAppName
-} from "./server/seoRenderer";
-import { createS3UploadPresignedUrl, uploadBufferToS3, S3_BUCKET_NAME, S3_REGION } from "./server/s3Storage";
+} from "./server/seoRenderer.ts";
+import { createS3UploadPresignedUrl, uploadBufferToS3, S3_BUCKET_NAME, S3_REGION } from "./server/s3Storage.ts";
 import { 
   generateOtp, 
   storeOtp, 
@@ -49,7 +49,7 @@ import {
   sendOtpEmail, 
   sendPasswordResetEmailTemplate,
   setRuntimeResendApiKey
-} from "./server/emailAuth";
+} from "./server/emailAuth.ts";
 import { 
   persistUserPasswordHash, 
   getUserPasswordHash,
@@ -58,7 +58,7 @@ import {
   getAuthSessionStatus,
   consumeAuthSession,
   createSignedChallengeToken
-} from "./server/otpStore";
+} from "./server/otpStore.ts";
 import {
   initAuthSecurity,
   getClientIp,
@@ -68,7 +68,7 @@ import {
   recordOtpDispatched,
   recordSuccessfulLogin,
   registerFailedSecurityEvent
-} from "./server/authSecurity";
+} from "./server/authSecurity.ts";
 import {
   isStrictAdminEmail,
   isSafePublicUrl,
@@ -78,8 +78,8 @@ import {
   sanitizeRedirectTarget,
   sanitizeIdentifier,
   deepSanitizeObject
-} from "./server/securityDefense";
-import { getServerFirebaseConfig } from "./server/firebaseConfig";
+} from "./server/securityDefense.ts";
+import { getServerFirebaseConfig } from "./server/firebaseConfig.ts";
 
 // Server-side Firestore initialization using secure environment or project configuration
 let serverDb: any = null;

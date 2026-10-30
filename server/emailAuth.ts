@@ -78,7 +78,7 @@ interface StoredOtp {
 
 const otpStore = new Map<string, StoredOtp>();
 
-import { persistOtp, verifyAndConsumeOtp, generateTotpOtp, createSignedChallengeToken } from './otpStore';
+import { persistOtp, verifyAndConsumeOtp, generateTotpOtp, createSignedChallengeToken } from './otpStore.ts';
 
 // Cleanup expired OTPs every 5 minutes
 setInterval(() => {
@@ -439,7 +439,7 @@ export async function sendFirebaseOobCode(
   idToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { getServerFirebaseConfig } = await import("./firebaseConfig");
+    const { getServerFirebaseConfig } = await import("./firebaseConfig.ts");
     const fbConfig = getServerFirebaseConfig();
     const apiKey = !fbConfig.isExampleConfig ? fbConfig.apiKey : "";
 

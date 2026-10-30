@@ -333,6 +333,36 @@ export class RecommendationService {
           score += 15;
         }
 
+        // 7b. Freshness / Newly Published Release Boost
+        const extractTsMs = (ts: any): number => {
+          if (!ts) return 0;
+          if (typeof ts === 'number') return ts > 1e12 ? ts : ts * 1000;
+          if (typeof ts.toMillis === 'function') return ts.toMillis();
+          if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+          if (typeof ts._seconds === 'number') return ts._seconds * 1000;
+          if (typeof ts === 'string') {
+            const parsed = Date.parse(ts);
+            return Number.isNaN(parsed) ? 0 : parsed;
+          }
+          return 0;
+        };
+        const latestTs = Math.max(
+          extractTsMs((app as any).updatedAt),
+          extractTsMs((fullApp as any)?.updatedAt),
+          extractTsMs((app as any).createdAt),
+          extractTsMs((fullApp as any)?.createdAt),
+          extractTsMs((app as any).releaseDate),
+          extractTsMs((fullApp as any)?.releaseDate)
+        );
+        if (latestTs > 0) {
+          const ageDays = (Date.now() - latestTs) / (24 * 60 * 60 * 1000);
+          if (ageDays <= 14) {
+            score += 35;
+          } else if (ageDays <= 45) {
+            score += 20;
+          }
+        }
+
         // 8. Device Compatibility Boost
         const isAnd = isAndroidApp(app);
         const isWin = isWindowsApp(app);

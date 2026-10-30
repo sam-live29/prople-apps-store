@@ -15,7 +15,9 @@ import { useReviews } from '../context/ReviewContext';
 import { useInstall } from '../context/InstallContext';
 import { useToast } from '../context/ToastContext';
 import { useNavigation } from '../context/NavigationContext';
+import { useStoreConfig } from '../context/StoreConfigContext';
 import { usePreserveScroll } from '../services/scrollManager';
+import StoreCircleLoader from './StoreCircleLoader';
 
 function ReviewNotificationRow({
   review,
@@ -148,7 +150,8 @@ export default function RatingsAndReviewsPage({
   onClose: () => void;
   onNavigateToSettings?: () => void;
 }) {
-  const { isPublisher } = useAuth();
+  const { isPublisher, isLoading: isAuthLoading } = useAuth();
+  const { isLoadingApps, hasInitialSyncCompleted } = useStoreConfig();
   const { 
     getUserReviews, 
     getPublisherAppsReviews
@@ -289,7 +292,11 @@ export default function RatingsAndReviewsPage({
         tabIndex={0}
         className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 sm:px-4 md:px-6 lg:px-8 pt-2 sm:pt-3 pb-8 scrollbar-hide flex flex-col min-h-0 w-full max-w-7xl mx-auto outline-none focus:outline-none overscroll-y-contain"
       >
-        {displayedReviews.length === 0 ? (
+        {(isAuthLoading || isLoadingApps || !hasInitialSyncCompleted) && displayedReviews.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+            <StoreCircleLoader size="md" />
+          </div>
+        ) : displayedReviews.length === 0 ? (
           <div className="py-14 px-6 text-center flex flex-col items-center justify-center">
             <div className="w-14 h-14 rounded-2xl bg-theme-hover border border-theme-border flex items-center justify-center text-theme-text-muted mb-3 opacity-80">
               <Star className="w-7 h-7 stroke-[1.5]" />

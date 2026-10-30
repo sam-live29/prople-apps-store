@@ -59,7 +59,28 @@ export default async function handler(req: any, res: any) {
     const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
 
     if (projectId) {
-      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps`;
+      const parseFirestoreField = (val: any): any => {
+        if (!val || typeof val !== 'object') return undefined;
+        if (val.stringValue !== undefined) return val.stringValue;
+        if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+        if (val.doubleValue !== undefined) return parseFloat(val.doubleValue);
+        if (val.booleanValue !== undefined) return val.booleanValue;
+        if (val.timestampValue !== undefined) return val.timestampValue;
+        if (val.nullValue !== undefined) return null;
+        if (val.arrayValue !== undefined) {
+          return (val.arrayValue.values || []).map((v: any) => parseFirestoreField(v));
+        }
+        if (val.mapValue !== undefined) {
+          const obj: Record<string, any> = {};
+          for (const [k, v] of Object.entries<any>(val.mapValue.fields || {})) {
+            obj[k] = parseFirestoreField(v);
+          }
+          return obj;
+        }
+        return undefined;
+      };
+
+      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps?pageSize=500`;
       const firestoreRes = await fetch(firestoreUrl).catch(() => null);
     if (firestoreRes && firestoreRes.ok) {
       const data = await firestoreRes.json().catch(() => null);
@@ -68,14 +89,11 @@ export default async function handler(req: any, res: any) {
           const id = doc.name.split('/').pop();
           const fields = doc.fields || {};
           const parsed: any = { id };
+          if (doc.createTime) parsed.createdAt = doc.createTime;
+          if (doc.updateTime) parsed.updatedAt = doc.updateTime;
           for (const [key, val] of Object.entries<any>(fields)) {
-            if (val.stringValue !== undefined) parsed[key] = val.stringValue;
-            else if (val.integerValue !== undefined) parsed[key] = parseInt(val.integerValue, 10);
-            else if (val.doubleValue !== undefined) parsed[key] = parseFloat(val.doubleValue);
-            else if (val.booleanValue !== undefined) parsed[key] = val.booleanValue;
-            else if (val.arrayValue !== undefined) {
-              parsed[key] = (val.arrayValue.values || []).map((v: any) => v.stringValue || v);
-            }
+            const fieldVal = parseFirestoreField(val);
+            if (fieldVal !== undefined) parsed[key] = fieldVal;
           }
           return parsed;
         });

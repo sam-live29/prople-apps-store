@@ -234,6 +234,18 @@ export function listenToAllApps(
     snap.forEach(d => {
       const data = d.data();
       const downloadsFormatted = formatDownloadCount(data.downloadsCount ?? parseDownloadCount(data.downloads));
+      const normalizeTs = (ts: any): number | string | undefined => {
+        if (!ts) return undefined;
+        if (typeof ts === 'number') return ts > 1e12 ? ts : ts * 1000;
+        if (typeof ts === 'string') return ts;
+        if (typeof ts.toMillis === 'function') return ts.toMillis();
+        if (typeof ts.seconds === 'number') return ts.seconds * 1000 + Math.floor((ts.nanoseconds || 0) / 1e6);
+        if (typeof ts._seconds === 'number') return ts._seconds * 1000;
+        return undefined;
+      };
+      const normalizedCreatedAt = normalizeTs(data.createdAt) ?? appDetailsMock[d.id]?.createdAt;
+      const normalizedUpdatedAt = normalizeTs(data.updatedAt) ?? normalizedCreatedAt ?? appDetailsMock[d.id]?.updatedAt;
+
       const appItem: AppDetails = {
         ...appDetailsMock[d.id],
         ...data,
@@ -277,6 +289,8 @@ export function listenToAllApps(
         releaseNotes: data.releaseNotes || appDetailsMock[d.id]?.releaseNotes,
         releaseDate: data.releaseDate || appDetailsMock[d.id]?.releaseDate,
         initialReleaseDate: data.initialReleaseDate || appDetailsMock[d.id]?.initialReleaseDate,
+        createdAt: normalizedCreatedAt,
+        updatedAt: normalizedUpdatedAt,
         minAndroid: data.minAndroid || appDetailsMock[d.id]?.minAndroid,
         sha256: data.sha256 || appDetailsMock[d.id]?.sha256,
         assetName: data.assetName || appDetailsMock[d.id]?.assetName,

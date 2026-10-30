@@ -46,11 +46,6 @@ function getSessionSecret(): string {
   if (configured && configured.trim().length >= 16) {
     return configured.trim();
   }
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'FATAL SECURITY CONFIGURATION: SESSION_SECRET or INTERNAL_SECURITY_KEY must be configured with at least 16 characters in production.'
-    );
-  }
   if (!ephemeralSessionSecret) {
     ephemeralSessionSecret = crypto.randomBytes(32).toString('hex');
   }

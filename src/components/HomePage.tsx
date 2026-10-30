@@ -7,6 +7,7 @@ import {
   Download
 } from 'lucide-react';
 import { useStoreConfig } from '../context/StoreConfigContext';
+import { useNavigation } from '../context/NavigationContext';
 import TopCharts from './TopCharts';
 import CategoriesPage from './CategoriesPage';
 import HomeSkeleton from './HomeSkeleton';
@@ -56,7 +57,9 @@ export default function HomePage({
   const topChartsScrollRef = useRef<HTMLDivElement | null>(null);
   const categoriesScrollRef = useRef<HTMLDivElement | null>(null);
 
-  usePreserveScroll(`subtab-foryou-${activeCategory}`, forYouScrollRef, activeSubTab === 'For you');
+  const isForYouSubTab = activeSubTab !== 'Top charts' && activeSubTab !== 'Categories';
+
+  usePreserveScroll(`subtab-foryou-${activeCategory}`, forYouScrollRef, isForYouSubTab);
   usePreserveScroll(`subtab-topcharts-${activeCategory}`, topChartsScrollRef, activeSubTab === 'Top charts');
   usePreserveScroll(`subtab-categories-${activeCategory}`, categoriesScrollRef, activeSubTab === 'Categories');
 
@@ -66,7 +69,7 @@ export default function HomePage({
         ref={forYouScrollRef}
         data-subtab-scroll="foryou"
         className={`flex-1 h-full min-h-0 overflow-y-auto overflow-x-hidden w-full relative outline-none overscroll-y-contain ${
-          activeSubTab === 'For you' ? 'block' : 'hidden'
+          isForYouSubTab ? 'block' : 'hidden'
         }`}
         style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
       >
@@ -133,6 +136,7 @@ function ForYouView({
   onSearchQuery?: (query: string) => void;
 }) {
   const { allAppListings, apps, activeBanners, isLoadingApps, hasInitialSyncCompleted, isPullRefreshing, refreshCatalogue } = useStoreConfig();
+  const { setSelectedCategory, openLatestReleases } = useNavigation();
 
   const bannerScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -233,7 +237,7 @@ function ForYouView({
     }
   };
 
-  if (isLoadingApps || !hasInitialSyncCompleted || isPullRefreshing || !hasAnyApps) {
+  if (isLoadingApps || !hasInitialSyncCompleted || isPullRefreshing) {
     return (
       <PullToRefresh onRefresh={refreshCatalogue} isRefreshing={isPullRefreshing} earlyDismissDurationMs={360} dismissBeforeEnd={true}>
         <HomeSkeleton
@@ -319,10 +323,10 @@ function ForYouView({
                     apps={sec.apps}
                     onAppClick={onAppClick}
                     onSeeAll={() => {
-                      if (sec.id === 'section-suggested-for-you' && onShowRecommendedApps) {
-                        onShowRecommendedApps();
-                      } else if (sec.categoryKey && onSearchQuery) {
-                        onSearchQuery(sec.categoryKey);
+                      if (sec.categoryKey) {
+                        setSelectedCategory(sec.categoryKey);
+                      } else if (sec.id.includes('indie-cold-start') || sec.id.includes('cold-start-guarantee')) {
+                        openLatestReleases();
                       } else if (onShowRecommendedApps) {
                         onShowRecommendedApps();
                       }
@@ -344,8 +348,10 @@ function ForYouView({
                     appsMap={apps}
                     onAppClick={onAppClick}
                     onSeeAll={() => {
-                      if (sec.categoryKey && onSearchQuery) {
-                        onSearchQuery(sec.categoryKey);
+                      if (sec.categoryKey) {
+                        setSelectedCategory(sec.categoryKey);
+                      } else if (sec.id.includes('indie-cold-start') || sec.id.includes('cold-start-guarantee')) {
+                        openLatestReleases();
                       } else if (onShowRecommendedApps) {
                         onShowRecommendedApps();
                       }
@@ -368,8 +374,10 @@ function ForYouView({
                     appsMap={apps}
                     onAppClick={onAppClick}
                     onSeeAll={() => {
-                      if (sec.categoryKey && onSearchQuery) {
-                        onSearchQuery(sec.categoryKey);
+                      if (sec.categoryKey) {
+                        setSelectedCategory(sec.categoryKey);
+                      } else if (sec.id.includes('indie-cold-start') || sec.id.includes('cold-start-guarantee')) {
+                        openLatestReleases();
                       } else if (onShowMustTryApps) {
                         onShowMustTryApps();
                       }
@@ -392,8 +400,8 @@ function ForYouView({
                     appsMap={apps}
                     onAppClick={onAppClick}
                     onSeeAll={() => {
-                      if (sec.categoryKey && onSearchQuery) {
-                        onSearchQuery(sec.categoryKey);
+                      if (sec.categoryKey) {
+                        setSelectedCategory(sec.categoryKey);
                       } else if (onShowRecommendedApps) {
                         onShowRecommendedApps();
                       }
@@ -569,7 +577,7 @@ function ForYouView({
           {/* Feed Completion Footer */}
           {hasAnyApps && (
             <HomeFeedFooter
-              onCategoryClick={(catId) => onSearchQuery?.(catId.replace('cat-', ''))}
+              onCategoryClick={(catId) => setSelectedCategory(catId)}
             />
           )}
         </div>

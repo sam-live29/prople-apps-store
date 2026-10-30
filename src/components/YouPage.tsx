@@ -49,11 +49,12 @@ import { useStoreConfig } from '../context/StoreConfigContext';
 import { useBookmarks } from '../services/bookmarkService';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AppListing } from '../types';
+import StoreCircleLoader from './StoreCircleLoader';
 
 export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClick?: (id: string) => void; onOpenNotifications?: () => void }) {
   const { unreadNotificationsCount, openAuthDialog } = useInstall();
   const { showToast, hasActiveToast } = useToast();
-  const { user, logout, loginWithGoogle, isAdmin } = useAuth();
+  const { user, isLoading: isAuthLoading, logout, loginWithGoogle, isAdmin } = useAuth();
   const { isInstalled } = usePWAInstall();
   const isAdminUser = Boolean(isAdmin || isAdminEmail(user?.email) || user?.email === 'sahinurmolla190@gmail.com');
 
@@ -119,7 +120,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
       localStorage.removeItem('prople_dev_notice_dismissed');
     } catch {}
 
-    if (user || activeView !== 'main') return;
+    if (isAuthLoading || user || activeView !== 'main') return;
 
     // Never show developer notice during password reset or auth flows
     if (typeof window !== 'undefined') {
@@ -155,7 +156,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [user, activeView, showToast, hasActiveToast]);
+  }, [isAuthLoading, user, activeView, showToast, hasActiveToast]);
 
   const userEmail = user?.email || "Guest User";
   const userName = user?.publisherName || user?.displayName || "Guest";
@@ -564,6 +565,16 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
                />
              </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthLoading && !user) {
+    return (
+      <div className="flex flex-col min-h-full bg-theme-bg text-theme-text pb-20 selection:bg-blue-500/30">
+        <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+          <StoreCircleLoader size="md" />
         </div>
       </div>
     );

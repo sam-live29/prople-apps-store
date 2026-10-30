@@ -42,6 +42,106 @@ export function normalizeCategoryName(rawCategory?: string): string {
 }
 
 /**
+ * Parses Firestore Timestamp objects, epoch seconds/ms, or date strings into milliseconds
+ */
+export function parseAppTimestampMs(val: any): number {
+  if (!val) return 0;
+  if (typeof val === 'number') {
+    return val > 1e12 ? val : val * 1000;
+  }
+  if (typeof val.toMillis === 'function') {
+    return val.toMillis();
+  }
+  if (typeof val.seconds === 'number') {
+    return val.seconds * 1000 + Math.floor((val.nanoseconds || 0) / 1e6);
+  }
+  if (typeof val._seconds === 'number') {
+    return val._seconds * 1000;
+  }
+  if (typeof val === 'string') {
+    const parsed = Date.parse(val);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Returns the latest activity timestamp (ms) for an app across updatedAt, createdAt, and releaseDate
+ */
+export function getAppLatestTimestampMs(a: AppListing, full?: AppDetails): number {
+  const d = full || a;
+  return Math.max(
+    parseAppTimestampMs((a as any).updatedAt),
+    parseAppTimestampMs((d as any).updatedAt),
+    parseAppTimestampMs((a as any).createdAt),
+    parseAppTimestampMs((d as any).createdAt),
+    parseAppTimestampMs((a as any).releaseDate),
+    parseAppTimestampMs((d as any).releaseDate),
+    parseAppTimestampMs((a as any).initialReleaseDate),
+    parseAppTimestampMs((d as any).initialReleaseDate)
+  );
+}
+
+/**
+ * Normalizes a category label or URL slug into a canonical comparison key
+ */
+export function canonicalizeCategoryKey(raw?: string): string {
+  if (!raw || !raw.trim()) return 'general';
+  let key = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^cat-/, '')
+    .replace(/&/g, ' ')
+    .replace(/\band\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!key) return 'general';
+  if (key === 'utilities' || key === 'utility' || key === 'developer tools') return 'tools';
+  if (key === 'personalization') return 'personalisation';
+  if (key === 'ecommerce') return 'shopping';
+  return key;
+}
+
+/**
+ * Strictly checks whether an app belongs to the target category (no false-positive title/dev keyword bleed)
+ */
+export function doesAppMatchCategory(
+  app: AppListing,
+  full: AppDetails | undefined,
+  targetCategory: string,
+  isGamesMode = false
+): boolean {
+  if (!targetCategory || targetCategory === 'All categories') {
+    return isGamesMode ? isGameApp(app, full) : true;
+  }
+
+  const targetKey = canonicalizeCategoryKey(targetCategory);
+  if (targetKey === 'all categories') {
+    return isGamesMode ? isGameApp(app, full) : true;
+  }
+
+  const rawAppCat = (app.category || full?.category || 'General').trim();
+  const appCatKey = canonicalizeCategoryKey(rawAppCat);
+
+  if (targetKey === 'games' || targetKey === 'game') {
+    return appCatKey === 'games' || appCatKey === 'game' || isGameApp(app, full);
+  }
+
+  if (appCatKey === targetKey) {
+    return true;
+  }
+
+  // Handle combined legacy categories cleanly
+  if (rawAppCat.toLowerCase() === 'photo & video') {
+    return targetKey === 'photography' || targetKey === 'video players editors';
+  }
+
+  return false;
+}
+
+/**
  * Returns an authentic conversational shelf title based on category and style
  */
 export function getCategorySectionTitle(
@@ -275,9 +375,10 @@ export function getCategorySectionTitle(
   }
   // Games fallback
   else if (hasGames || catLower.includes('game')) {
-    title = `Exciting ${cleanCat} games you might enjoy`;
+    const isGenericGames = catLower === 'games' || catLower === 'game';
+    title = isGenericGames ? 'Exciting games you might enjoy' : `Exciting ${cleanCat} games you might enjoy`;
     subtitle = cleanCat;
-    tag = `${cleanCat} • Games`;
+    tag = isGenericGames ? 'Games • Play Now' : `${cleanCat} • Games`;
   }
   // Universal dynamic fallback for any newly uploaded category in the store catalog
   else {
@@ -350,7 +451,12 @@ function isAppColdStartOrIndie(a: AppListing, full?: AppDetails): boolean {
   if (Boolean((d as any).isIndie)) return true;
   const dCount = a.downloadsCount ?? (d as any).downloadsCount ?? parseDownloadCount(a.downloads ?? (d as any).downloads);
   if (dCount < 500) return true;
-  const created = (d as any).createdAt ? new Date((d as any).createdAt).getTime() : 0;
+  const created = Math.max(
+    parseAppTimestampMs((a as any).createdAt),
+    parseAppTimestampMs((d as any).createdAt),
+    parseAppTimestampMs((a as any).updatedAt),
+    parseAppTimestampMs((d as any).updatedAt)
+  );
   if (created > 0 && Date.now() - created < 45 * 24 * 60 * 60 * 1000) return true;
   return false;
 }
@@ -625,34 +731,18 @@ export function generateProductionHomeFeed(
 ): HomeFeedSection[] {
   const feedMode = options?.mode || 'all';
   const rawValid = (allApps || []).filter(
-    a => Boolean(a && a.id && a.name && (a.iconUrl || appsMap[a.id]?.iconUrl))
+    a => Boolean(a && a.id && a.name)
   );
 
   if (rawValid.length === 0) {
     return [];
   }
 
-  // Deduplicate by clean app name, retaining the entry with highest asset readiness
+  // Deduplicate strictly by unique app ID so distinct published apps sharing a title across categories/platforms are never dropped
   const dedupedMap = new Map<string, AppListing>();
   for (const a of rawValid) {
-    const normKey = a.name.trim().toLowerCase();
-    const existing = dedupedMap.get(normKey);
-    if (!existing) {
-      dedupedMap.set(normKey, a);
-    } else {
-      const existingFull = appsMap[existing.id] || existing;
-      const curFull = appsMap[a.id] || a;
-      const curScore =
-        (curFull.promoVideoUrl ? 4 : 0) +
-        (curFull.featureGraphicUrl ? 2 : 0) +
-        (curFull.screenshots?.length || 0);
-      const existingScore =
-        (existingFull.promoVideoUrl ? 4 : 0) +
-        (existingFull.featureGraphicUrl ? 2 : 0) +
-        (existingFull.screenshots?.length || 0);
-      if (curScore > existingScore) {
-        dedupedMap.set(normKey, a);
-      }
+    if (!dedupedMap.has(a.id)) {
+      dedupedMap.set(a.id, a);
     }
   }
   const validApps = Array.from(dedupedMap.values());
@@ -691,9 +781,9 @@ export function generateProductionHomeFeed(
 
   // =========================================================================
   // STAGE 4 SETUP: Anti-Monopoly & Fair Exposure Limits
-  // Appearance cap: max 2 sections per app in standard view (relaxed to 3 in small catalogs)
+  // Appearance cap scales smoothly with catalog size so small catalogs populate all showcase archetypes
   // =========================================================================
-  const MAX_APPEARANCES_PER_APP = poolApps.length > 8 ? 2 : 3;
+  const MAX_APPEARANCES_PER_APP = poolApps.length <= 4 ? 4 : poolApps.length <= 10 ? 3 : 2;
   const appAppearanceCount = new Map<string, number>();
 
   const getAvailableCandidates = (candidates: AppListing[]): AppListing[] => {
@@ -713,8 +803,10 @@ export function generateProductionHomeFeed(
   const candidateSlices: ThematicSlice[] = [];
 
   // Group apps by genuine normalized category from the mode-specific pool
+  // (Also include cross-catalog categories when overall catalog is small on main Home feed so new apps never hide)
+  const categorySourceApps = feedMode === 'apps' && validApps.length <= 12 ? validApps : poolApps;
   const categoryGroups = new Map<string, AppListing[]>();
-  for (const a of poolApps) {
+  for (const a of categorySourceApps) {
     const full = appsMap[a.id] || a;
     const cat = normalizeCategoryName(a.category || full.category || 'General');
     const list = categoryGroups.get(cat) || [];
@@ -723,12 +815,13 @@ export function generateProductionHomeFeed(
   }
 
   // 1. Facet: User Taste Affinity — "Suggested for you" (Top discovery sampler)
-  const rawSuggested = RecommendationService.getSuggestedForYou(poolApps, 16, {
+  const suggestedSource = feedMode === 'apps' && poolApps.length < 3 ? validApps : poolApps;
+  const rawSuggested = RecommendationService.getSuggestedForYou(suggestedSource, 16, {
     clientOS,
     appsMap,
   });
   const suggestedCandidates = modeSortApps(rawSuggested);
-  if (suggestedCandidates.length >= 3) {
+  if (suggestedCandidates.length >= (suggestedSource.length >= 3 ? 3 : 1)) {
     const primaryInterest = userProfile.topCategories[0] || (feedMode === 'games' ? 'Action & Adventure' : 'your interests');
     candidateSlices.push({
       id: 'section-suggested-for-you',
@@ -756,21 +849,46 @@ export function generateProductionHomeFeed(
     });
   }
 
-  // 3. Facet: Velocity & Trending Momentum (7-day velocity decay)
+  // 3. Facet: New & Recently Published Releases (Always surfaces newly published apps immediately on Home)
+  const newReleasesSource = feedMode === 'games'
+    ? poolApps
+    : (poolApps.length < 4 ? validApps : poolApps);
+  const sortedNewReleases = [...newReleasesSource].sort((a, b) => {
+    const tsB = getAppLatestTimestampMs(b, appsMap[b.id]);
+    const tsA = getAppLatestTimestampMs(a, appsMap[a.id]);
+    if (tsB !== tsA) return tsB - tsA;
+    return b.id.localeCompare(a.id);
+  });
+  const indieOrNewCandidates = sortedNewReleases.filter(a => isAppColdStartOrIndie(a, appsMap[a.id]));
+  const activeNewCandidates = indieOrNewCandidates.length > 0 ? indieOrNewCandidates : sortedNewReleases;
+  if (activeNewCandidates.length >= 1) {
+    candidateSlices.push({
+      id: 'section-indie-cold-start',
+      facet: 'cold_start',
+      title: feedMode === 'games' ? 'New & updated games' : 'New & updated releases',
+      subtitle: 'Freshly published & updated on Prople Store',
+      tag: 'New Releases • Verified',
+      candidateApps: activeNewCandidates,
+      priorityScore: 88,
+    });
+  }
+
+  // 4. Facet: Velocity & Trending Momentum (7-day velocity decay)
   const rawTrending = [...poolApps].sort((a, b) => {
     const fullA = appsMap[a.id] || a;
-    const fullB = appsMap[b.id] || a;
+    const fullB = appsMap[b.id] || b;
     const dCountA = a.downloadsCount ?? fullA.downloadsCount ?? parseDownloadCount(a.downloads ?? fullA.downloads);
     const dCountB = b.downloadsCount ?? fullB.downloadsCount ?? parseDownloadCount(b.downloads ?? fullB.downloads);
     const ratingA = a.rating ?? fullA.rating ?? 0;
     const ratingB = b.rating ?? fullB.rating ?? 0;
-    // Composite velocity score: log10(downloads) * rating
+    // Composite velocity score: log10(downloads) * rating + recency tie-breaker
     const scoreA = Math.log10(dCountA + 10) * (ratingA > 0 ? ratingA : 3.5);
     const scoreB = Math.log10(dCountB + 10) * (ratingB > 0 ? ratingB : 3.5);
-    return scoreB - scoreA;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return getAppLatestTimestampMs(b, appsMap[b.id]) - getAppLatestTimestampMs(a, appsMap[a.id]);
   });
   const trendingCandidates = modeSortApps(rawTrending);
-  if (trendingCandidates.length >= 3) {
+  if (trendingCandidates.length >= (poolApps.length >= 3 ? 3 : 2)) {
     candidateSlices.push({
       id: 'section-trending-velocity',
       facet: 'velocity',
@@ -782,7 +900,7 @@ export function generateProductionHomeFeed(
     });
   }
 
-  // 4. Facet: User Activity Recommendation (Engagement & recent categories)
+  // 5. Facet: User Activity Recommendation (Engagement & recent categories)
   const rawRecommended = RecommendationService.getPersonalizedRecommendations({
     profile: userProfile,
     limit: 14,
@@ -804,7 +922,7 @@ export function generateProductionHomeFeed(
     });
   }
 
-  // 5. Facet: Top Rated Apps & Games (Gold stars, player reviews)
+  // 6. Facet: Top Rated Apps & Games (Gold stars, player reviews)
   const rawTopRated = poolApps
     .filter(a => {
       const full = appsMap[a.id] || a;
@@ -813,7 +931,7 @@ export function generateProductionHomeFeed(
     })
     .sort((a, b) => {
       const fullA = appsMap[a.id] || a;
-      const fullB = appsMap[b.id] || a;
+      const fullB = appsMap[b.id] || b;
       const rA = a.rating ?? fullA.rating ?? 0;
       const rB = b.rating ?? fullB.rating ?? 0;
       if (rB !== rA) return rB - rA;
@@ -822,7 +940,7 @@ export function generateProductionHomeFeed(
       return dCountB - dCountA;
     });
   const topRatedCandidates = modeSortApps(rawTopRated);
-  if (topRatedCandidates.length >= 3) {
+  if (topRatedCandidates.length >= (poolApps.length >= 3 ? 3 : 1)) {
     candidateSlices.push({
       id: 'section-top-rated-highlights',
       facet: 'top_rated',
@@ -831,21 +949,6 @@ export function generateProductionHomeFeed(
       tag: feedMode === 'games' ? '4.0+ ★ • Gamers\' Choice' : '4.0+ ★ • Players\' Choice',
       candidateApps: topRatedCandidates,
       priorityScore: feedMode === 'games' ? 92 : 74,
-    });
-  }
-
-  // 6. Facet: Cold-Start & Emerging Indie Releases
-  const rawIndie = poolApps.filter(a => isAppColdStartOrIndie(a, appsMap[a.id]));
-  const indieCandidates = modeSortApps(rawIndie);
-  if (indieCandidates.length >= 2) {
-    candidateSlices.push({
-      id: 'section-indie-cold-start',
-      facet: 'cold_start',
-      title: feedMode === 'games' ? 'Discover new indie games' : 'Discover new indie releases',
-      subtitle: 'Freshly published & updated',
-      tag: 'Indie Spotlight • New',
-      candidateApps: indieCandidates,
-      priorityScore: 70,
     });
   }
 
@@ -992,14 +1095,16 @@ export function generateProductionHomeFeed(
 
     for (let i = 0; i < sliceQueue.length; i++) {
       const slice = sliceQueue[i];
-      // For category shelves, prioritize genuine category apps without artificial starvation
-      const isCatSlice = slice.facet === 'category';
-      const available = (isCatSlice && slice.candidateApps.length > 0)
+      // For category and cold-start shelves, prioritize genuine apps without artificial starvation
+      const isDedicatedShelf = slice.facet === 'category' || slice.facet === 'cold_start';
+      const available = (isDedicatedShelf && slice.candidateApps.length > 0)
         ? slice.candidateApps
         : getAvailableCandidates(slice.candidateApps);
-      const minRequired = slice.facet === 'video' ? 2 : (slice.facet === 'cold_start' ? 2 : 2);
+      const minRequired = slice.facet === 'video'
+        ? 2
+        : (slice.facet === 'category' || slice.facet === 'cold_start' ? 1 : Math.min(2, poolApps.length));
 
-      if (available.length < minRequired && validApps.length > 4) {
+      if (available.length < minRequired) {
         continue;
       }
 

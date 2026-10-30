@@ -14,6 +14,7 @@ import { parseDownloadCount, formatDownloadCount, getAppPublisherName } from '..
 import { shareAppNative, slugifyAppName } from '../utils/shareUtils';
 import PullToRefresh from './PullToRefresh';
 import AppLazyImage from './AppLazyImage';
+import StoreCircleLoader from './StoreCircleLoader';
 import { usePreserveScroll } from '../services/scrollManager';
 
 interface WishlistPageProps {
@@ -30,7 +31,7 @@ export default function WishlistPage({
   appsList: propAppsList,
 }: WishlistPageProps) {
   const { showToast } = useToast();
-  const { allAppListings, apps: storeApps, refreshCatalogue, isPullRefreshing } = useStoreConfig();
+  const { allAppListings, apps: storeApps, refreshCatalogue, isPullRefreshing, isLoadingApps, hasInitialSyncCompleted } = useStoreConfig();
   const { bookmarkedIds, toggleBookmark } = useBookmarks();
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -209,7 +210,11 @@ export default function WishlistPage({
 
           {/* Apps Listing - 100% Identical markup and classes to AppConsole */}
           <div className="w-full flex flex-col space-y-1">
-            {wishlistApps.length === 0 ? (
+            {(isLoadingApps || !hasInitialSyncCompleted) && bookmarkedIds.length > 0 && wishlistApps.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+                <StoreCircleLoader size="md" />
+              </div>
+            ) : wishlistApps.length === 0 ? (
               <div className="py-14 px-6 text-center flex flex-col items-center justify-center">
                 <div className="w-14 h-14 rounded-2xl bg-theme-hover border border-theme-border flex items-center justify-center text-theme-text-muted mb-3 opacity-80">
                   <Package className="w-7 h-7 stroke-[1.5]" />

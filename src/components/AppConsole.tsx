@@ -77,6 +77,8 @@ import { appDetailsMock, searchSuggestedApps, appCategories } from '../data';
 import { AppDetails, GitHubReleaseAsset, SafetyHighlight, AppPermissionGroup } from '../types';
 import { extractPermissionGroups, parseBulletPoints, flattenPermissionGroups } from '../utils/permissionUtils';
 import { getSafetyHighlightIcon } from '../utils/safetyIcons';
+import { doesAppMatchCategory, parseAppTimestampMs } from '../utils/productionFeedAlgorithm';
+import StoreCircleLoader from './StoreCircleLoader';
 import ConfirmationDialog from './ConfirmationDialog';
 import BrandLogo from './BrandLogo';
 import TermsPage from './TermsPage';
@@ -543,9 +545,9 @@ interface AppConsoleProps {
 export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps) {
   const { showToast } = useToast();
   const { openPrivacyPolicy, openTermsOfService, openAuthPage, registerBackHandler } = useNavigation();
-  const { banners, addBanner, updateBanner, appsList, publishApp, deleteApp } = useStoreConfig();
+  const { banners, addBanner, updateBanner, appsList, publishApp, deleteApp, isLoadingApps, hasInitialSyncCompleted } = useStoreConfig();
   const { addNotification } = useInstall();
-  const { user, isPublisher, isPublisherOfApp, loginWithGoogle, togglePublisherStatus, updateUserProfile, isAdmin } = useAuth();
+  const { user, isLoading: isAuthLoading, isPublisher, isPublisherOfApp, loginWithGoogle, togglePublisherStatus, updateUserProfile, isAdmin } = useAuth();
   
   const currentDevId = (user?.uid || auth.currentUser?.uid || (user?.email ? user.email.toLowerCase().trim() : 'guest')).trim();
 
@@ -669,8 +671,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     if (!currentEditingApp) return true;
     return canUserManageApp(currentEditingApp);
   }, [currentEditingApp, canUserManageApp]);
-
-  const isActionAgainstRules = (!editingAppId && publishQuota.isExhausted) || (editingAppId && updateQuota.isExhausted) || (editingAppId && !isOwnerAuthorized);
 
   // User's own published apps
   const myApps = React.useMemo(() => {
@@ -2244,6 +2244,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
       // If user is editing an app and has made NO modifications, exit cleanly without confirmation
       if (editingAppId && !hasFormChanged) {
+        try {
+          localStorage.removeItem('prople_publish_form_session');
+          localStorage.removeItem('prople_publish_form_open');
+        } catch {}
         setIsPublishOpen(false);
         resetAllFormState();
         return true;
@@ -2251,6 +2255,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
       // If there is no draft content at all, simply exit without modal
       if (!hasFormContent()) {
+        isDiscardedRef.current = true;
+        try {
+          localStorage.removeItem('prople_publish_form_session');
+          localStorage.removeItem('prople_publish_form_open');
+        } catch {}
         setIsPublishOpen(false);
         resetAllFormState();
         return true;
@@ -2647,15 +2656,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       localStorage.setItem('prople_publish_form_open', 'true');
     } catch {}
     setIsPublishOpen(true);
-  };
-
-  const handleSwitchToNewPublish = () => {
-    setEditingAppId(null);
-    setInitialAppSnapshot(null);
-    try {
-      localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId: currentDevId }));
-    } catch {}
-    showToast('Switched to New App mode: Publishing will create a separate distinct application entry.', { duration: 4500 });
   };
 
   const handleDiscardNewAppDraft = () => {
@@ -3075,6 +3075,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const handleCancelPublish = () => {
     // If updating an existing app and nothing was modified, exit cleanly with zero confirmation popup
     if (editingAppId && !hasFormChanged) {
+      try {
+        localStorage.removeItem('prople_publish_form_session');
+        localStorage.removeItem('prople_publish_form_open');
+      } catch {}
       setIsPublishOpen(false);
       resetAllFormState();
       return;
@@ -3145,9 +3149,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     let result = displayableApps.filter(app => {
       // Category filter
       if (selectedCategory !== 'All categories') {
-        const catMatch = app.category && app.category.toLowerCase().includes(selectedCategory.toLowerCase());
-        const tagMatch = app.tags && app.tags.some(t => t.toLowerCase().includes(selectedCategory.toLowerCase()));
-        if (!catMatch && !tagMatch) return false;
+        if (!doesAppMatchCategory(app as any, app, selectedCategory, false)) return false;
       }
 
       // Search query filter
@@ -3178,8 +3180,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       });
     } else if (selectedTopFilter === 'New releases') {
       result = [...result].sort((a, b) => {
-        const dateA = new Date(a.updatedAt || a.releaseDate || 0).getTime();
-        const dateB = new Date(b.updatedAt || b.releaseDate || 0).getTime();
+        const dateA = parseAppTimestampMs((a as any).updatedAt || (a as any).createdAt || a.releaseDate);
+        const dateB = parseAppTimestampMs((b as any).updatedAt || (b as any).createdAt || b.releaseDate);
         return dateB - dateA;
       });
     }
@@ -3199,6 +3201,35 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     isAdmin ||
     isAdminEmail(user?.email)
   );
+
+  const isStudioInitialLoading =
+    (isAuthLoading && !user) ||
+    (isPublishOpen && editingAppId && (isLoadingApps || !hasInitialSyncCompleted) && appsList.length === 0 && !name);
+
+  if (isStudioInitialLoading) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-theme-bg text-theme-text font-sans w-full shadow-none overflow-hidden selection:bg-blue-500/30">
+        <header className="h-[60px] sm:h-[68px] flex items-center justify-between px-2.5 sm:px-4 md:px-6 lg:px-8 bg-theme-bg shrink-0 gap-3 z-10 w-full border-0">
+          <div className="w-full max-w-7xl mx-auto flex items-center gap-2 sm:gap-3 min-w-0 -translate-x-[2px]">
+            <button
+              type="button"
+              onClick={isPublishOpen ? handleCancelPublish : onClose}
+              className="w-9 h-9 -ml-1 rounded-full flex items-center justify-center text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 transition-colors shrink-0 cursor-pointer"
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-[19px] sm:text-[20px] font-medium text-theme-text tracking-tight truncate">
+              {isPublishOpen ? (editingAppId ? 'Update App' : 'Publish New App') : 'Developer Console'}
+            </h1>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+          <StoreCircleLoader size="md" />
+        </div>
+      </div>
+    );
+  }
 
   if (!isDeveloperAuthorized && !isPublishOpen) {
     return (
@@ -3545,48 +3576,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
             </button>
           ))}
         </div>
-
-        {/* Publish Mode & App Separation Indicator */}
-        {editingAppId ? (
-          <div className="bg-blue-500/10 border-b border-blue-500/20 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs shrink-0 z-30 w-full max-w-7xl mx-auto">
-            <div className="flex items-center gap-2 text-blue-400 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 animate-pulse" />
-              <span className="truncate">
-                <strong>Update Mode:</strong> Updating existing catalog app <span className="text-theme-text font-medium">"{name || 'Application'}"</span> <span className="text-[10px] bg-blue-500/20 text-blue-300 font-mono px-1.5 py-0.5 rounded shrink-0">{editingAppId}</span>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleSwitchToNewPublish}
-              className="text-[11px] bg-theme-hover hover:bg-theme-hover/80 text-theme-text px-2.5 py-1 rounded-md font-medium shrink-0 cursor-pointer transition-colors border border-theme-border/40"
-              title="Publish as a separate new app instead of updating this one"
-            >
-              Publish as New App Instead
-            </button>
-          </div>
-        ) : null}
-
-        {/* Publisher Name Conflict Banner */}
-        {isPublisherNameConflict && (
-          <div className="bg-amber-500/10 border-b border-amber-500/30 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs shrink-0 z-40 w-full max-w-7xl mx-auto">
-            <div className="flex items-center gap-2 text-amber-300 min-w-0">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="truncate">
-                <strong>Publisher name conflict:</strong> "{activePublisherName}" is already claimed in database. Change name to activate publishing.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setNewCandidatePublisherName(activePublisherName);
-                setShowChangePublisherModal(true);
-              }}
-              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg text-xs shrink-0 cursor-pointer shadow-sm transition-all"
-            >
-              Change Name
-            </button>
-          </div>
-        )}
 
         {/* Step Body Content */}
         <div 
@@ -4841,50 +4830,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   </button>
                 </div>
               </div>
-
-              {/* Rules Violation / Quota Notice - Only appears when user performs an action against rules (colorless) */}
-              {isActionAgainstRules && (
-                <div className="p-3.5 bg-theme-hover/40 rounded-xl text-xs text-theme-text-muted flex items-start gap-2.5">
-                  <span className="text-theme-text-muted text-sm font-bold shrink-0 select-none mt-0.5">ℹ</span>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between font-semibold text-theme-text">
-                      <span>
-                        {!isOwnerAuthorized
-                          ? 'Ownership Authorization Policy'
-                          : editingAppId
-                          ? 'App Update Cooldown'
-                          : 'Publishing Cooldown Active'}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-theme-hover text-theme-text-muted border border-theme-border/30">
-                        {!isOwnerAuthorized
-                          ? 'Restricted'
-                          : editingAppId
-                          ? `${updateQuota.remainingInWindow}/${updateQuota.maxPerWindow}`
-                          : `${publishQuota.remainingInWindow}/${publishQuota.maxPerWindow}`}
-                      </span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-theme-text-muted">
-                      {!isOwnerAuthorized
-                        ? 'Unauthorized: This application belongs to another developer account. Only the verified app publisher can publish updates.'
-                        : editingAppId
-                        ? `Update frequency limit: Maximum 5 updates per 1 hour window. Next update available in ${updateQuota.nextAvailableTimeFormatted}.`
-                        : `Please wait: To preserve store quality, app uploads have a brief cooldown (3 apps per 15 minutes). Cooldown window opens in ${publishQuota.nextAvailableTimeFormatted}.`}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Store Notice - Colorless */}
-              <div className="p-3 bg-theme-hover/40 rounded-xl text-xs text-theme-text-muted leading-relaxed flex items-start gap-2.5">
-                <span className="text-theme-text-muted text-sm font-bold shrink-0 select-none mt-0.5">ℹ</span>
-                <span>
-                  {editingAppId
-                    ? (!hasFormChanged
-                        ? 'No modifications detected. Modify any details or binary package before publishing an update.'
-                        : 'By updating, this application release and updated details will be immediately updated across the store search index, rankings, categories, and detail views with instant direct APK download capability.')
-                    : 'By publishing, this application will immediately appear in the store search index, rankings, categories, and detail views with instant direct APK download capability and verified 5-minute install counting.'}
-                </span>
-              </div>
             </div>
           )}
         </div>
@@ -5431,7 +5376,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
         {/* Apps Listing following Search Results page layout */}
         <div className="w-full flex flex-col space-y-1">
-            {filteredApps.length === 0 ? (
+            {(isLoadingApps || !hasInitialSyncCompleted) && appsList.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+                <StoreCircleLoader size="md" />
+              </div>
+            ) : filteredApps.length === 0 ? (
               <div className="py-14 px-6 text-center flex flex-col items-center justify-center">
                 <div className="w-14 h-14 rounded-2xl bg-theme-hover border border-theme-border flex items-center justify-center text-theme-text-muted mb-3 opacity-80">
                   <Package className="w-7 h-7 stroke-[1.5]" />

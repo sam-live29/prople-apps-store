@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useStoreConfig } from '../context/StoreConfigContext';
 import { useToast } from '../context/ToastContext';
 import ConfirmationDialog from './ConfirmationDialog';
+import StoreCircleLoader from './StoreCircleLoader';
 import { 
   usePublisherNameValidation, 
   checkPublisherNameAvailability, 
@@ -14,7 +15,7 @@ import {
 import { usePreserveScroll } from '../services/scrollManager';
 
 export default function EditProfilePage({ onBack }: { onBack: () => void }) {
-  const { user, updateUserProfile } = useAuth();
+  const { user, isLoading: isAuthLoading, updateUserProfile } = useAuth();
   const { appsList } = useStoreConfig();
   const { showToast } = useToast();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -200,7 +201,12 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
         </div>
       </header>
 
-      {/* Main Container */}
+      {isAuthLoading && !user ? (
+        <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+          <StoreCircleLoader size="md" />
+        </div>
+      ) : (
+      /* Main Container */
       <div className="w-full max-w-2xl mx-auto px-2.5 sm:px-4 md:px-6 py-5 space-y-6">
         {/* Google Style User Name Starting Letter Profile Picture (Non-changeable) */}
         <div className="flex flex-col items-center justify-center text-center space-y-2.5 pt-1">
@@ -411,6 +417,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
           </div>
         </form>
       </div>
+      )}
 
       {/* Confirmation Dialog on Unsaved Discard (Using existing UI style) */}
       <ConfirmationDialog

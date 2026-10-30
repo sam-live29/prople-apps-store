@@ -53,6 +53,7 @@ export default function App() {
     openTopRatedApps,
     openPublisherConsole,
     activePublisherName,
+    setSelectedCategory,
     openAppDetail,
     openAppReviews,
     openPrivacyPolicy,
@@ -163,13 +164,24 @@ export default function App() {
 
     if (overlay === 'latest-releases') {
       const latest = [...allAppListings].sort((a, b) => {
+        const parseTs = (val: any): number => {
+          if (!val) return 0;
+          if (typeof val === 'number') return val > 1e12 ? val : val * 1000;
+          if (typeof val.toMillis === 'function') return val.toMillis();
+          if (typeof val.seconds === 'number') return val.seconds * 1000;
+          if (typeof val._seconds === 'number') return val._seconds * 1000;
+          if (typeof val === 'string') {
+            const p = Date.parse(val);
+            return Number.isNaN(p) ? 0 : p;
+          }
+          return 0;
+        };
         const detailsA = apps[a.id];
         const detailsB = apps[b.id];
-        const aHas = !!(detailsA?.releaseNotes || detailsA?.releaseTag || detailsA?.versionName || a.featuredTitle);
-        const bHas = !!(detailsB?.releaseNotes || detailsB?.releaseTag || detailsB?.versionName || b.featuredTitle);
-        if (aHas && !bHas) return -1;
-        if (!aHas && bHas) return 1;
-        return 0;
+        const tsA = Math.max(parseTs((a as any).updatedAt), parseTs(detailsA?.updatedAt), parseTs((a as any).createdAt), parseTs(detailsA?.createdAt), parseTs(detailsA?.releaseDate));
+        const tsB = Math.max(parseTs((b as any).updatedAt), parseTs(detailsB?.updatedAt), parseTs((b as any).createdAt), parseTs(detailsB?.createdAt), parseTs(detailsB?.releaseDate));
+        if (tsB !== tsA) return tsB - tsA;
+        return b.id.localeCompare(a.id);
       });
       return (
         <SimilarAppsPage 
@@ -473,9 +485,10 @@ export default function App() {
               onShowLatestReleases={openLatestReleases}
               onCategoryClick={(catName) => {
                 if (catName === 'All categories') {
-                  performSearch('');
+                  changeTab('apps');
+                  changeSubTab('Categories');
                 } else {
-                  performSearch(catName);
+                  setSelectedCategory(catName);
                 }
               }}
             />

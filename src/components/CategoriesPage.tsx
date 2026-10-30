@@ -46,7 +46,12 @@ import { AppListing } from '../types';
 import { useNavigation } from '../context/NavigationContext';
 import { usePreserveScroll } from '../services/scrollManager';
 import { getUnifiedAppSize } from '../utils/appMetricsAlgorithm';
-import { isGameApp } from '../utils/productionFeedAlgorithm';
+import {
+  canonicalizeCategoryKey,
+  doesAppMatchCategory,
+  getAppLatestTimestampMs,
+  normalizeCategoryName,
+} from '../utils/productionFeedAlgorithm';
 import StoreCircleLoader from './StoreCircleLoader';
 import PullToRefresh from './PullToRefresh';
 import { slugifyAppName } from '../utils/shareUtils';
@@ -96,49 +101,10 @@ const CATEGORY_ICON_MAP: Record<string, React.ElementType> = {
   'grid': Grid,
 };
 
-// Keyword mapping for rich category matching against 1000+ app catalog
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'android auto': ['auto', 'vehicle', 'car', 'nav', 'map', 'music', 'audio', 'podcast', 'radio', 'traffic', 'speed'],
-  'art & design': ['art', 'design', 'draw', 'paint', 'sketch', 'creative', 'graphic', 'color', 'canvas', 'illustration'],
-  'auto & vehicles': ['auto', 'vehicle', 'car', 'drive', 'mechanic', 'traffic', 'parking', 'fuel', 'speedometer', 'motor'],
-  'beauty': ['beauty', 'makeup', 'skin', 'hair', 'cosmetic', 'fashion', 'style', 'salon', 'glamour', 'wellness'],
-  'books & reference': ['book', 'reference', 'reader', 'novel', 'dictionary', 'library', 'ebook', 'audiobook', 'study', 'encyclopedia'],
-  'business': ['business', 'finance', 'office', 'crm', 'invoice', 'work', 'corporate', 'management', 'enterprise', 'sales'],
-  'children': ['children', 'kids', 'family', 'child', 'toddler', 'kindergarten', 'learning', 'abc', 'puzzle', 'game'],
-  'comics': ['comic', 'manga', 'webtoon', 'graphic novel', 'cartoon', 'anime', 'strip', 'superhero'],
-  'communication': ['communication', 'chat', 'message', 'call', 'talk', 'sms', 'mail', 'messenger', 'voip'],
-  'dating': ['dating', 'meet', 'match', 'romance', 'relationship', 'singles', 'love', 'social', 'flirt'],
-  'education': ['education', 'learn', 'study', 'course', 'school', 'academy', 'language', 'tutor', 'math', 'science'],
-  'entertainment': ['entertainment', 'stream', 'movie', 'tv', 'show', 'cinema', 'fun', 'media', 'comedy'],
-  'events': ['event', 'ticket', 'concert', 'festival', 'calendar', 'booking', 'party', 'conference', 'expo'],
-  'finance': ['finance', 'money', 'bank', 'budget', 'crypto', 'invest', 'wallet', 'stock', 'trading', 'payment'],
-  'food & drink': ['food', 'drink', 'recipe', 'restaurant', 'cook', 'cooking', 'delivery', 'meal', 'cafe', 'baking'],
-  'games': ['game', 'arcade', 'action', 'puzzle', 'rpg', 'adventure', 'strategy', 'racing', 'simulation', 'casual'],
-  'health & fitness': ['health', 'fitness', 'workout', 'gym', 'diet', 'meditation', 'run', 'running', 'yoga', 'calorie', 'tracker'],
-  'house & home': ['house', 'home', 'interior', 'decor', 'garden', 'diy', 'smart home', 'architecture', 'furniture'],
-  'libraries & demo': ['libraries', 'demo', 'developer', 'code', 'tool', 'utility', 'sdk', 'api', 'component'],
-  'lifestyle': ['lifestyle', 'habit', 'routine', 'daily', 'wellness', 'life', 'mindfulness', 'horoscope', 'living'],
-  'maps & navigation': ['map', 'maps', 'navigation', 'gps', 'route', 'transit', 'compass', 'location', 'travel'],
-  'medical': ['medical', 'doctor', 'medicine', 'clinic', 'health', 'pharmacy', 'symptom', 'hospital', 'nurse'],
-  'music & audio': ['music', 'audio', 'sound', 'song', 'player', 'podcast', 'radio', 'instrument', 'tuner', 'beats'],
-  'news & magazines': ['news', 'magazine', 'newspaper', 'journal', 'article', 'press', 'daily', 'feed', 'headline'],
-  'parenting': ['parenting', 'baby', 'toddler', 'pregnancy', 'mother', 'family', 'child', 'infant', 'maternity'],
-  'personalisation': ['personalisation', 'wallpaper', 'theme', 'icon', 'launcher', 'widget', 'font', 'customization', 'ringtone'],
-  'photography': ['photography', 'photo', 'camera', 'editor', 'picture', 'filter', 'image', 'lens', 'retouch'],
-  'productivity': ['productivity', 'task', 'note', 'calendar', 'todo', 'planner', 'organizer', 'office', 'document'],
-  'shopping': ['shopping', 'store', 'buy', 'deal', 'discount', 'cart', 'shop', 'ecommerce', 'marketplace'],
-  'social': ['social', 'network', 'community', 'feed', 'post', 'share', 'friends', 'profile', 'connect'],
-  'sports': ['sports', 'football', 'soccer', 'basketball', 'cricket', 'score', 'match', 'fitness', 'league'],
-  'tools': ['tools', 'utilities', 'utility', 'helper', 'calculator', 'flashlight', 'cleaner', 'compass', 'converter'],
-  'travel & local': ['travel', 'local', 'flight', 'hotel', 'trip', 'guide', 'vacation', 'tourism', 'city', 'booking'],
-  'video players & editors': ['video', 'player', 'editor', 'recording', 'movie', 'clip', 'stream', 'converter', 'vlog'],
-  'weather': ['weather', 'forecast', 'radar', 'temperature', 'rain', 'storm', 'climate', 'wind', 'humidity'],
-};
-
 export default function CategoriesPage({ onAppClick, initialCategory = null, isGamesMode = false }: CategoriesPageProps) {
-  const { allAppListings, apps, refreshCatalogue, isPullRefreshing } = useStoreConfig();
+  const { allAppListings, apps, isLoadingApps, hasInitialSyncCompleted, refreshCatalogue, isPullRefreshing } = useStoreConfig();
   const { selectedCategory: navCategory, setSelectedCategory: navSetSelectedCategory, goBack } = useNavigation();
-  const selectedCategory = navCategory !== null ? navCategory : initialCategory;
+  const rawSelectedCategory = navCategory !== null ? navCategory : initialCategory;
   
   const setSelectedCategory = (cat: string | null) => {
     if (cat === null) {
@@ -150,46 +116,68 @@ export default function CategoriesPage({ onAppClick, initialCategory = null, isG
 
   const allApps: AppListing[] = allAppListings;
 
+  // Merge standard store categories with any custom categories used by published apps
+  const mergedCategories = useMemo(() => {
+    const base = [...appCategories];
+    const existingKeys = new Set(base.map(c => canonicalizeCategoryKey(c.name)));
+    for (const app of allApps) {
+      const rawCat = (app.category || apps[app.id]?.category || '').trim();
+      if (!rawCat) continue;
+      const key = canonicalizeCategoryKey(rawCat);
+      if (!existingKeys.has(key)) {
+        existingKeys.add(key);
+        const cleanName = normalizeCategoryName(rawCat);
+        base.push({
+          id: `cat-${slugifyAppName(cleanName)}`,
+          name: cleanName,
+          icon: 'grid',
+        });
+      }
+    }
+    return base;
+  }, [allApps, apps]);
+
   const sortedCategories = useMemo(() => {
-    if (!isGamesMode) return appCategories;
-    return [...appCategories].sort((a, b) => {
+    if (!isGamesMode) return mergedCategories;
+    return [...mergedCategories].sort((a, b) => {
       const aIsGame = a.name.toLowerCase().includes('game') || a.id === 'cat-games';
       const bIsGame = b.name.toLowerCase().includes('game') || b.id === 'cat-games';
       if (aIsGame && !bIsGame) return -1;
       if (!aIsGame && bIsGame) return 1;
       return 0;
     });
-  }, [isGamesMode]);
+  }, [mergedCategories, isGamesMode]);
 
-  // Filter apps matching the chosen category with rich thematic fallback
+  // Resolve URL slug or ID (e.g. 'music-audio' or 'cat-productivity') to canonical category display name
+  const selectedCategory = useMemo(() => {
+    if (!rawSelectedCategory) return null;
+    if (rawSelectedCategory === 'All categories' || rawSelectedCategory.toLowerCase() === 'all-categories') {
+      return 'All categories';
+    }
+    const targetSlug = slugifyAppName(rawSelectedCategory.replace(/^cat-/, ''));
+    const targetKey = canonicalizeCategoryKey(rawSelectedCategory);
+    const matchedCat = mergedCategories.find(
+      c =>
+        c.name.toLowerCase() === rawSelectedCategory.toLowerCase() ||
+        c.id.toLowerCase() === rawSelectedCategory.toLowerCase() ||
+        slugifyAppName(c.name) === targetSlug ||
+        canonicalizeCategoryKey(c.name) === targetKey
+    );
+    return matchedCat ? matchedCat.name : normalizeCategoryName(rawSelectedCategory);
+  }, [rawSelectedCategory, mergedCategories]);
+
+  // Strictly filter apps belonging to the chosen category without cross-category false positives
   const categoryApps = useMemo(() => {
     if (!selectedCategory) return [];
-    if (selectedCategory === 'All categories') {
-      return isGamesMode ? allApps.filter(app => isGameApp(app, apps[app.id])) : allApps;
-    }
-    const catLower = selectedCategory.toLowerCase().trim();
-    if (catLower === 'games' || (isGamesMode && catLower.includes('game'))) {
-      return allApps.filter(app => isGameApp(app, apps[app.id]));
-    }
-    const keywords = CATEGORY_KEYWORDS[catLower] || [catLower];
-
-    const matched = allApps.filter(app => {
-      const appCat = (app.category || '').toLowerCase();
-      const appName = (app.name || '').toLowerCase();
-      const appDev = (app.developer || '').toLowerCase();
-      const appFeat = `${app.featuredTitle || ''} ${app.featuredSubtitle || ''}`.toLowerCase();
-
-      // Direct category string match
-      if (appCat.includes(catLower) || catLower.includes(appCat)) return true;
-
-      // Keyword match across app category, title, or featured text
-      return keywords.some(kw => 
-        appCat.includes(kw) || appName.includes(kw) || appDev.includes(kw) || appFeat.includes(kw)
-      );
+    const matched = allApps.filter(app =>
+      doesAppMatchCategory(app, apps[app.id], selectedCategory, isGamesMode)
+    );
+    return [...matched].sort((a, b) => {
+      const tsDiff = getAppLatestTimestampMs(b, apps[b.id]) - getAppLatestTimestampMs(a, apps[a.id]);
+      if (tsDiff !== 0) return tsDiff;
+      return (b.downloadsCount || 0) - (a.downloadsCount || 0);
     });
-
-    return matched;
-  }, [allApps, selectedCategory]);
+  }, [allApps, apps, selectedCategory, isGamesMode]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchActive, setIsSearchActive] = useState(false);
@@ -363,7 +351,7 @@ export default function CategoriesPage({ onAppClick, initialCategory = null, isG
           className="flex-1 min-h-0 flex flex-col w-full relative"
         >
           <div ref={categoryScrollRef} className="flex-1 overflow-y-auto px-2.5 sm:px-4 md:px-6 pt-4 pb-28 w-full">
-            {isCategoryLoading ? (
+            {isCategoryLoading || ((isLoadingApps || !hasInitialSyncCompleted) && allApps.length === 0) ? (
               <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
                 <StoreCircleLoader size="md" />
               </div>
@@ -442,6 +430,11 @@ export default function CategoriesPage({ onAppClick, initialCategory = null, isG
       className="flex-1 min-h-0 flex flex-col w-full relative"
     >
       <div className="w-full min-h-full bg-theme-bg pb-28 font-sans">
+        {(isLoadingApps || !hasInitialSyncCompleted) && allApps.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center min-h-[50vh] w-full">
+            <StoreCircleLoader size="md" />
+          </div>
+        ) : (
         <div className="w-full py-3 px-2.5 sm:px-4 md:px-6">
           {/* Responsive grid of categories on tablet and desktop, clean list on mobile */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 w-full">
@@ -476,6 +469,7 @@ export default function CategoriesPage({ onAppClick, initialCategory = null, isG
             })}
           </div>
         </div>
+        )}
       </div>
     </PullToRefresh>
   );

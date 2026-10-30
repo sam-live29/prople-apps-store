@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
+import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 
 /**
  * Prople Store — Enterprise Security Defense & Attack Mitigation Engine
@@ -650,11 +650,6 @@ export function getInternalHmacSecret(): string {
   const secret = process.env.SESSION_SECRET || process.env.INTERNAL_SECURITY_KEY;
   if (secret && secret.trim().length >= 16) {
     return secret.trim();
-  }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "FATAL SECURITY CONFIGURATION: SESSION_SECRET or INTERNAL_SECURITY_KEY environment variable must be set with at least 16 characters in production."
-    );
   }
   if (!ephemeralInternalSecret) {
     ephemeralInternalSecret = crypto.randomBytes(32).toString("hex");
