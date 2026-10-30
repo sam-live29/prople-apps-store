@@ -32,3 +32,10 @@ This document tracks architectural updates and algorithmic optimizations impleme
   - Removed the `localStorage.getItem('prople_publish_form_open')` override from `getInitialNavigationState()` and ensured `prople_publish_form_open` / `prople_publish_form_session` are cleared whenever exiting unchanged or empty publish sessions, keeping browser refreshes anchored to the active URL pathname.
 - **Unified `StoreCircleLoader` Reuse**:
   - Reused the existing `StoreCircleLoader` (`SearchResultsPage` spinner) across `AppConsole` (`/studio`), `CategoriesPage`, `TopCharts`, `YouPage`, `WishlistPage`, `NotificationsPage`, `EditProfilePage`, and `RatingsAndReviewsPage` during initial auth and Firestore catalog hydration.
+
+## 5. CI/CD Pipeline Maintenance & Lockfile-Resilient Caching (`/.github/workflows/ci.yml`)
+- **Decoupled npm Cache from Strict Lockfile Presence**:
+  - Removed `cache: 'npm'` from `actions/setup-node`, which previously caused immediate 6–9s job failures (`Dependencies lock file is not found`) whenever automated repository exports omitted `package-lock.json`.
+  - Replaced with `actions/cache@v5` targeting `~/.npm` and keyed on `hashFiles('package-lock.json', 'package.json')`, preserving fast dependency cache hits regardless of whether `package-lock.json` is committed.
+- **Node 24 Action Runtime Alignment & Hygiene**:
+  - Upgraded `actions/checkout` and `actions/setup-node` to `v6` (`node24` runner runtime) to eliminate GitHub Actions Node 20 deprecation warnings, added `npm run test:catalog` verification into CI, and excluded `public/assets/aistudio/` from git tracking and PWA Workbox precaching.

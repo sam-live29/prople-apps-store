@@ -26,24 +26,32 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🟢 Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+
+      - name: ⚡ Cache npm dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package-lock.json', 'package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-npm-
 
       - name: 📦 Install dependencies
         run: |
           if [ -f package-lock.json ]; then
-            npm ci || npm install --legacy-peer-deps
+            npm ci --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund
           else
-            npm install --legacy-peer-deps
+            npm install --legacy-peer-deps --no-audit --no-fund
           fi
 
-      - name: 🔍 Typecheck & Lint
+      - name: 🔍 Typecheck, Lint & Catalog Validation
         run: |
+          npm run test:catalog
           npm run lint
 
       - name: 🏗️ Production Build (Client SPA & Bundled Server)
