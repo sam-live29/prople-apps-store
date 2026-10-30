@@ -529,8 +529,8 @@ async function startServer() {
     // 5. Strict-Transport-Security (HSTS): Force HTTPS
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 
-    // 6. Permissions-Policy: Explicitly allow self for microphone (for voice search) while restricting others
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=(), payment=()');
+    // 6. Permissions-Policy: Allow native browser/OS microphone permission prompts while restricting unused sensors
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=*, geolocation=(), payment=()');
 
     // 7. Content-Security-Policy (CSP): Cross-site scripting & injection mitigation
     const isDev = process.env.NODE_ENV !== 'production';

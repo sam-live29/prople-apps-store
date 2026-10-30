@@ -216,22 +216,24 @@ export default function ActiveSearchPage({
       return;
     }
 
+    // Trigger native OS/browser microphone permission prompt first (never open custom UI permission cards)
+    const hasPermission = await requestMicPermission();
+    if (!hasPermission) {
+      setIsListening(false);
+      isListeningRef.current = false;
+      setIsSpeechDetected(false);
+      setShowVoiceModal(false);
+      setVoiceError(null);
+      showToast('Microphone permission is blocked in your browser or system settings.');
+      return;
+    }
+
     setShowVoiceModal(true);
     setIsListening(true);
     isListeningRef.current = true;
     setIsSpeechDetected(false);
     setVoiceError(null);
     setVoiceTranscript('');
-
-    // Pre-flight check: trigger browser's native microphone permission prompt if needed
-    const hasPermission = await requestMicPermission();
-    if (!hasPermission) {
-      setIsListening(false);
-      isListeningRef.current = false;
-      setIsSpeechDetected(false);
-      setVoiceError('Microphone permission was denied. Please allow microphone access in your browser settings.');
-      return;
-    }
 
     if (recognitionRef.current) {
       try {
@@ -340,7 +342,9 @@ export default function ActiveSearchPage({
         setIsSpeechDetected(false);
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setVoiceError('Microphone permission was denied. Please allow microphone access in your browser settings.');
+          setShowVoiceModal(false);
+          setVoiceError(null);
+          showToast('Microphone permission is blocked in your browser or system settings.');
         } else if (event.error === 'no-speech') {
           setVoiceError("Didn't catch any speech. Tap the microphone to try again.");
         } else if (event.error === 'network') {
@@ -422,16 +426,21 @@ export default function ActiveSearchPage({
   };
 
   useEffect(() => {
-    // Check/request native microphone permission seamlessly on search mount (same as notification permission)
+    // Request native system/browser microphone permission on search mount (matching NotificationsPage native prompt behavior)
+    if (autoStartVoice) return;
     if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.mediaDevices) {
-      if (navigator.permissions && navigator.permissions.query) {
+      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
         navigator.permissions.query({ name: 'microphone' as PermissionName })
           .then((status) => {
-            if (status.state === 'prompt' && autoStartVoice) {
+            if (status.state === 'prompt') {
               requestBrowserMicrophonePermission().catch(() => {});
             }
           })
-          .catch(() => {});
+          .catch(() => {
+            requestBrowserMicrophonePermission().catch(() => {});
+          });
+      } else {
+        requestBrowserMicrophonePermission().catch(() => {});
       }
     }
   }, [autoStartVoice]);
@@ -900,19 +909,6 @@ export default function ActiveSearchPage({
                       ? "Listening..." 
                       : "Tap mic to speak"}
               </p>
-              {voiceError && voiceError.toLowerCase().includes('permission') && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setVoiceError(null);
-                    await startListening();
-                  }}
-                  className="mt-2.5 px-4 py-1.5 bg-[#8ab4f8] text-[#131314] text-[13px] font-medium rounded-full hover:bg-[#a8c7fa] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0"
-                >
-                  <Mic className="w-3.5 h-3.5" />
-                  <span>Ask mic permission</span>
-                </button>
-              )}
             </div>
 
             {/* Language indicator at bottom of card */}

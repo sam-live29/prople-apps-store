@@ -192,43 +192,58 @@ export function flattenPermissionGroups(groups: AppPermissionGroup[]): string[] 
   return result;
 }
 
+let inflightMicPermissionPromise: Promise<'granted' | 'denied' | 'prompt' | null> | null = null;
+
 /**
- * Triggers native browser prompt to request microphone permission
- * without altering or disturbing the UI.
+ * Triggers native OS / browser system prompt to request microphone permission
+ * directly (matching how Notification.requestPermission() works natively),
+ * without breaking synchronous user-gesture propagation or showing custom UI.
  */
-export async function requestBrowserMicrophonePermission(): Promise<'granted' | 'denied' | 'prompt' | null> {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return null;
-
-  // 1. Check if Permissions API is supported
-  try {
-    if (navigator.permissions && navigator.permissions.query) {
-      const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-      if (status.state === 'granted') {
-        return 'granted';
-      }
-      if (status.state === 'denied') {
-        return 'denied';
-      }
-    }
-  } catch {
-    // Some browsers do not support query({ name: 'microphone' })
+export function requestBrowserMicrophonePermission(): Promise<'granted' | 'denied' | 'prompt' | null> {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return Promise.resolve(null);
   }
 
-  // 2. Trigger native browser permission dialog via getUserMedia
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  if (inflightMicPermissionPromise) {
+    return inflightMicPermissionPromise;
+  }
+
+  inflightMicPermissionPromise = (async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
-      return 'granted';
-    } catch (err: any) {
-      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-        return 'denied';
+      // Directly invoke native OS/browser microphone permission prompt first to preserve user gesture
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((track) => track.stop());
+          return 'granted';
+        } catch (err: any) {
+          if (
+            err?.name === 'NotAllowedError' ||
+            err?.name === 'PermissionDeniedError' ||
+            err?.name === 'SecurityError'
+          ) {
+            return 'denied';
+          }
+          // Hardware missing (NotFoundError) or busy (NotReadableError) — permission itself was not denied
+          return null;
+        }
       }
-      return null;
-    }
-  }
 
-  return null;
+      // Fallback if mediaDevices API is unavailable in non-secure context
+      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        return status.state;
+      }
+
+      return null;
+    } catch {
+      return null;
+    } finally {
+      inflightMicPermissionPromise = null;
+    }
+  })();
+
+  return inflightMicPermissionPromise;
 }
 
 /**

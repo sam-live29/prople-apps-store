@@ -16,6 +16,7 @@ import { useStoreConfig } from '../context/StoreConfigContext';
 import { useReviews } from '../context/ReviewContext';
 import { useAuth } from '../context/AuthContext';
 import { saveSearchQuery } from '../utils/searchHistory';
+import { requestBrowserMicrophonePermission } from '../utils/permissionUtils';
 import BottomNav from './BottomNav';
 import BrandLogo from './BrandLogo';
 import LinuxIcon from './LinuxIcon';
@@ -414,6 +415,7 @@ export default function SearchResultsPage({
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    requestBrowserMicrophonePermission().catch(() => {});
     if (onOpenSearch) {
       onOpenSearch(true);
     }
