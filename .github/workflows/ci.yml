@@ -26,28 +26,24 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: 🟢 Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: ⚡ Cache npm dependencies
-        uses: actions/cache@v5
+      - name: ⚡ Cache npm global store
+        uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package-lock.json', 'package.json') }}
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-npm-${{ hashFiles('package.json') }}
           restore-keys: |
             ${{ runner.os }}-node-${{ matrix.node-version }}-npm-
 
-      - name: 📦 Install dependencies
+      - name: 📦 Install dependencies (including devDependencies)
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund
-          else
-            npm install --legacy-peer-deps --no-audit --no-fund
-          fi
+          npm install --include=dev --legacy-peer-deps --no-audit --no-fund
 
       - name: 🔍 Typecheck, Lint & Catalog Validation
         run: |
