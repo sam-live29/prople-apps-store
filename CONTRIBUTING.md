@@ -57,7 +57,7 @@ The application will boot on `http://localhost:3000` with full UI, search, categ
 
 Looking for an issue to tackle? We have two dedicated tracks:
 - 🟢 [**Good First Issues Guide**](docs/GOOD_FIRST_ISSUES.md) — 6 actionable, beginner-friendly starter tasks (UI micro-interactions, accessibility, catalog validators, and help guides).
-- 🔴 [**Advanced Contributor Challenges**](docs/ADVANCED_CONTRIBUTOR_CHALLENGES.md) — 5 core systems challenges with full architecture, threat model, and cryptographic specifications (streaming SHA-256 verification, private token ingestion, S3/R2 direct package upload, one-time binary mirroring, and Android Keystore v2/v3 signature locking).
+- 🔴 [**Advanced Contributor Challenges**](docs/ADVANCED_CONTRIBUTOR_CHALLENGES.md) — 10 advanced engineering challenges covering streaming cryptography, binary mirroring, Android Keystore v2/v3 signatures, dynamic storefront section generators, ranking algorithms, and search engines.
 - 🗺️ [**Platform Roadmap**](ROADMAP.md) — Current priorities, planned milestones, and RFCs.
 
 ---

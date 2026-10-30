@@ -2,13 +2,11 @@
 
 Welcome! If you are looking to make your first contribution to **Prople Store**, this curated list of starter tasks is designed for you. Each task is small, self-contained, clearly scoped, and does not require private cloud credentials (they can all be developed and tested in local zero-config mode).
 
-> ⚠️ **Looking for Deep Systems & Core Architecture Challenges?**  
-> If you are a senior engineer looking to work on streaming SHA-256 cryptographic verification, private repository distribution pipelines, S3/R2 binary upload pipelines, or Android Keystore v2/v3 signature parsing, please check out:
-> - 🚀 [**Advanced Contributor Challenges (ADV-01 to ADV-05)**](ADVANCED_CONTRIBUTOR_CHALLENGES.md)
+> 💡 *Looking for deep systems, streaming cryptography, or algorithmic challenges? Please see [Advanced Contributor Challenges](ADVANCED_CONTRIBUTOR_CHALLENGES.md).*
 
 ---
 
-## Index of Starter Issues (Beginner & Intermediate)
+## Index of Starter Issues
 
 | ID | Title | Difficulty | Primary Focus | Relevant Files |
 | :--- | :--- | :--- | :--- | :--- |
@@ -18,25 +16,6 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 | **GFI-04** | [Platform Filter Quick-Chips on Explore View](#gfi-04-platform-filter-quick-chips-on-explore-view) | 🟡 Medium-Easy | UI / State | `src/components/ExplorePage.tsx` |
 | **GFI-05** | [Static Mock Catalog Sanity Validator Script](#gfi-05-static-mock-catalog-sanity-validator-script) | 🟡 Medium-Easy | Tooling / Testing | `scripts/validate_catalog.js`, `src/data.ts` |
 | **GFI-06** | [Private Repo & Self-Hosting Helper Accordion in Console](#gfi-06-private-repo--self-hosting-helper-accordion-in-console) | 🟢 Easy | UI / Guidance | `src/components/AppConsole.tsx` |
-
----
-
-## Advanced Systems & Algorithm Track (For Experienced Engineers)
-
-These issues require backend streaming pipelines, cryptographic hash computation, distribution section generation, and algorithm design. They are fully documented in [**ADVANCED_CONTRIBUTOR_CHALLENGES.md**](ADVANCED_CONTRIBUTOR_CHALLENGES.md):
-
-| ID | Title | Complexity | Domain |
-| :--- | :--- | :--- | :--- |
-| **ADV-01** | [Automated Streaming SHA-256 Digest & Sidecar Verifier](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-01-automated-streaming-sha-256-digest--sidecar-verifier) | 🔴 Advanced | Backend / Crypto |
-| **ADV-02** | [Direct Binary Package Multipart Upload with S3/R2](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-02-direct-binary-package-multipart-upload-with-s3r2) | 🔴 Advanced | Cloud / Full-Stack |
-| **ADV-03** | [Scoped Private GitHub Release Importer & Token Sanitizer](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-03-scoped-private-github-release-importer--token-sanitizer) | 🔴 Advanced | Security / API |
-| **ADV-04** | [One-Time Binary Release Mirroring & Edge CDN Cache](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-04-one-time-binary-release-mirroring--edge-cdn-cache) | 🔴 Advanced | Systems / Proxy |
-| **ADV-05** | [Android Keystore Signature (v2/v3) Fingerprint Parser & Lock](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-05-android-keystore-signature-v2v3-fingerprint-parser--lock) | 🔴 Advanced | Security / Android |
-| **ADV-06** | [Dynamic Store Distribution Section Generator & Category Clustering](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-06-dynamic-store-distribution-section-generator--category-clustering) | 🔴 Advanced | Feed / Clustering |
-| **ADV-07** | [Context-Aware Dynamic Ranking & Time-Decay Feed Scoring Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-07-context-aware-dynamic-ranking--time-decay-feed-scoring-engine) | 🔴 Advanced | Ranking / Math |
-| **ADV-08** | [Anti-Gaming Download Velocity & Sybil Review Detection Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-08-anti-gaming-download-velocity--sybil-review-detection-engine) | 🔴 Advanced | Fraud / Statistics |
-| **ADV-09** | [Multi-Platform Package Asset Matching & Architecture Constraint Solver](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-09-multi-platform-package-asset-matching--architecture-constraint-solver) | 🔴 Advanced | Systems / Solver |
-| **ADV-10** | [Sub-5ms Client-Side BM25 & Fuzzy Typo-Tolerant Search Engine](ADVANCED_CONTRIBUTOR_CHALLENGES.md#adv-10-sub-5ms-client-side-bm25--fuzzy-typo-tolerant-search-engine) | 🔴 Advanced | Search / IR |
 
 ---
 
