@@ -16,6 +16,7 @@
 - **Security Policy**: [SECURITY.md](SECURITY.md)
 - **Roadmap & Priorities**: [ROADMAP.md](ROADMAP.md)
 - **Beginner Issues**: [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
+- **Advanced Contributor Challenges**: [Advanced Challenges](docs/ADVANCED_CONTRIBUTOR_CHALLENGES.md)
 
 ---
 
