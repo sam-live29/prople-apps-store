@@ -1538,24 +1538,9 @@ export default function AppDetailPage({
                   >
                     {publisherDisplayName || app.developer}
                   </button>
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-normal sm:font-medium text-[#1f1f1f] dark:text-[#f3f4f6] leading-[1.12] tracking-tight mt-0.5 sm:mt-1 mb-1.5 break-words line-clamp-2 font-google-sans">
+                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-normal sm:font-medium text-[#1f1f1f] dark:text-[#f3f4f6] leading-[1.12] tracking-tight mt-0.5 sm:mt-1 mb-3 sm:mb-3.5 break-words line-clamp-2 font-google-sans">
                     {app.name}
                   </h1>
-                  <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-theme-text-muted mb-3 flex-wrap">
-                    {app.category && <span className="font-medium text-theme-text">{app.category}</span>}
-                    {app.containsAds && (
-                      <>
-                        <span>•</span>
-                        <span>Contains ads</span>
-                      </>
-                    )}
-                    {app.inAppPurchases && (
-                      <>
-                        <span>•</span>
-                        <span>In-app purchases</span>
-                      </>
-                    )}
-                  </div>
                 </div>
 
                 {/* Side-by-side row: App Icon on left + Horizontal Stats on right */}
@@ -1596,12 +1581,7 @@ export default function AppDetailPage({
                     </button>
 
                     {/* 2. Content Rating */}
-                    <button
-                      type="button"
-                      onClick={() => setDetailView('about')}
-                      className="flex flex-col items-center justify-center min-w-0 px-0.5 text-center cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0"
-                      title="View content rating and app details"
-                    >
+                    <div className="flex flex-col items-center justify-center min-w-0 px-0.5 text-center">
                       <span className="text-sm font-medium mb-0.5 text-theme-text flex items-center justify-center gap-1 truncate w-full">
                         <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[3px] leading-none tracking-tight shrink-0">
                           {getContentRatingBadge(app.contentRating)}
@@ -1611,7 +1591,7 @@ export default function AppDetailPage({
                         <span>{getContentRatingLabel(app.contentRating)}</span>
                         <Info className="w-2.5 h-2.5 text-theme-text-muted shrink-0 hidden sm:inline" />
                       </span>
-                    </button>
+                    </div>
 
                     {/* 3. Downloads Count */}
                     <div className="flex flex-col items-center justify-center min-w-0 px-0.5 text-center">
@@ -1791,22 +1771,16 @@ export default function AppDetailPage({
                     <div className="h-6 w-[1px] bg-theme-border/30" />
 
                     {/* 2. Content Rating */}
-                    <button
-                      type="button"
-                      onClick={() => setDetailView('about')}
-                      className="flex flex-col items-start min-w-0 cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0 text-left"
-                      title="View content rating and app details"
-                    >
+                    <div className="flex flex-col items-start min-w-0">
                       <span className="text-base font-semibold text-theme-text flex items-center gap-1">
                         <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[3px] leading-none tracking-tight shrink-0">
                           {getContentRatingBadge(app.contentRating)}
                         </span>
                       </span>
-                      <span className="text-[11px] text-theme-text-muted flex items-center gap-1">
-                        <span>{getContentRatingLabel(app.contentRating)}</span>
-                        <Info className="w-2.5 h-2.5 text-theme-text-muted shrink-0" />
+                      <span className="text-[11px] text-theme-text-muted">
+                        {getContentRatingLabel(app.contentRating)}
                       </span>
-                    </button>
+                    </div>
 
                     <div className="h-6 w-[1px] bg-theme-border/30" />
 

@@ -95,18 +95,8 @@ import {
   getPlayStorePermissionIcon
 } from './PlayStorePermissionIcons';
 import { AdminModerationService } from '../services/adminModerationService';
-import { 
-  fetchGitHubReleaseMetadata, 
-  formatPackageSize, 
-  formatDownloadCount, 
-  parseDownloadCount, 
-  extractGitHubRepoOwner,
-  getContentRatingBadge,
-  getContentRatingLabel,
-  getContentRatingDescription,
-  PLAY_STORE_CONTENT_RATINGS,
-  PLAY_STORE_INTERACTIVE_ELEMENTS
-} from '../utils/appMetricsAlgorithm';
+import { fetchGitHubReleaseMetadata, formatPackageSize, formatDownloadCount, parseDownloadCount, extractGitHubRepoOwner } from '../utils/appMetricsAlgorithm';
+import { extractYouTubeId } from '../utils/mediaUtils';
 import { auth } from '../firebase';
 import { getPublishQuotaStatus, recordPublishEvent, getUpdateQuotaStatus, recordUpdateEvent } from '../services/publishQuotaService';
 import { usePreserveScroll } from '../services/scrollManager';
@@ -2101,7 +2091,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     contentRating,
     containsAds,
     inAppPurchases,
-    interactiveElements,
     tags,
     platform,
     packageFormat,
@@ -2158,7 +2147,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     savedAt: new Date().toISOString()
   }), [
     step, editingAppId, initialAppSnapshot, name, developerName, developerEmail, githubRepoOwner,
-    category, tagline, contentRating, containsAds, inAppPurchases, interactiveElements, tags, platform, packageFormat,
+    category, tagline, contentRating, containsAds, inAppPurchases, tags, platform, packageFormat,
     targetOs, version, versionName, versionCode, downloadUrl, assetName, assetSize,
     detectedDownloadsCount, sha256, minAndroid, releaseDate, initialReleaseDate, changelog,
     iconUrl, featureGraphicUrl, detailsBannerUrl, heroBannerUrl, featureOnSpotlight,
@@ -3782,171 +3771,27 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   />
                 </div>
 
-                {/* Play Store Style Content Rating & Classification */}
-                <div id="section-content-rating" className="space-y-2 pt-1 border-t border-theme-border/30">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Content / Age Rating *</span>
-                    </label>
-                    <span className="text-[11px] text-theme-text-muted">Play Store Standard</span>
-                  </div>
-
-                  {/* Live Rating Preview Badge Card */}
-                  <div className="p-3 rounded-xl bg-theme-hover/30 border border-theme-border/60 flex items-start gap-3 transition-colors">
-                    <div className="shrink-0 pt-0.5">
-                      <span className="inline-flex items-center justify-center min-w-[32px] px-2 py-1 text-[11px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[4px] leading-none tracking-tight shadow-xs">
-                        {getContentRatingBadge(contentRating)}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-theme-text">
-                          {getContentRatingLabel(contentRating)}
-                        </span>
-                        <span className="text-[10px] font-medium text-theme-text-muted px-1.5 py-0.5 rounded bg-theme-hover/60 border border-theme-border/40 shrink-0">
-                          {contentRating.toLowerCase().includes('rated for') ? 'PEGI' : 'ESRB'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-theme-text-muted leading-relaxed mt-1">
-                        {getContentRatingDescription(contentRating)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Dropdown with authentic groups */}
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-theme-text-muted">
-                      Select official rating tier:
-                    </label>
-                    <select
-                      id="select-content-rating"
-                      value={contentRating}
-                      onChange={e => setContentRating(e.target.value)}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text outline-none focus:border-blue-500 cursor-pointer"
-                    >
-                      <optgroup label="ESRB Classification (Americas & Global)">
-                        <option value="Everyone">Everyone – All ages, minimal fantasy violence</option>
-                        <option value="Everyone 10+">Everyone 10+ – Suitable for 10 and older</option>
-                        <option value="Teen">Teen (13+) – Suitable for 13 and older</option>
-                        <option value="Mature 17+">Mature 17+ – Suitable for 17 and older</option>
-                        <option value="Adults only 18+">Adults only 18+ – Strictly 18 and older</option>
-                      </optgroup>
-                      <optgroup label="PEGI Classification (International / Europe)">
-                        <option value="Rated for 3+">Rated for 3+ – Very mild comedic cartoon violence</option>
-                        <option value="Rated for 7+">Rated for 7+ – Mild scenes possibly scary to young kids</option>
-                        <option value="Rated for 12+">Rated for 12+ – Non-realistic violence or mild bad language</option>
-                        <option value="Rated for 16+">Rated for 16+ – Realistic violence, strong language</option>
-                        <option value="Rated for 18+">Rated for 18+ – Explicit content / extreme violence</option>
-                      </optgroup>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-theme-text mb-1">Content / Age Rating</label>
+                  <select
+                    value={contentRating}
+                    onChange={e => setContentRating(e.target.value)}
+                    className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text outline-none focus:border-blue-500"
+                  >
+                    <option value="Rated for 3+">Rated for 3+</option>
+                    <option value="Rated for 7+">Rated for 7+</option>
+                    <option value="Rated for 12+">Rated for 12+</option>
+                    <option value="Rated for 16+">Rated for 16+</option>
+                    <option value="Rated for 18+">Rated for 18+</option>
+                    <option value="Everyone">Everyone</option>
+                    <option value="Everyone 10+">Everyone 10+</option>
+                    <option value="Teen">Teen (13+)</option>
+                    <option value="Mature 17+">Mature 17+</option>
+                    <option value="Adults only 18+">Adults only 18+</option>
+                  </select>
                 </div>
 
-                {/* Play Store Interactive Elements & Disclosures */}
-                <div id="section-interactive-elements" className="space-y-2 pt-2 border-t border-theme-border/30">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
-                      <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Interactive Elements &amp; Disclosures</span>
-                    </label>
-                    <span className="text-[11px] text-theme-text-muted">Store Details Page</span>
-                  </div>
-                  <p className="text-[11px] text-theme-text-muted leading-relaxed">
-                    Declare interactive features present in your app so users see transparent Play Store safety disclosures.
-                  </p>
-
-                  <div className="space-y-2 pt-1">
-                    {PLAY_STORE_INTERACTIVE_ELEMENTS.map(elem => {
-                      const isSelected = interactiveElements.includes(elem.id);
-                      return (
-                        <label
-                          key={elem.id}
-                          className={`flex items-start gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                            isSelected 
-                              ? 'bg-blue-500/10 border-blue-500/40 text-theme-text' 
-                              : 'bg-theme-hover/20 border-theme-border/50 hover:bg-theme-hover/40 text-theme-text-muted'
-                          }`}
-                        >
-                          <input 
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setInteractiveElements(prev => Array.from(new Set([...prev, elem.id])));
-                                if (elem.id === 'Digital Purchases') {
-                                  setInAppPurchases(true);
-                                }
-                              } else {
-                                setInteractiveElements(prev => prev.filter(id => id !== elem.id));
-                              }
-                            }}
-                            className="rounded accent-blue-600 mt-0.5 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-semibold block text-theme-text leading-tight">
-                              {elem.label}
-                            </span>
-                            <span className="text-[11px] text-theme-text-muted leading-relaxed block mt-0.5">
-                              {elem.description}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Monetization & Advertising Disclosures */}
-                <div id="section-monetization-info" className="space-y-2 pt-2 border-t border-theme-border/30">
-                  <label className="block text-xs font-semibold text-theme-text uppercase tracking-wider">
-                    Commercial &amp; Monetization Disclosures
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      containsAds 
-                        ? 'bg-amber-500/10 border-amber-500/40' 
-                        : 'bg-theme-hover/20 border-theme-border/50 hover:bg-theme-hover/40'
-                    }`}>
-                      <input 
-                        type="checkbox" 
-                        checked={containsAds} 
-                        onChange={e => setContainsAds(e.target.checked)} 
-                        className="rounded accent-blue-600 mt-0.5"
-                      />
-                      <div>
-                        <span className="text-xs font-semibold text-theme-text block">Contains Ads</span>
-                        <span className="text-[10px] text-theme-text-muted block mt-0.5">App displays banners, native, or rewarded ads</span>
-                      </div>
-                    </label>
-
-                    <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      inAppPurchases 
-                        ? 'bg-emerald-500/10 border-emerald-500/40' 
-                        : 'bg-theme-hover/20 border-theme-border/50 hover:bg-theme-hover/40'
-                    }`}>
-                      <input 
-                        type="checkbox" 
-                        checked={inAppPurchases} 
-                        onChange={e => {
-                          const checked = e.target.checked;
-                          setInAppPurchases(checked);
-                          if (checked) {
-                            setInteractiveElements(prev => Array.from(new Set([...prev, 'Digital Purchases'])));
-                          }
-                        }} 
-                        className="rounded accent-blue-600 mt-0.5"
-                      />
-                      <div>
-                        <span className="text-xs font-semibold text-theme-text block">In-App Purchases</span>
-                        <span className="text-[10px] text-theme-text-muted block mt-0.5">Offers digital items or premium unlocks</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Search Tags / Category Badges */}
-                <div className="pt-2 border-t border-theme-border/30">
+                <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-theme-text">Search Tags / Category Badges (Comma-separated)</label>
                     <span className="text-[10px] text-theme-text-muted">{tags.length}/100</span>
@@ -3959,15 +3804,27 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     onChange={e => setTags(e.target.value.slice(0, 100))}
                     className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text outline-none focus:border-blue-500"
                   />
-                  {tags.trim() && (
-                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                      {tags.split(',').map(t => t.trim()).filter(Boolean).map((tag, idx) => (
-                        <span key={idx} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-theme-hover border border-theme-border/60 text-theme-text">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                </div>
+
+                <div className="pt-2 flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-theme-text">
+                    <input 
+                      type="checkbox" 
+                      checked={containsAds} 
+                      onChange={e => setContainsAds(e.target.checked)} 
+                      className="rounded accent-blue-600"
+                    />
+                    <span>Contains Ads</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-theme-text">
+                    <input 
+                      type="checkbox" 
+                      checked={inAppPurchases} 
+                      onChange={e => setInAppPurchases(e.target.checked)} 
+                      className="rounded accent-blue-600"
+                    />
+                    <span>In-App Purchases</span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -4931,52 +4788,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                 </div>
                 <div className="flex items-center gap-2.5 py-2 border-b border-theme-border/25">
                   <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Content Rating:</span>
-                  <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[3px] leading-none tracking-tight shrink-0">
-                      {getContentRatingBadge(contentRating)}
-                    </span>
-                    <span className="text-theme-text font-medium">{getContentRatingLabel(contentRating)}</span>
-                    <span className="text-[10px] text-theme-text-muted bg-theme-hover px-1.5 py-0.5 rounded shrink-0">
-                      {contentRating.toLowerCase().includes('rated for') ? 'PEGI' : 'ESRB'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigateToStepAndSection(2, 'section-content-rating')}
-                    className="text-[11px] text-blue-400 hover:underline ml-auto shrink-0 cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                </div>
-                <div className="flex items-center gap-2.5 py-2 border-b border-theme-border/25">
-                  <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Interactive Elements:</span>
-                  <span className="text-theme-text min-w-0 flex-1 truncate">
-                    {interactiveElements.length > 0 ? interactiveElements.join(', ') : 'None declared'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => navigateToStepAndSection(2, 'section-interactive-elements')}
-                    className="text-[11px] text-blue-400 hover:underline ml-auto shrink-0 cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                </div>
-                <div className="flex items-center gap-2.5 py-2 border-b border-theme-border/25">
-                  <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Commercial Model:</span>
-                  <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap text-theme-text">
-                    <span>{price || 'Free'}</span>
-                    <span className="text-theme-text-muted">•</span>
-                    <span>{containsAds ? 'Contains ads' : 'No ads'}</span>
-                    <span className="text-theme-text-muted">•</span>
-                    <span>{inAppPurchases ? 'In-app purchases' : 'No in-app purchases'}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigateToStepAndSection(2, 'section-monetization-info')}
-                    className="text-[11px] text-blue-400 hover:underline ml-auto shrink-0 cursor-pointer"
-                  >
-                    Edit
-                  </button>
+                  <span className="text-theme-text min-w-0 flex-1">{contentRating}</span>
                 </div>
                 <div className="flex items-center gap-2.5 py-2 border-b border-theme-border/25">
                   <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Privacy Policy:</span>

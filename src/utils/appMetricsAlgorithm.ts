@@ -251,176 +251,37 @@ export function getUnifiedAppSize(
   return DETERMINISTIC_SIZES[positiveHash % DETERMINISTIC_SIZES.length];
 }
 
-export interface PlayStoreContentRatingOption {
-  value: string;
-  badge: string;
-  label: string;
-  system: 'ESRB' | 'PEGI / International';
-  description: string;
-}
-
-export const PLAY_STORE_CONTENT_RATINGS: PlayStoreContentRatingOption[] = [
-  {
-    value: 'Everyone',
-    badge: 'Everyone',
-    label: 'Everyone',
-    system: 'ESRB',
-    description: 'Suitable for all ages. May contain minimal cartoon, fantasy or mild violence and/or infrequent use of mild language.'
-  },
-  {
-    value: 'Rated for 3+',
-    badge: '3+',
-    label: 'Rated for 3+',
-    system: 'PEGI / International',
-    description: 'Suitable for all age groups. May contain very mild cartoon violence in a comical context.'
-  },
-  {
-    value: 'Everyone 10+',
-    badge: '10+',
-    label: 'Everyone 10+',
-    system: 'ESRB',
-    description: 'Suitable for ages 10 and up. May contain more cartoon, fantasy or mild violence, mild language and/or minimal suggestive themes.'
-  },
-  {
-    value: 'Rated for 7+',
-    badge: '7+',
-    label: 'Rated for 7+',
-    system: 'PEGI / International',
-    description: 'Suitable for young children. May contain mild scenes that could be frightening to very young children or mild violence.'
-  },
-  {
-    value: 'Teen',
-    badge: 'Teen',
-    label: 'Teen (13+)',
-    system: 'ESRB',
-    description: 'Suitable for ages 13 and up. May contain violence, suggestive themes, crude humor, minimal blood, and/or infrequent use of strong language.'
-  },
-  {
-    value: 'Rated for 12+',
-    badge: '12+',
-    label: 'Rated for 12+',
-    system: 'PEGI / International',
-    description: 'Suitable for children aged 12 and older. May contain non-realistic violence towards human-like characters or mild bad language.'
-  },
-  {
-    value: 'Rated for 16+',
-    badge: '16+',
-    label: 'Rated for 16+',
-    system: 'PEGI / International',
-    description: 'Suitable for ages 16 and older. Realistic violence, sexual activity, strong language, and use of tobacco or drugs may appear.'
-  },
-  {
-    value: 'Mature 17+',
-    badge: '17+',
-    label: 'Mature 17+',
-    system: 'ESRB',
-    description: 'Suitable for ages 17 and up. May contain intense violence, blood and gore, sexual content, and/or strong language.'
-  },
-  {
-    value: 'Rated for 18+',
-    badge: '18+',
-    label: 'Rated for 18+',
-    system: 'PEGI / International',
-    description: 'Adult classification. May contain depictions of gross violence, motiveless killing, sexual violence or explicit depictions.'
-  },
-  {
-    value: 'Adults only 18+',
-    badge: '18+',
-    label: 'Adults only 18+',
-    system: 'ESRB',
-    description: 'Suitable only for adults ages 18 and up. May include prolonged scenes of intense violence, graphic sexual content, and/or gambling.'
-  }
-];
-
-export const PLAY_STORE_INTERACTIVE_ELEMENTS = [
-  { id: 'Users Interact', label: 'Users Interact', description: 'Enables users to communicate, message, share audio/video, or exchange user-generated content.' },
-  { id: 'Digital Purchases', label: 'Digital Purchases', description: 'Offers optional in-app purchases, paid features, digital currency, or subscriptions.' },
-  { id: 'Shares Location', label: 'Shares Location', description: 'Shares physical device location or coordinates with other users or services.' },
-  { id: 'Unrestricted Internet', label: 'Unrestricted Internet', description: 'Provides access to the open world wide web or external web browsing.' },
-  { id: 'Shares Info', label: 'Shares Info', description: 'Shares user personal information (e.g., contacts, email) with external partners.' }
-];
-
 /**
- * Content Rating badge resolution (Everyone, 3+, 7+, 10+, 12+, Teen, 16+, 17+, 18+)
+ * Content Rating badge resolution (3+, 7+, 12+, 17+, 18+)
  */
 export function getContentRatingBadge(rating?: string): string {
-  if (!rating) return 'Everyone';
+  if (!rating) return '3+';
   const r = rating.toLowerCase().trim();
-  if (r.includes('adult') || r.includes('18+')) return '18+';
-  if (r.includes('mature') || r.includes('17+')) return '17+';
-  if (r.includes('16+')) return '16+';
-  if (r.includes('teen') || r === 't') return 'Teen';
-  if (r.includes('13+')) return '13+';
-  if (r.includes('12+')) return '12+';
-  if (r.includes('everyone 10') || r.includes('10+')) return '10+';
-  if (r.includes('everyone') || r === 'e') return 'Everyone';
-  if (r.includes('7+')) return '7+';
-  if (r.includes('3+')) return '3+';
-  if (r.includes('18')) return '18+';
-  if (r.includes('17')) return '17+';
+  if (r.includes('18') || r.includes('adult')) return '18+';
+  if (r.includes('17') || r.includes('mature')) return '17+';
   if (r.includes('16')) return '16+';
   if (r.includes('13')) return '13+';
-  if (r.includes('12')) return '12+';
+  if (r.includes('12') || r.includes('teen')) return '12+';
   if (r.includes('10')) return '10+';
   if (r.includes('7')) return '7+';
-  if (r.includes('3')) return '3+';
-  return rating.trim() || 'Everyone';
+  return '3+';
 }
 
 /**
  * Content Rating descriptive label
  */
 export function getContentRatingLabel(rating?: string): string {
-  if (!rating) return 'Everyone';
+  if (!rating) return 'Rated for 3+';
   const r = rating.toLowerCase().trim();
-  if (r.includes('adult') || (r.includes('18') && !r.includes('rated for'))) return 'Adults only 18+';
-  if (r.includes('mature') || (r.includes('17') && !r.includes('rated for'))) return 'Mature 17+';
-  if (r.includes('teen') || r === 't') return 'Teen (13+)';
-  if (r.includes('everyone 10') || (r.includes('10+') && !r.includes('rated for'))) return 'Everyone 10+';
-  if (r.includes('everyone') || r === 'e') return 'Everyone';
-  if (r.includes('18+') || r.includes('rated for 18')) return 'Rated for 18+';
-  if (r.includes('16+') || r.includes('rated for 16')) return 'Rated for 16+';
-  if (r.includes('13+') || r.includes('rated for 13')) return 'Rated for 13+';
-  if (r.includes('12+') || r.includes('rated for 12')) return 'Rated for 12+';
-  if (r.includes('10+') || r.includes('rated for 10')) return 'Rated for 10+';
-  if (r.includes('7+') || r.includes('rated for 7')) return 'Rated for 7+';
-  if (r.includes('3+') || r.includes('rated for 3')) return 'Rated for 3+';
-  return rating.trim() || 'Everyone';
-}
-
-/**
- * Content Rating description text for modals and store details
- */
-export function getContentRatingDescription(rating?: string): string {
-  const r = (rating || '').toLowerCase().trim();
-  if (r.includes('adult') || (r.includes('18') && !r.includes('rated for'))) {
-    return 'Content suitable only for adults ages 18 and up. May include prolonged scenes of intense violence, graphic sexual content, and/or gambling.';
-  }
-  if (r.includes('mature') || (r.includes('17') && !r.includes('rated for'))) {
-    return 'Content suitable for ages 17 and up. May contain intense violence, blood and gore, sexual content, and/or strong language.';
-  }
-  if (r.includes('teen') || r === 't' || (r.includes('13') && !r.includes('rated for'))) {
-    return 'Content suitable for ages 13 and up. May contain violence, suggestive themes, crude humor, minimal blood, and/or infrequent use of strong language.';
-  }
-  if (r.includes('everyone 10') || r.includes('10+')) {
-    return 'Content suitable for ages 10 and up. May contain more cartoon, fantasy or mild violence, mild language and/or minimal suggestive themes.';
-  }
-  if (r.includes('everyone') || r === 'e' || r.includes('all')) {
-    return 'Content suitable for all ages. May contain minimal cartoon, fantasy or mild violence and/or infrequent use of mild language.';
-  }
-  if (r.includes('18')) {
-    return 'Suitable for ages 18 and older. May contain depictions of gross violence, motiveless killing, sexual violence or explicit depictions.';
-  }
-  if (r.includes('16')) {
-    return 'Suitable for ages 16 and older. Realistic violence, sexual activity, strong language, and use of tobacco or drugs may appear.';
-  }
-  if (r.includes('12')) {
-    return 'Suitable for ages 12 and older. May contain non-realistic violence towards human-like characters or mild bad language.';
-  }
-  if (r.includes('7')) {
-    return 'Suitable for ages 7 and older. May contain mild scenes that could be frightening to very young children or mild violence.';
-  }
-  return 'Suitable for all ages. May contain very mild cartoon violence in a comical context.';
+  if (r.includes('18') || r.includes('adult')) return 'Rated for 18+';
+  if (r.includes('17') || r.includes('mature')) return 'Rated for 17+';
+  if (r.includes('16')) return 'Rated for 16+';
+  if (r.includes('13') || r.includes('teen')) return 'Rated for 12+';
+  if (r.includes('12')) return 'Rated for 12+';
+  if (r.includes('10')) return 'Rated for 10+';
+  if (r.includes('7')) return 'Rated for 7+';
+  if (r.includes('3') || r.includes('everyone') || r.includes('all')) return 'Rated for 3+';
+  return 'Rated for 3+';
 }
 
 const CURATED_TRAILER_YOUTUBE_IDS = [

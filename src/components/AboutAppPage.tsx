@@ -22,8 +22,7 @@ import {
   parseDownloadCount, 
   getUnifiedAppSize,
   getContentRatingBadge,
-  getContentRatingLabel,
-  getContentRatingDescription
+  getContentRatingLabel
 } from '../utils/appMetricsAlgorithm';
 import { sanitizeSafeUrl, sanitizeExternalUrl, computeDeterministicSha256 } from '../utils/securityUtils';
 import { isWindowsApp, isLinuxApp, isMacApp, isIOSApp, getDetailedPackageFormatLabel, getClientOSInfo } from '../services/osDetectionService';
@@ -494,65 +493,6 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                     </span>
                   </div>
 
-                  {/* Play Store Standard Content Rating */}
-                  <div className="flex items-start justify-between gap-4">
-                    <span className="text-[14px] sm:text-[15px] text-theme-text shrink-0">Content rating</span>
-                    <div className="flex flex-col items-end text-right">
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[3px] leading-none tracking-tight shrink-0">
-                          {getContentRatingBadge(app.contentRating)}
-                        </span>
-                        <span className="text-[14px] sm:text-[15px] text-theme-text font-normal">
-                          {getContentRatingLabel(app.contentRating)}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowRatingModal(true)}
-                        className="text-[13px] text-blue-500 dark:text-[#8ab4f8] hover:underline cursor-pointer mt-0.5"
-                      >
-                        Learn more
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Interactive Elements */}
-                  {(() => {
-                    const interactive = (app.interactiveElements && app.interactiveElements.length > 0)
-                      ? app.interactiveElements
-                      : [
-                          ...(app.inAppPurchases ? ['Digital Purchases'] : []),
-                          ...(app.containsAds ? ['Shares Advertisements'] : [])
-                        ];
-                    if (interactive.length === 0) return null;
-                    return (
-                      <div className="flex items-start justify-between gap-4">
-                        <span className="text-[14px] sm:text-[15px] text-theme-text shrink-0">Interactive elements</span>
-                        <span className="text-[14px] sm:text-[15px] text-theme-text text-right font-normal max-w-[65%]">
-                          {interactive.join(', ')}
-                        </span>
-                      </div>
-                    );
-                  })()}
-
-                  {/* In-app purchases */}
-                  <div className="flex items-start justify-between gap-4">
-                    <span className="text-[14px] sm:text-[15px] text-theme-text">In-app purchases</span>
-                    <span className="text-[14px] sm:text-[15px] text-theme-text text-right font-normal">
-                      {app.inAppPurchases ? 'Digital purchases offered' : 'None'}
-                    </span>
-                  </div>
-
-                  {/* Advertisements */}
-                  {app.containsAds && (
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="text-[14px] sm:text-[15px] text-theme-text">Advertisements</span>
-                      <span className="text-[14px] sm:text-[15px] text-theme-text text-right font-normal">
-                        Contains ads
-                      </span>
-                    </div>
-                  )}
-
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-[14px] sm:text-[15px] text-theme-text shrink-0">SHA-256 Checksum</span>
                     <span 
@@ -658,10 +598,10 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
         >
           <div 
             id="rating-modal-content"
-            className="w-full max-w-sm bg-theme-bg p-5 sm:p-6 shadow-2xl space-y-4 rounded-[28px] border border-theme-border/60 text-theme-text animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-theme-bg p-5 shadow-2xl space-y-4 rounded-none border-0 text-theme-text animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-theme-border/40">
+            <div className="flex items-center justify-between pb-1 border-b border-theme-border/40">
               <div className="flex items-center gap-2.5">
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-bold border border-neutral-700 dark:border-0 dark:bg-theme-text dark:text-theme-bg bg-transparent text-neutral-800 rounded-[3px] leading-none tracking-tight shrink-0">
                   {getContentRatingBadge(app.contentRating)}
@@ -682,16 +622,11 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
 
             <div className="space-y-3 text-sm text-theme-text-muted">
               <div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-theme-text text-[15px]">
-                    {getContentRatingLabel(app.contentRating)}
-                  </p>
-                  <span className="text-[10px] font-medium text-theme-text-muted px-1.5 py-0.5 rounded bg-theme-hover/60 border border-theme-border/40">
-                    {(app.contentRating || '').toLowerCase().includes('rated for') ? 'PEGI' : 'ESRB'}
-                  </span>
-                </div>
-                <p className="text-xs text-theme-text-muted mt-1 leading-relaxed">
-                  {getContentRatingDescription(app.contentRating)}
+                <p className="font-medium text-theme-text">
+                  {getContentRatingLabel(app.contentRating)}
+                </p>
+                <p className="text-xs text-theme-text-muted mt-0.5">
+                  Content suitability verified according to regional rating guidelines.
                 </p>
               </div>
 
