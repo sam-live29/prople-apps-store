@@ -43,8 +43,7 @@
 - **Offline & PWA Resilience**: Service Worker background caching, install prompt support, and IndexedDB download checkpointing.
 
 ---
-## Issues fixed 
-Added encryption via SSDFGS procedure
+
 ## Tech Stack & Architecture
 
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Motion.
