@@ -3875,20 +3875,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     </p>
                   )}
                   
-                  {downloadUrl.trim() && !isBinaryFileName(downloadUrl) && (
-                    <div className="mt-1.5 p-2 rounded-lg bg-theme-hover/40 border border-theme-border/60 text-xs flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-theme-text-muted">Direct binary link needed for 1-click download</span>
-                      <button
-                        type="button"
-                        onClick={() => handleResolveApk(downloadUrl)}
-                        disabled={isResolvingApk}
-                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-md text-[11px] flex items-center gap-1 transition-colors shrink-0"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        {isResolvingApk ? 'Resolving...' : 'Auto-Resolve Link'}
-                      </button>
-                    </div>
-                  )}
+
 
                   <p className="text-[10px] text-theme-text-muted mt-1">
                     Direct binary asset link from your GitHub Release. Used by the store for 1-click downloads.
