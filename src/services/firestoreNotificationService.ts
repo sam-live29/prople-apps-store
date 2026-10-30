@@ -87,13 +87,21 @@ export function listenToStoreNotifications(
           const data = d.data();
           const docId = d.id;
 
-          // Filter out legacy hardcoded placeholder documents in memory
+          // Filter out legacy hardcoded placeholder documents and download count spam in memory
           if (
             docId.includes('brick-stack') || 
             data.appId === 'app-brick-stack' || 
             data.title?.toLowerCase().includes('brick stack') ||
             docId === 'notif-security-scan' ||
-            data.actionType === 'security_check'
+            data.actionType === 'security_check' ||
+            data.category === 'download_count' ||
+            docId.startsWith('notif-dl-verified-') ||
+            docId.startsWith('notif-milestone-') ||
+            data.title?.toLowerCase().includes('download verified') ||
+            data.title?.toLowerCase().includes('official download') ||
+            data.title?.toLowerCase().includes('download milestone') ||
+            data.message?.toLowerCase().includes('verified download recorded') ||
+            data.message?.toLowerCase().includes('total downloads')
           ) {
             return;
           }
@@ -181,6 +189,21 @@ export function listenToStoreNotifications(
 export async function addNotificationToFirestore(
   item: Omit<NotificationItem, 'id'> & { id?: string }
 ): Promise<string> {
+  // Download count increments and verified download events are app metrics recorded on the app document.
+  // Never add them to notification feeds or local storage to prevent owner notification spam and cross-app interference.
+  if (
+    item.category === 'download_count' ||
+    item.id?.startsWith('notif-dl-verified-') ||
+    item.id?.startsWith('notif-milestone-') ||
+    item.title?.toLowerCase().includes('download verified') ||
+    item.title?.toLowerCase().includes('official download') ||
+    item.title?.toLowerCase().includes('download milestone') ||
+    item.message?.toLowerCase().includes('verified download recorded') ||
+    item.message?.toLowerCase().includes('total downloads')
+  ) {
+    return item.id || '';
+  }
+
   const notifId = item.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const now = item.createdAt || Date.now();
 
@@ -589,10 +612,9 @@ export async function notifyAppUpdated(app: AppDetails): Promise<void> {
 export const DOWNLOAD_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 /**
- * Post a milestone celebration notification when an app reaches download thresholds (e.g. 100 downloads).
- * Sent to the publisher in Notification Centre and phone native notification.
+ * Download milestones are tracked in app metrics, not as notification bell items.
  */
-export async function notifyPublisherDownloadMilestone(params: {
+export async function notifyPublisherDownloadMilestone(_params: {
   appId: string;
   appName: string;
   milestone: number;
@@ -601,56 +623,8 @@ export async function notifyPublisherDownloadMilestone(params: {
   publisherEmail?: string;
   publisherUid?: string;
 }): Promise<void> {
-  try {
-    let developerId = params.publisherUid;
-    let developerEmail = params.publisherEmail;
-    let developerName = params.publisherName;
-
-    if (!developerId && !developerEmail && !developerName) {
-      try {
-        const appSnap = await getDoc(doc(db, 'apps', params.appId));
-        if (appSnap.exists()) {
-          const d = appSnap.data();
-          developerId = d.developerId || d.creatorUid;
-          developerEmail = d.developerEmail || d.developerInfo?.email;
-          developerName = d.developer;
-        }
-      } catch {
-        const mock = appDetailsMock[params.appId];
-        if (mock) {
-          developerId = mock.developerId || mock.creatorUid;
-          developerEmail = mock.developerEmail;
-          developerName = mock.developer;
-        }
-      }
-    }
-
-    const notifId = `notif-milestone-${params.appId}-${params.milestone}`;
-    const title = `🎉 ${params.milestone.toLocaleString()} Downloads Milestone Reached!`;
-    const message = `Congratulations! "${params.appName}" has officially reached ${params.milestone.toLocaleString()} verified downloads on Prople Store!`;
-
-    await addNotificationToFirestore({
-      id: notifId,
-      title,
-      message,
-      iconUrl: params.iconUrl || '',
-      appId: params.appId,
-      category: 'download_count',
-      targetType: 'publisher',
-      publisherAppId: params.appId,
-      publisherUid: developerId,
-      publisherEmail: developerEmail,
-      publisherName: developerName,
-      actionType: 'app_detail',
-      actionLabel: 'View milestone stats',
-      isUnread: true,
-      createdAt: Date.now()
-    });
-
-    // Download count milestone is kept in-app for publisher notification centre only (no native push)
-  } catch (e) {
-    console.warn('Failed to post milestone notification to Firestore:', e);
-  }
+  // Pure metric tracking; intentionally no notification document created.
+  return;
 }
 
 /**
@@ -708,114 +682,34 @@ export async function notifyPublisherDonationReminder(params: {
 }
 
 /**
- * Check if the new download count has crossed any milestones, and trigger notifications
+ * Check if download milestone has been crossed (tracked in dashboard analytics, not notification center).
  */
 export async function checkAndTriggerDownloadMilestones(
-  appId: string,
-  appName: string,
-  count: number,
-  iconUrl?: string,
-  devInfo?: { developerId?: string; developerEmail?: string; developerName?: string }
+  _appId: string,
+  _appName: string,
+  _count: number,
+  _iconUrl?: string,
+  _devInfo?: { developerId?: string; developerEmail?: string; developerName?: string }
 ): Promise<void> {
-  if (count <= 0) return;
-  const storageKey = `prople_notified_milestones_${appId}`;
-  let notified: number[] = [];
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) notified = JSON.parse(raw);
-  } catch {}
-
-  for (const m of DOWNLOAD_MILESTONES) {
-    if (count >= m && !notified.includes(m)) {
-      notified.push(m);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(notified));
-      } catch {}
-
-      await notifyPublisherDownloadMilestone({
-        appId,
-        appName,
-        milestone: m,
-        iconUrl,
-        publisherName: devInfo?.developerName,
-        publisherEmail: devInfo?.developerEmail,
-        publisherUid: devInfo?.developerId
-      });
-    }
-  }
+  // Pure metric tracking; intentionally no notification document created.
+  return;
 }
 
 /**
- * Post a download verified notification ONLY for the publisher of the app.
- * Not visible to regular users. Triggers real native phone notification.
+ * Record verified download metrics.
+ * Note: Download counts are strictly recorded as app metrics and in the developer dashboard,
+ * and are NOT posted as notification documents in the shared Notification Centre,
+ * preventing cross-app notification pollution and owner spam.
  */
 export async function notifyPublisherDownloadVerified(
-  appId: string, 
-  appName: string, 
-  iconUrl?: string, 
-  newCount?: number,
-  devInfo?: { developerId?: string; developerEmail?: string; developerName?: string }
+  _appId: string, 
+  _appName: string, 
+  _iconUrl?: string, 
+  _newCount?: number,
+  _devInfo?: { developerId?: string; developerEmail?: string; developerName?: string }
 ): Promise<void> {
-  try {
-    let developerId = devInfo?.developerId;
-    let developerEmail = devInfo?.developerEmail;
-    let developerName = devInfo?.developerName;
-
-    if (!developerId && !developerEmail && !developerName) {
-      try {
-        const appSnap = await getDoc(doc(db, 'apps', appId));
-        if (appSnap.exists()) {
-          const d = appSnap.data();
-          developerId = d.developerId || d.creatorUid;
-          developerEmail = d.developerEmail || d.developerInfo?.email;
-          developerName = d.developer;
-        }
-      } catch {
-        const mock = appDetailsMock[appId];
-        if (mock) {
-          developerId = mock.developerId || mock.creatorUid;
-          developerEmail = mock.developerEmail;
-          developerName = mock.developer;
-        }
-      }
-    }
-
-    const notifId = `notif-dl-verified-${appId}-${Date.now()}`;
-    const title = `Official Download Verified (+1)`;
-    const message = appName;
-
-    await addNotificationToFirestore({
-      id: notifId,
-      title,
-      message,
-      iconUrl: iconUrl || '',
-      appId,
-      category: 'download_count',
-      targetType: 'publisher',
-      publisherAppId: appId,
-      publisherUid: developerId,
-      publisherEmail: developerEmail,
-      publisherName: developerName,
-      actionType: 'app_detail',
-      actionLabel: 'View app stats',
-      isUnread: true,
-      createdAt: Date.now()
-    });
-
-    // Downloading counts are strictly routed to the publisher notification center in-app
-    // and not pushed to native mobile phone notifications.
-
-    // Check if newCount crossed download milestones (e.g. 10, 25, 50, 100, etc.)
-    if (newCount && newCount > 0) {
-      checkAndTriggerDownloadMilestones(appId, appName, newCount, iconUrl, {
-        developerId,
-        developerEmail,
-        developerName
-      }).catch(() => {});
-    }
-  } catch (e) {
-    console.warn('Failed to post download verified notification to Firestore:', e);
-  }
+  // Pure metric tracking; intentionally no notification document created.
+  return;
 }
 
 /**
@@ -1512,16 +1406,9 @@ export function isNotificationVisibleToUser(
     title.startsWith('new release') ||
     title.startsWith('new app:');
 
-  // Rule 1: Download counts notifications ONLY for the publisher of that app. Never all users.
+  // Rule 1: Download counts and download verified events are strictly app metrics; never display them in Notification Centre
   if (isDownloadCount) {
-    if (!user) return false;
-    const targetAppId = notif.publisherAppId || notif.appId;
-    return isPublisherOfApp(
-      notif.publisherName,
-      targetAppId,
-      notif.publisherUid,
-      notif.publisherEmail
-    );
+    return false;
   }
 
   // Rule 2: Reviews notifications ONLY for the publisher of that app. Never all users.

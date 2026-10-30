@@ -14,8 +14,6 @@ import {
   clearAllNotificationsInFirestore,
   dismissNotificationForUser,
   loadDismissedNotificationsFromFirestore,
-  notifyPublisherDownloadVerified,
-  checkAndTriggerDownloadMilestones,
   isNotificationVisibleToUser,
   showPhoneNativeNotification,
   isPublicNotification,
@@ -550,7 +548,15 @@ export function InstallProvider({ children }: { children: ReactNode }) {
               !n.id.includes('brick-stack') &&
               n.appId !== 'app-brick-stack' &&
               !n.title?.toLowerCase().includes('brick stack') &&
-              !n.title?.toLowerCase().includes('play protect')
+              !n.title?.toLowerCase().includes('play protect') &&
+              n.category !== 'download_count' &&
+              !n.id?.startsWith('notif-dl-verified-') &&
+              !n.id?.startsWith('notif-milestone-') &&
+              !n.title?.toLowerCase().includes('download verified') &&
+              !n.title?.toLowerCase().includes('official download') &&
+              !n.title?.toLowerCase().includes('download milestone') &&
+              !n.message?.toLowerCase().includes('verified download recorded') &&
+              !n.message?.toLowerCase().includes('total downloads')
           );
         }
       }
@@ -627,7 +633,15 @@ export function InstallProvider({ children }: { children: ReactNode }) {
             n.id !== 'notif-security-scan' && 
             !n.id.includes('brick-stack') &&
             n.appId !== 'app-brick-stack' &&
-            !n.title?.toLowerCase().includes('brick stack')
+            !n.title?.toLowerCase().includes('brick stack') &&
+            n.category !== 'download_count' &&
+            !n.id?.startsWith('notif-dl-verified-') &&
+            !n.id?.startsWith('notif-milestone-') &&
+            !n.title?.toLowerCase().includes('download verified') &&
+            !n.title?.toLowerCase().includes('official download') &&
+            !n.title?.toLowerCase().includes('download milestone') &&
+            !n.message?.toLowerCase().includes('verified download recorded') &&
+            !n.message?.toLowerCase().includes('total downloads')
         );
 
         const pushedIds = getPushedNativeNotifIds();
@@ -956,11 +970,8 @@ export function InstallProvider({ children }: { children: ReactNode }) {
 
     showToast(`Downloading ${exactFileName || appName}...`);
 
-    // Schedule official download registration
-    scheduleDownloadIncrement(appId, appName, iconUrl, (regAppId, regAppName, newCount) => {
-      notifyPublisherDownloadVerified(regAppId, regAppName, iconUrl, newCount);
-      checkAndTriggerDownloadMilestones(regAppId, regAppName, newCount, iconUrl).catch(() => {});
-    });
+    // Schedule official download registration (updates document download metrics, no notification spam)
+    scheduleDownloadIncrement(appId, appName, iconUrl);
   }, [showToast]);
 
   // SEAMLESS FLOW:

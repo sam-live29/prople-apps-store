@@ -1,8 +1,4 @@
 import { incrementAppDownloadCount } from './firestoreAppService';
-import { 
-  notifyPublisherDownloadVerified,
-  checkAndTriggerDownloadMilestones 
-} from './firestoreNotificationService';
 import { PendingDownloadIncrement } from '../types';
 
 const STORAGE_KEY = 'appmarket_pending_download_increments';
@@ -58,12 +54,6 @@ export async function processPendingDownloads(
 
       try {
         const newCount = await incrementAppDownloadCount(item.appId);
-        
-        // Notify publisher of verified download
-        notifyPublisherDownloadVerified(item.appId, item.appName, item.iconUrl, newCount).catch(() => {});
-
-        // Check if publisher reached a download milestone (e.g. 100 downloads) and notify
-        checkAndTriggerDownloadMilestones(item.appId, item.appName, newCount, item.iconUrl).catch(() => {});
 
         if (onIncrementSuccess) {
           onIncrementSuccess(item.appId, item.appName, newCount);

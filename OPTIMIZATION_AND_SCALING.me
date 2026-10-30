@@ -39,3 +39,12 @@ This document tracks architectural updates and algorithmic optimizations impleme
   - Replaced with `actions/cache@v5` targeting `~/.npm` and keyed on `hashFiles('package-lock.json', 'package.json')`, preserving fast dependency cache hits regardless of whether `package-lock.json` is committed.
 - **Node 24 Action Runtime Alignment & Hygiene**:
   - Upgraded `actions/checkout` and `actions/setup-node` to `v6` (`node24` runner runtime) to eliminate GitHub Actions Node 20 deprecation warnings, added `npm run test:catalog` verification into CI, and excluded `public/assets/aistudio/` from git tracking and PWA Workbox precaching.
+
+## 6. Notification Decoupling & Metric Isolation Architecture
+- **Metrics vs. Notification Center Separation**:
+  - Download count updates and milestone increments are strictly modeled as document-level metrics (`apps/{appId}.downloadsCount` & `downloads`) and displayed in the Developer Dashboard and App Detail statistics rather than generating volatile notifications.
+  - Decommissioned runtime creation and Firestore broadcasting of `download_count` notification documents (`Official Download Verified (+1)` and download milestones). This prevents exponential notification collection bloat in high-throughput installation environments.
+- **Cross-App & Multi-Instance Interference Mitigation**:
+  - Filtered and pruned all `category: 'download_count'` documents from real-time Firestore synchronization listeners (`listenToStoreNotifications`) and local storage caches (`prople_store_notifications_v5`).
+  - Guaranteed that developer notifications strictly encompass actionable publisher events (new reviews, moderation alerts, developer replies, platform releases), ensuring that apps sharing the same author email, UID, or repository source code do not receive cross-app download count noise or cross-instance notification leakage.
+
