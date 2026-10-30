@@ -430,22 +430,63 @@ export function formatPackageTypeName(
   return 'Application Package';
 }
 
+export function isDraftMeaningful(draft: any): boolean {
+  if (!draft || typeof draft !== 'object') return false;
+  if (draft.step && draft.step > 1) return true;
+  if (draft.name && String(draft.name).trim()) return true;
+  if (draft.downloadUrl && String(draft.downloadUrl).trim()) return true;
+  if (draft.githubUrl && String(draft.githubUrl).trim()) return true;
+  if (draft.tagline && String(draft.tagline).trim()) return true;
+  if (draft.description && String(draft.description).trim()) return true;
+  if (draft.iconUrl && String(draft.iconUrl).trim()) return true;
+  if (draft.changelog && String(draft.changelog).trim()) return true;
+  return false;
+}
+
 export function getSavedNewAppDraft(devId?: string): any | null {
   try {
-    const key = `prople_draft_new_app_${devId || 'guest'}`;
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        return { ...parsed, editingAppId: null };
+    const candidates = [
+      devId ? `prople_draft_new_app_${devId}` : null,
+      'prople_draft_new_app_guest',
+      'prople_publish_app_draft'
+    ].filter(Boolean) as string[];
+
+    for (const key of candidates) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && !parsed.editingAppId) {
+            if (isDraftMeaningful(parsed)) {
+              return { ...parsed, editingAppId: null };
+            } else {
+              // Stale empty draft found: purge it
+              localStorage.removeItem(key);
+            }
+          }
+        } catch {
+          localStorage.removeItem(key);
+        }
       }
     }
-    // Check legacy draft key only if it does not belong to an existing app edit
-    const legacyRaw = localStorage.getItem('prople_publish_app_draft');
-    if (legacyRaw) {
-      const legacy = JSON.parse(legacyRaw);
-      if (legacy && typeof legacy === 'object' && !legacy.editingAppId) {
-        return { ...legacy, editingAppId: null };
+
+    // Also scan any other leftover prople_draft_new_app_ keys
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('prople_draft_new_app_')) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (isDraftMeaningful(parsed)) {
+              return { ...parsed, editingAppId: null };
+            } else {
+              localStorage.removeItem(k);
+            }
+          } catch {
+            localStorage.removeItem(k);
+          }
+        }
       }
     }
   } catch {}
@@ -454,8 +495,22 @@ export function getSavedNewAppDraft(devId?: string): any | null {
 
 export function deleteSavedNewAppDraft(devId?: string): void {
   try {
-    const key = `prople_draft_new_app_${devId || 'guest'}`;
-    localStorage.removeItem(key);
+    if (devId) {
+      localStorage.removeItem(`prople_draft_new_app_${devId}`);
+    }
+    localStorage.removeItem('prople_draft_new_app_guest');
+
+    // Thoroughly sweep all prople_draft_new_app_ keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('prople_draft_new_app_') || k === 'prople_publish_app_draft_new')) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+
+    // Clear legacy draft key if not editing an existing app
     const legacyRaw = localStorage.getItem('prople_publish_app_draft');
     if (legacyRaw) {
       try {
@@ -467,6 +522,10 @@ export function deleteSavedNewAppDraft(devId?: string): void {
         localStorage.removeItem('prople_publish_app_draft');
       }
     }
+
+    localStorage.removeItem('prople_publish_form_session');
+    localStorage.removeItem('prople_publish_form_open');
+    sessionStorage.removeItem('prople_publish_in_edit_session');
   } catch {}
 }
 
@@ -478,7 +537,11 @@ export function getSavedUpdateDraft(appId: string): any | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
-        return { ...parsed, editingAppId: appId };
+        if (isDraftMeaningful(parsed)) {
+          return { ...parsed, editingAppId: appId };
+        } else {
+          localStorage.removeItem(key);
+        }
       }
     }
     // Legacy draft fallback if editingAppId strictly matches this app
@@ -486,7 +549,11 @@ export function getSavedUpdateDraft(appId: string): any | null {
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw);
       if (legacy && typeof legacy === 'object' && legacy.editingAppId === appId) {
-        return { ...legacy, editingAppId: appId };
+        if (isDraftMeaningful(legacy)) {
+          return { ...legacy, editingAppId: appId };
+        } else {
+          localStorage.removeItem('prople_publish_app_draft');
+        }
       }
     }
   } catch {}
@@ -507,6 +574,9 @@ export function deleteSavedUpdateDraft(appId: string): void {
         }
       } catch {}
     }
+    localStorage.removeItem('prople_publish_form_session');
+    localStorage.removeItem('prople_publish_form_open');
+    sessionStorage.removeItem('prople_publish_in_edit_session');
   } catch {}
 }
 
@@ -573,7 +643,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [showDevTermsReader, setShowDevTermsReader] = useState(false);
   const [showDevPrivacyReader, setShowDevPrivacyReader] = useState(false);
   const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
-  const [isPublishOpen, setIsPublishOpen] = useState<boolean>(() => Boolean(initialDraft));
+  // Only auto-reopen if developer actively reloaded the tab during an edit session
+  const [isPublishOpen, setIsPublishOpen] = useState<boolean>(() => {
+    try {
+      const activeInTab = sessionStorage.getItem('prople_publish_in_edit_session') === 'true';
+      return Boolean(activeInTab && initialDraft);
+    } catch {
+      return false;
+    }
+  });
   const [isPublishing, setIsPublishing] = useState(false);
   const [editingAppId, setEditingAppId] = useState<string | null>(() => {
     if (initialSession?.type === 'update' && initialSession.appId) {
@@ -2169,10 +2247,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const isDiscardedRef = useRef(false);
   const showCancelModalRef = useRef(showCancelModal);
   showCancelModalRef.current = showCancelModal;
-  const pushedModalHistoryRef = useRef(false);
 
   const persistDraftLocally = useCallback(() => {
     if (!currentDraftRef.current || isDiscardedRef.current || !isPublishOpenRef.current) return;
+    if (!hasFormContent()) return;
     const draft = currentDraftRef.current;
     const devId = (user?.uid || auth.currentUser?.uid || (user?.email ? user.email.toLowerCase().trim() : 'guest')).trim();
 
@@ -2192,14 +2270,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId }));
       }
       localStorage.setItem('prople_publish_form_open', 'true');
+      sessionStorage.setItem('prople_publish_in_edit_session', 'true');
       setSavedNewAppDraft(getSavedNewAppDraft(devId));
       setUpdateDraftsVersion(v => v + 1);
     } catch (err) {
       console.warn('Failed to auto-save draft', err);
     }
-  }, [user, hasFormChanged]);
+  }, [user, hasFormChanged, hasFormContent]);
 
-  // Track isPublishOpen in localStorage so page reload/refresh cleanly stays in the publishing form
+  // Track isPublishOpen in storage so in-tab refresh cleanly maintains the editing session
   useEffect(() => {
     if (isPublishOpen) {
       isDiscardedRef.current = false;
@@ -2211,32 +2290,26 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
           localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId }));
         }
         localStorage.setItem('prople_publish_form_open', 'true');
+        sessionStorage.setItem('prople_publish_in_edit_session', 'true');
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem('prople_publish_form_open');
+        sessionStorage.removeItem('prople_publish_in_edit_session');
       } catch {}
     }
   }, [isPublishOpen, editingAppId, user]);
 
-  // Synchronize browser history entry when opening / closing the publish form modal
-  useEffect(() => {
-    if (isPublishOpen) {
-      isDiscardedRef.current = false;
-      if (!pushedModalHistoryRef.current) {
-        try {
-          window.history.pushState({ proplePublishModal: true }, '');
-          pushedModalHistoryRef.current = true;
-        } catch {}
-      }
-    } else {
-      pushedModalHistoryRef.current = false;
-    }
-  }, [isPublishOpen]);
-
   // Intercept phone back button, Android gesture back, and in-app back via NavigationContext:
-  // Native back will NEVER close the publishing form accidentally! Instead, it stays open and asks for confirmation using existing UI.
+  // Native back will ask for confirmation if there are unsaved modifications, without breaking history.
   useEffect(() => {
     if (!isPublishOpen) return;
 
     const unregister = registerBackHandler(() => {
-      // If the discard confirmation modal is already active, back button simply dismisses the modal and keeps user in form
+      // If user already discarded, do not intercept
+      if (isDiscardedRef.current) return false;
+
+      // If the discard confirmation modal is already active, dismiss the modal and stay in form
       if (showCancelModalRef.current) {
         setShowCancelModal(false);
         return true;
@@ -2244,37 +2317,40 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
       // If user is editing an app and has made NO modifications, exit cleanly without confirmation
       if (editingAppId && !hasFormChanged) {
-        try {
-          localStorage.removeItem('prople_publish_form_session');
-          localStorage.removeItem('prople_publish_form_open');
-        } catch {}
-        setIsPublishOpen(false);
-        resetAllFormState();
-        return true;
-      }
-
-      // If there is no draft content at all, simply exit without modal
-      if (!hasFormContent()) {
         isDiscardedRef.current = true;
-        try {
-          localStorage.removeItem('prople_publish_form_session');
-          localStorage.removeItem('prople_publish_form_open');
-        } catch {}
+        deleteSavedUpdateDraft(editingAppId);
         setIsPublishOpen(false);
         resetAllFormState();
         return true;
       }
 
-      // If user has unsaved modifications: intercept back, preserve draft, and show confirmation dialog
-      persistDraftLocally();
+      const currentHasContent = hasFormContent();
+      const existingDraft = editingAppId
+        ? getSavedUpdateDraft(editingAppId)
+        : getSavedNewAppDraft(currentDevId);
+
+      // If there is no draft content at all and no existing draft, simply exit without modal
+      if (!currentHasContent && !existingDraft) {
+        isDiscardedRef.current = true;
+        if (editingAppId) {
+          deleteSavedUpdateDraft(editingAppId);
+        } else {
+          deleteSavedNewAppDraft(currentDevId);
+        }
+        setIsPublishOpen(false);
+        resetAllFormState();
+        return true;
+      }
+
+      // Show confirmation dialog without prematurely forcing an auto-save
       setShowCancelModal(true);
       return true;
     });
 
     return unregister;
-  }, [isPublishOpen, registerBackHandler, persistDraftLocally, editingAppId, hasFormChanged, hasFormContent, resetAllFormState]);
+  }, [isPublishOpen, registerBackHandler, editingAppId, hasFormChanged, hasFormContent, resetAllFormState, currentDevId]);
 
-  // Auto-save draft on app close, tab switch, page reload, or component unmount
+  // Auto-save draft on tab switch or visibility change; show prompt on beforeunload
   useEffect(() => {
     if (!isPublishOpen) return;
 
@@ -2290,15 +2366,22 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       }
     };
 
-    window.addEventListener('beforeunload', handleAutoSave);
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDiscardedRef.current && hasFormContent()) {
+        persistDraftLocally();
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('pagehide', handleAutoSave);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      window.removeEventListener('beforeunload', handleAutoSave);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('pagehide', handleAutoSave);
       document.removeEventListener('visibilitychange', handleVisibility);
-      handleAutoSave();
     };
   }, [isPublishOpen, hasFormContent, persistDraftLocally]);
 
@@ -2639,11 +2722,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
     // 2. Check if a saved draft specifically for a NEW app exists
     const savedDraft = getSavedNewAppDraft(currentDevId);
-    if (savedDraft && (savedDraft.name || savedDraft.downloadUrl || savedDraft.githubUrl || savedDraft.tagline || savedDraft.description || (savedDraft.step && savedDraft.step > 1))) {
+    if (savedDraft && isDraftMeaningful(savedDraft)) {
       applyDraftToForm(savedDraft, null);
       try {
         localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId: currentDevId }));
         localStorage.setItem('prople_publish_form_open', 'true');
+        sessionStorage.setItem('prople_publish_in_edit_session', 'true');
       } catch {}
       setIsPublishOpen(true);
       showToast('New app draft restored');
@@ -2654,21 +2738,16 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     try {
       localStorage.setItem('prople_publish_form_session', JSON.stringify({ type: 'new', devId: currentDevId }));
       localStorage.setItem('prople_publish_form_open', 'true');
+      sessionStorage.setItem('prople_publish_in_edit_session', 'true');
     } catch {}
     setIsPublishOpen(true);
   };
 
   const handleDiscardNewAppDraft = () => {
     deleteSavedNewAppDraft(currentDevId);
-    try {
-      const activeSession = getSavedActiveSession(currentDevId);
-      if (activeSession?.type === 'new') {
-        localStorage.removeItem('prople_publish_form_session');
-        localStorage.removeItem('prople_publish_form_open');
-      }
-    } catch {}
     setSavedNewAppDraft(null);
-    showToast('New app draft discarded');
+    setUpdateDraftsVersion(v => v + 1);
+    showToast('Draft discarded');
   };
 
   const handleOpenEditApp = (app: AppDetails) => {
@@ -3004,13 +3083,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         // ignore
       }
 
-      if (pushedModalHistoryRef.current) {
-        pushedModalHistoryRef.current = false;
-        try {
-          window.history.back();
-        } catch {}
-      }
-
       // Return immediately to published app lists with pristine clean state for subsequent back-to-back uploads
       resetAllFormState();
       setSavedNewAppDraft(getSavedNewAppDraft(currentDevId));
@@ -3073,28 +3145,36 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   };
 
   const handleCancelPublish = () => {
-    // If updating an existing app and nothing was modified, exit cleanly with zero confirmation popup
+    // 1. If updating an existing app and nothing was modified, exit cleanly
     if (editingAppId && !hasFormChanged) {
-      try {
-        localStorage.removeItem('prople_publish_form_session');
-        localStorage.removeItem('prople_publish_form_open');
-      } catch {}
+      isDiscardedRef.current = true;
+      deleteSavedUpdateDraft(editingAppId);
+      setShowCancelModal(false);
       setIsPublishOpen(false);
       resetAllFormState();
       return;
     }
 
-    if (!hasFormContent()) {
+    const currentHasContent = hasFormContent();
+    const existingDraft = editingAppId
+      ? getSavedUpdateDraft(editingAppId)
+      : getSavedNewAppDraft(currentDevId);
+
+    // 2. If nothing was entered and no saved draft exists in storage, exit cleanly
+    if (!currentHasContent && !existingDraft) {
       isDiscardedRef.current = true;
-      try {
-        localStorage.removeItem('prople_publish_form_session');
-        localStorage.removeItem('prople_publish_form_open');
-      } catch {}
-      resetAllFormState();
+      if (editingAppId) {
+        deleteSavedUpdateDraft(editingAppId);
+      } else {
+        deleteSavedNewAppDraft(currentDevId);
+      }
+      setShowCancelModal(false);
       setIsPublishOpen(false);
+      resetAllFormState();
       return;
     }
-    persistDraftLocally();
+
+    // 3. Prompt user with Discard / Save as draft options without saving prematurely
     setShowCancelModal(true);
   };
 
@@ -3103,6 +3183,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     try {
       localStorage.removeItem('prople_publish_form_open');
       localStorage.removeItem('prople_publish_form_session');
+      sessionStorage.removeItem('prople_publish_in_edit_session');
     } catch {}
     showToast(editingAppId ? 'Update draft saved successfully' : 'Draft saved successfully');
     setShowCancelModal(false);
@@ -3110,12 +3191,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     resetAllFormState();
     setSavedNewAppDraft(getSavedNewAppDraft(currentDevId));
     setUpdateDraftsVersion(v => v + 1);
-    if (pushedModalHistoryRef.current) {
-      pushedModalHistoryRef.current = false;
-      try {
-        window.history.back();
-      } catch {}
-    }
   };
 
   const handleDiscardDraft = () => {
@@ -3128,6 +3203,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       }
       localStorage.removeItem('prople_publish_form_session');
       localStorage.removeItem('prople_publish_form_open');
+      sessionStorage.removeItem('prople_publish_in_edit_session');
     } catch (err) {
       // ignore
     }
@@ -3135,14 +3211,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setShowCancelModal(false);
     setIsPublishOpen(false);
     resetAllFormState();
-    setSavedNewAppDraft(getSavedNewAppDraft(currentDevId));
+    setSavedNewAppDraft(null);
     setUpdateDraftsVersion(v => v + 1);
-    if (pushedModalHistoryRef.current) {
-      pushedModalHistoryRef.current = false;
-      try {
-        window.history.back();
-      } catch {}
-    }
   };
 
   const filteredApps = React.useMemo(() => {
@@ -4942,10 +5012,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col min-w-0 pr-1">
                   <h3 id="cancel-modal-title" className="text-[20px] font-semibold text-theme-text leading-tight tracking-tight">
-                    Discard changes?
+                    {editingAppId ? 'Discard update changes?' : 'Discard application draft?'}
                   </h3>
                   <p className="text-[14px] text-theme-text-muted mt-2.5 leading-relaxed font-normal">
-                    You have unsaved changes in your application release. You can save your progress as a draft to resume later, or discard your changes.
+                    {editingAppId
+                      ? 'You have unsaved changes in this application update. You can save your draft to resume later, or discard your modifications.'
+                      : 'You have an unfinished application draft. You can save your progress to resume later, or discard and start fresh.'}
                   </p>
                 </div>
                 <button
@@ -4959,7 +5031,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                 </button>
               </div>
 
-              {/* Native Action Buttons */}
+              {/* Native Action Buttons: Exactly two buttons */}
               <div className="flex items-center justify-end gap-2 mt-6 pt-1">
                 <button
                   type="button"
@@ -5254,9 +5326,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
             id="console-header-publish-btn"
             onClick={handleOpenNewPublish}
             className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-full text-xs font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer active:scale-95 shrink-0"
-            aria-label={savedNewAppDraft ? "Resume drafted app" : "Publish new app"}
+            aria-label={savedNewAppDraft && isDraftMeaningful(savedNewAppDraft) ? "Resume drafted app" : "Publish new app"}
           >
-            {savedNewAppDraft ? (
+            {savedNewAppDraft && isDraftMeaningful(savedNewAppDraft) ? (
               <>
                 <Edit3 className="w-4 h-4" />
                 <span>Resume</span>
