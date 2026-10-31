@@ -10,8 +10,6 @@
 
 **Prople Store** is an independent, consumer-grade multi-platform application store and web store operated by **Cloaktail Industries**. It provides verified software distribution across Android, Apple (iOS/iPadOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.
 
-- **Founder & CEO**: Sahanur Molla
-- **Parent Organization**: Cloaktail Industries
 - **Official Marketplace**: [www.prople.co.in](https://www.prople.co.in)
 - **Security Policy**: [SECURITY.md](SECURITY.md)
 - **Roadmap & Priorities**: [ROADMAP.md](ROADMAP.md)
