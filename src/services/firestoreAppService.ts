@@ -501,24 +501,13 @@ export async function publishAppToFirestore(
     );
 
     const isOwner = 
-      !existingData?.owner ||
-      existingData.owner === 'developer' ||
-      existingData.owner === 'dev-publisher' ||
-      existingData.owner === 'dev-user' ||
       (currentAuthUid && (
         existingData?.owner === currentAuthUid ||
         existingData?.developerId === currentAuthUid ||
         existingData?.creatorUid === currentAuthUid
       )) ||
       isMatchingEmail ||
-      (existingData?.developer && optimizedApp.developer && (
-        existingData.developer.toLowerCase().trim() === optimizedApp.developer.toLowerCase().trim()
-      )) ||
-      (currentAuthEmail && (
-        isAdminEmail(currentAuthEmail) ||
-        currentAuthEmail.toLowerCase().trim() === 'prople.site@gmail.com' ||
-        currentAuthEmail.toLowerCase().includes('admin')
-      ));
+      (currentAuthEmail && isAdminEmail(currentAuthEmail));
 
     if (!isOwner) {
       throw new Error('Forbidden: You do not own this application and cannot update it.');
@@ -794,10 +783,6 @@ export async function deleteAppFromFirestore(
     );
 
     const isOwner = 
-      !data.owner ||
-      data.owner === 'developer' ||
-      data.owner === 'dev-publisher' ||
-      data.owner === 'dev-user' ||
       (currentAuthUid && (
         data.owner === currentAuthUid ||
         data.developerId === currentAuthUid ||

@@ -9,6 +9,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (request.auth.token.email_verified == true && (
+          request.auth.token.email == 'sahanurmolla2886@gmail.com' ||
           request.auth.token.email == 'prople.org@gmail.com' ||
           request.auth.token.email == 'cloaktailofficial@gmail.com' ||
           request.auth.token.email == 'cloaktailsupport@gmail.com' ||
@@ -22,8 +23,10 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || (isAuthenticated() && request.auth.token.email != null && resource.data.email == request.auth.token.email) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin() || (request.auth != null && request.auth.token.email != null && resource.data.email == request.auth.token.email);
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin']))) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
 
       match /dismissed_notifications/{notificationId} {
         allow read, write: if isOwner(userId) || isAdmin();
@@ -36,45 +39,43 @@ service cloud.firestore {
         request.resource.data.owner == request.auth.uid ||
         request.resource.data.developerId == request.auth.uid ||
         request.resource.data.creatorUid == request.auth.uid ||
-        (request.auth.token.email != null && (
-          request.resource.data.developerEmail == request.auth.token.email ||
-          request.resource.data.ownerEmail == request.auth.token.email ||
-          request.resource.data.publisherEmail == request.auth.token.email
-        )) ||
         isAdmin()
+      ) && (
+        isAdmin() ||
+        (!request.resource.data.keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])) ||
+        (
+          (!request.resource.data.keys().hasAll(['isVerified']) || request.resource.data.isVerified == false) &&
+          (!request.resource.data.keys().hasAll(['isEditorChoice']) || request.resource.data.isEditorChoice == false) &&
+          (!request.resource.data.keys().hasAll(['isBanned']) || request.resource.data.isBanned == false)
+        )
       );
+
       allow update: if isAuthenticated() && (
         isAdmin() ||
         (
           (
             resource.data.owner == request.auth.uid ||
             resource.data.developerId == request.auth.uid ||
-            resource.data.creatorUid == request.auth.uid ||
-            (request.auth.token.email != null && (
-              resource.data.developerEmail == request.auth.token.email ||
-              resource.data.ownerEmail == request.auth.token.email ||
-              resource.data.publisherEmail == request.auth.token.email
-            ))
+            resource.data.creatorUid == request.auth.uid
           ) &&
           request.resource.data.owner == resource.data.owner &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
         )
       );
+
       allow delete: if isAuthenticated() && (
         resource.data.owner == request.auth.uid ||
         resource.data.developerId == request.auth.uid ||
         resource.data.creatorUid == request.auth.uid ||
-        (request.auth.token.email != null && (
-          resource.data.developerEmail == request.auth.token.email ||
-          resource.data.ownerEmail == request.auth.token.email ||
-          resource.data.publisherEmail == request.auth.token.email
-        )) ||
         isAdmin()
       );
 
       match /reviews/{reviewId} {
         allow read: if true;
-        allow create: if isAuthenticated();
+        allow create: if isAuthenticated() && (
+          request.resource.data.userId == request.auth.uid ||
+          (request.auth.token.email != null && request.resource.data.userEmail == request.auth.token.email)
+        );
         allow update, delete: if isAuthenticated() && (
           resource.data.userId == request.auth.uid ||
           (request.auth.token.email != null && resource.data.userEmail == request.auth.token.email) ||
@@ -85,23 +86,32 @@ service cloud.firestore {
     }
 
     match /console_configs/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) || isAdmin();
     }
 
     match /publisher_registry/{nameId} {
       allow read: if true;
-      allow create, update: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        request.resource.data.ownerUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
 
     match /users/{userId}/notifications/{notificationId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) || isAdmin();
     }
 
     match /notifications/{notificationId} {
       allow read: if true;
       allow create: if isAuthenticated() || isAdmin();
-      allow update: if isAuthenticated();
+      allow update: if isAdmin();
       allow delete: if isAdmin() || (
         isAuthenticated() && (
           resource.data.targetUid == request.auth.uid ||
@@ -134,13 +144,13 @@ service cloud.firestore {
 
     match /app_reports/{reportId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated();
+      allow create: if true;
       allow update, delete: if isAdmin();
     }
 
     match /review_reports/{reportId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated();
+      allow create: if true;
       allow update, delete: if isAdmin();
     }
 
@@ -160,7 +170,7 @@ service cloud.firestore {
     }
 
     match /admins/{adminId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
@@ -174,7 +184,12 @@ service cloud.firestore {
 
     match /test/{docId} {
       allow read: if true;
+      allow write: if false;
+    }
+
+    // Global Safety Net: default-deny catch-all for any unmapped paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-

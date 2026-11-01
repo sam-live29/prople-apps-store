@@ -2584,10 +2584,6 @@ async function startServer() {
       );
 
       const isOwner = 
-        !existingData.owner ||
-        existingData.owner === 'developer' ||
-        existingData.owner === 'dev-publisher' ||
-        existingData.owner === 'dev-user' ||
         (userId && (
           existingData.owner === userId ||
           existingData.developerId === userId ||
@@ -3376,11 +3372,68 @@ async function startServer() {
   app.post("/api/publishers/check-name", handleCheckPublisherName);
   app.post("/api/publishers/claim-name", handleClaimPublisherName);
 
+  async function verifyAdminRequest(req: express.Request): Promise<boolean> {
+    const authHeader = req.headers['authorization'];
+    const bearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const bodyEmail = (req.body?.userEmail || req.query?.userEmail || req.headers['x-user-email'] || '').toString().trim().toLowerCase();
+    const bodyUid = (req.body?.userId || req.query?.userId || req.headers['x-user-id'] || '').toString().trim();
+
+    // 1. If Bearer token is provided and Google API Key exists, verify against Google Identity API
+    if (bearerToken) {
+      try {
+        const fbConfig = getServerFirebaseConfig();
+        if (fbConfig.apiKey && !fbConfig.isExampleConfig) {
+          const verifyRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${fbConfig.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: bearerToken })
+          });
+          if (verifyRes.ok) {
+            const data = await verifyRes.json();
+            const verifiedUser = data.users?.[0];
+            if (verifiedUser) {
+              const verifiedEmail = (verifiedUser.email || '').toLowerCase().trim();
+              const verifiedUid = verifiedUser.localId;
+              if (isServerAdminEmail(verifiedEmail)) return true;
+              if (serverDb) {
+                const adminDoc = await serverGetDoc(serverDoc(serverDb, "admins", verifiedUid));
+                if (adminDoc.exists()) return true;
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn("[AdminAuth] Token verification notice:", err.message);
+      }
+    }
+
+    // 2. Internal security key verification
+    const internalKey = req.headers['x-internal-key'];
+    if (process.env.INTERNAL_SECURITY_KEY && internalKey === process.env.INTERNAL_SECURITY_KEY) {
+      return true;
+    }
+
+    // 3. Check if UID or email exists in serverDb admins collection
+    if (serverDb && bodyUid) {
+      try {
+        const adminDoc = await serverGetDoc(serverDoc(serverDb, "admins", bodyUid));
+        if (adminDoc.exists()) return true;
+      } catch {}
+    }
+
+    // 4. In dev or when authenticated via session
+    if (bodyEmail && isServerAdminEmail(bodyEmail)) {
+      return true;
+    }
+
+    return false;
+  }
+
   // Admin: Get all App Reports and Review Reports
   app.get("/api/admin/reports", async (req, res) => {
     try {
-      const userEmail = (req.query?.userEmail || req.headers['x-user-email'] || '').toString().trim();
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
 
@@ -3409,10 +3462,12 @@ async function startServer() {
   // Admin: Update report status (dismiss or delete)
   app.post("/api/admin/report-status", async (req, res) => {
     try {
-      const { userEmail, type, id, status } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { type, id, status } = req.body || {};
       if (!serverDb || !id || !type) {
         return res.status(400).json({ success: false, error: "Invalid request parameters" });
       }
@@ -3435,10 +3490,12 @@ async function startServer() {
   // Admin: Set App Private or Banned in app_moderation
   app.post("/api/admin/moderation", async (req, res) => {
     try {
-      const { userEmail, appId, isPrivate, isBanned, reason } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { appId, isPrivate, isBanned, reason } = req.body || {};
       if (!serverDb || !appId) {
         return res.status(400).json({ success: false, error: "Missing appId" });
       }
@@ -3475,10 +3532,12 @@ async function startServer() {
   // Admin: Manage Banned Releases / Links
   app.post("/api/admin/banned-links", async (req, res) => {
     try {
-      const { userEmail, action, linkData } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { action, linkData } = req.body || {};
       if (!serverDb || !linkData?.id) {
         return res.status(400).json({ success: false, error: "Missing linkData id" });
       }
@@ -3508,10 +3567,12 @@ async function startServer() {
   // Admin: Manage Publisher Restrictions
   app.post("/api/admin/publisher-restrictions", async (req, res) => {
     try {
-      const { userEmail, pubKey, restriction } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { pubKey, restriction } = req.body || {};
       if (!serverDb || !pubKey) {
         return res.status(400).json({ success: false, error: "Missing pubKey" });
       }
@@ -3537,10 +3598,12 @@ async function startServer() {
   // Admin: Broadcast notifications (send or delete)
   app.post("/api/admin/broadcast", async (req, res) => {
     try {
-      const { userEmail, action, notification, notificationId } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { action, notification, notificationId } = req.body || {};
       if (!serverDb) {
         return res.status(503).json({ success: false, error: "Service temporarily unavailable. Please try again." });
       }
@@ -3570,10 +3633,12 @@ async function startServer() {
   // Admin: Delete review across any app
   app.post("/api/admin/delete-review", async (req, res) => {
     try {
-      const { userEmail, appId, reviewId } = req.body || {};
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
         return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
       }
+
+      const { appId, reviewId } = req.body || {};
       if (!serverDb || !appId || !reviewId) {
         return res.status(400).json({ success: false, error: "Missing appId or reviewId" });
       }

@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { AppDetails, Review } from '../types';
 
 export interface AppReportItem {
@@ -401,6 +401,7 @@ function saveAppModeration() {
 }
 
 function getCurrentAdminEmail(): string {
+  if (auth.currentUser?.email) return auth.currentUser.email;
   try {
     const raw = localStorage.getItem('appmarket_user_profile');
     if (raw) {
@@ -411,13 +412,35 @@ function getCurrentAdminEmail(): string {
   return '';
 }
 
+async function getAdminAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    if (currentUser.email) headers['x-user-email'] = currentUser.email;
+    if (currentUser.uid) headers['x-user-id'] = currentUser.uid;
+    try {
+      const token = await currentUser.getIdToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    } catch {}
+  } else {
+    const email = getCurrentAdminEmail();
+    if (email) headers['x-user-email'] = email;
+  }
+  return headers;
+}
+
 export const AdminModerationService = {
   // Sync admin reports from server-authoritative endpoint
   async syncAdminReportsFromServer(): Promise<void> {
     const email = getCurrentAdminEmail();
     if (!email) return;
     try {
-      const res = await fetch(`/api/admin/reports?userEmail=${encodeURIComponent(email)}`);
+      const headers = await getAdminAuthHeaders();
+      const res = await fetch(`/api/admin/reports?userEmail=${encodeURIComponent(email)}`, {
+        headers
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -505,10 +528,12 @@ export const AdminModerationService = {
       } catch {}
       const adminEmail = getCurrentAdminEmail();
       if (adminEmail) {
-        fetch('/api/admin/report-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userEmail: adminEmail, type: 'app', id: appId, status: 'dismissed' })
+        getAdminAuthHeaders().then(headers => {
+          fetch('/api/admin/report-status', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ userEmail: adminEmail, type: 'app', id: appId, status: 'dismissed' })
+          }).catch(() => {});
         }).catch(() => {});
       }
     }
@@ -523,10 +548,12 @@ export const AdminModerationService = {
     } catch {}
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/report-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, type: 'app', id: appId, status: 'deleted' })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/report-status', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, type: 'app', id: appId, status: 'deleted' })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -603,10 +630,12 @@ export const AdminModerationService = {
       } catch {}
       const adminEmail = getCurrentAdminEmail();
       if (adminEmail) {
-        fetch('/api/admin/report-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userEmail: adminEmail, type: 'review', id: reviewId, status: 'dismissed' })
+        getAdminAuthHeaders().then(headers => {
+          fetch('/api/admin/report-status', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ userEmail: adminEmail, type: 'review', id: reviewId, status: 'dismissed' })
+          }).catch(() => {});
         }).catch(() => {});
       }
     }
@@ -621,10 +650,12 @@ export const AdminModerationService = {
     } catch {}
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/report-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, type: 'review', id: reviewId, status: 'deleted' })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/report-status', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, type: 'review', id: reviewId, status: 'deleted' })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -663,10 +694,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/moderation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, appId, isPrivate, reason })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/moderation', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, appId, isPrivate, reason })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -694,10 +727,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/moderation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, appId, isBanned, reason })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/moderation', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, appId, isBanned, reason })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -767,10 +802,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/banned-links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, action: 'add', linkData: newItem })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/banned-links', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, action: 'add', linkData: newItem })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -818,10 +855,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/banned-links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, action: 'remove', linkData: { id: idOrUrl } })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/banned-links', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, action: 'remove', linkData: { id: idOrUrl } })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -942,10 +981,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/publisher-restrictions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/publisher-restrictions', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -976,10 +1017,12 @@ export const AdminModerationService = {
 
     const adminEmail = getCurrentAdminEmail();
     if (adminEmail) {
-      fetch('/api/admin/publisher-restrictions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/publisher-restrictions', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
+        }).catch(() => {});
       }).catch(() => {});
     }
   },

@@ -1563,6 +1563,7 @@ export async function deleteNotificationFromFirestore(id: string, user?: UserPro
   const isAdmin = Boolean(
     user?.isAdmin ||
     (userEmail && (
+      userEmail === 'sahanurmolla2886@gmail.com' ||
       userEmail.endsWith('@prople.co.in') ||
       userEmail === 'prople.org@gmail.com' ||
       userEmail === 'cloaktailofficial@gmail.com' ||
@@ -1573,9 +1574,14 @@ export async function deleteNotificationFromFirestore(id: string, user?: UserPro
   // If administrator, attempt server-authoritative broadcast delete
   if (isAdmin) {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken().catch(() => '');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
       await fetch('/api/admin/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userEmail, action: 'delete', notificationId: id })
       });
     } catch {}
@@ -1607,6 +1613,7 @@ export async function clearAllNotificationsInFirestore(ids: string[], user?: Use
   const isAdmin = Boolean(
     user?.isAdmin ||
     (userEmail && (
+      userEmail === 'sahanurmolla2886@gmail.com' ||
       userEmail.endsWith('@prople.co.in') ||
       userEmail === 'prople.org@gmail.com' ||
       userEmail === 'cloaktailofficial@gmail.com' ||
@@ -1615,11 +1622,16 @@ export async function clearAllNotificationsInFirestore(ids: string[], user?: Use
   );
 
   if (isAdmin) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken().catch(() => '');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
     for (const id of ids) {
       try {
         await fetch('/api/admin/broadcast', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ userEmail, action: 'delete', notificationId: id })
         });
       } catch {}

@@ -48,6 +48,7 @@ export const isDeveloperEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
   return (
+    norm === 'sahanurmolla2886@gmail.com' ||
     norm.endsWith('@prople.co.in') ||
     norm === 'prople.org@gmail.com' ||
     norm === 'cloaktailofficial@gmail.com' ||
@@ -59,6 +60,7 @@ export const isAdminEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
   if (
+    norm === 'sahanurmolla2886@gmail.com' ||
     norm === 'prople.org@gmail.com' ||
     norm === 'cloaktailofficial@gmail.com' ||
     norm === 'cloaktailsupport@gmail.com'

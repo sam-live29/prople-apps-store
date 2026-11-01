@@ -128,10 +128,8 @@ export default async function handler(req: any, res: any) {
         devInfoEmail === userEmail
       );
 
+      const { isStrictAdminEmail } = await import('../../server/securityDefense');
       const isOwner =
-        !existingData.owner ||
-        existingData.owner === 'developer' ||
-        existingData.owner === 'dev-publisher' ||
         (userId && (
           existingData.owner === userId ||
           existingData.developerId === userId ||
@@ -139,7 +137,7 @@ export default async function handler(req: any, res: any) {
           existingData.creatorUid === userId
         )) ||
         isMatchingEmail ||
-        (userEmail && (userEmail.startsWith('sahanurmolla') || userEmail.startsWith('sahinurmolla') || userEmail === 'prople.site@gmail.com' || userEmail.includes('admin')));
+        (userEmail && isStrictAdminEmail(userEmail));
 
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot delete it.' });
