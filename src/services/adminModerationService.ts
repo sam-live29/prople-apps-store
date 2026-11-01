@@ -43,6 +43,7 @@ export interface PublisherRestriction {
   publisherEmail?: string;
   isBlocked: boolean;
   isRestricted: boolean;
+  isVerified?: boolean;
   reason?: string;
   updatedAt: number;
 }
@@ -271,6 +272,7 @@ export function initModerationFirestoreSync() {
             publisherEmail: data.publisherEmail,
             isBlocked: Boolean(data.isBlocked || data.isSuspended),
             isRestricted: Boolean(data.isRestricted),
+            isVerified: Boolean(data.isVerified || data.isVerifiedPublisher),
             reason: data.reason,
             updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.now()
           };
@@ -1040,6 +1042,73 @@ export const AdminModerationService = {
     initLocalCache();
     const key = publisherName.trim().toLowerCase();
     return Boolean(publisherRestrictionsCache[key]?.isRestricted);
+  },
+
+  isPublisherVerified(publisherName?: string): boolean {
+    if (!publisherName) return false;
+    initLocalCache();
+    const key = publisherName.trim().toLowerCase();
+    const alphaKey = key.replace(/[^a-z0-9]/g, '');
+    const item = publisherRestrictionsCache[key] || publisherRestrictionsCache[alphaKey];
+    return Boolean(item?.isVerified);
+  },
+
+  async setPublisherVerified(publisherName: string, isVerified: boolean, email?: string, uid?: string) {
+    initLocalCache();
+    const key = publisherName.trim().toLowerCase();
+    const alphaKey = key.replace(/[^a-z0-9]/g, '');
+    const current: PublisherRestriction = publisherRestrictionsCache[key] || {
+      publisherKey: key,
+      publisherName,
+      publisherEmail: email,
+      isBlocked: false,
+      isRestricted: false,
+      isVerified: false,
+      updatedAt: Date.now()
+    };
+    current.isVerified = isVerified;
+    current.updatedAt = Date.now();
+    if (email) current.publisherEmail = email;
+    publisherRestrictionsCache[key] = current;
+    if (alphaKey && alphaKey !== key) {
+      publisherRestrictionsCache[alphaKey] = current;
+    }
+    savePublisherRestrictions();
+    dispatchModerationEvent();
+
+    // 1. Sync to publisher_restrictions collection in Firestore
+    try {
+      const docRef = doc(db, 'publisher_restrictions', key.replace(/[^a-zA-Z0-9_-]/g, '_'));
+      await setDoc(docRef, { ...current, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+    } catch {}
+
+    // 2. Sync to publisher_registry in Firestore
+    try {
+      if (alphaKey) {
+        const regDocRef = doc(db, 'publisher_registry', alphaKey);
+        await setDoc(regDocRef, { isVerifiedPublisher: isVerified, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+      }
+    } catch {}
+
+    // 3. Sync to user document in Firestore if uid is known
+    if (uid) {
+      try {
+        const userDocRef = doc(db, 'users', uid);
+        await setDoc(userDocRef, { isVerifiedPublisher: isVerified, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+      } catch {}
+    }
+
+    // 4. Notify admin endpoint if available
+    const adminEmail = getCurrentAdminEmail();
+    if (adminEmail) {
+      getAdminAuthHeaders().then(headers => {
+        fetch('/api/admin/publisher-restrictions', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   },
 
   // Comprehensive check for whether an app is blocked, its publisher is blocked, or its repo/release is banned

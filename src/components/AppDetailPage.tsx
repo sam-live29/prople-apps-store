@@ -59,6 +59,7 @@ import {
 } from '../services/osDetectionService';
 import ConfirmationDialog from './ConfirmationDialog';
 import { useAutoResetVideoOnScrollAndPage } from '../hooks/useAutoResetVideoOnScrollAndPage';
+import VerifiedBadge from './VerifiedBadge';
 
 function DetailPromoVideoCard({
   app,
@@ -763,6 +764,14 @@ export default function AppDetailPage({
     (isPublisherAccount && (user?.publisherName || user?.displayName)) ||
     'Verified Publisher'
   ).trim();
+
+  const isVerifiedPublisher = Boolean(
+    app?.isVerifiedPublisher ||
+    (app as any)?.isVerified ||
+    AdminModerationService.isPublisherVerified(publisherDisplayName) ||
+    AdminModerationService.isPublisherVerified(app?.developer) ||
+    (isPublisherAccount && (user?.isVerifiedPublisher || AdminModerationService.isPublisherVerified(user?.publisherName || user?.displayName || '')))
+  );
 
   // Support email: preserved authenticated publisher email, non-hideable
   const supportEmail = app?.developerInfo?.email || app?.developerEmail || app?.publisherEmail || (user?.email && isPublisherAccount ? user.email : '');
@@ -1525,19 +1534,22 @@ export default function AppDetailPage({
           <div className="block md:hidden">
             {/* Header: Developer name on top, app title below (Google Play layout) */}
                 <div className="pt-0 sm:pt-0.5 pb-1 flex flex-col">
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const pub = (publisherDisplayName || app.developer || '').trim();
-                      if (onOrgClick && pub) {
-                        onOrgClick(pub);
-                      }
-                    }}
-                    className="text-[#0b57d0] hover:text-[#0842a0] dark:text-[#8ab4f8] text-base sm:text-lg md:text-xl font-medium sm:font-semibold hover:underline text-left truncate cursor-pointer block tracking-normal transition-colors font-google-sans relative z-30"
-                  >
-                    {publisherDisplayName || app.developer}
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pub = (publisherDisplayName || app.developer || '').trim();
+                        if (onOrgClick && pub) {
+                          onOrgClick(pub);
+                        }
+                      }}
+                      className="text-[#0b57d0] hover:text-[#0842a0] dark:text-[#8ab4f8] text-base sm:text-lg md:text-xl font-medium sm:font-semibold hover:underline text-left truncate cursor-pointer block tracking-normal transition-colors font-google-sans relative z-30"
+                    >
+                      {publisherDisplayName || app.developer}
+                    </button>
+                    {isVerifiedPublisher && <VerifiedBadge size="sm" />}
+                  </div>
                   <h1 className="text-3xl sm:text-4xl md:text-5xl font-normal sm:font-medium text-[#1f1f1f] dark:text-[#f3f4f6] leading-[1.12] tracking-tight mt-0.5 sm:mt-1 mb-3 sm:mb-3.5 break-words line-clamp-2 font-google-sans">
                     {app.name}
                   </h1>
@@ -1718,19 +1730,22 @@ export default function AppDetailPage({
 
                 {/* Info & Action Bar */}
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const pub = (publisherDisplayName || app.developer || '').trim();
-                      if (onOrgClick && pub) {
-                        onOrgClick(pub);
-                      }
-                    }}
-                    className="text-[#0b57d0] hover:text-[#0842a0] dark:text-[#8ab4f8] text-base lg:text-lg font-medium hover:underline text-left truncate cursor-pointer block tracking-normal transition-colors font-google-sans"
-                  >
-                    {publisherDisplayName || app.developer}
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pub = (publisherDisplayName || app.developer || '').trim();
+                        if (onOrgClick && pub) {
+                          onOrgClick(pub);
+                        }
+                      }}
+                      className="text-[#0b57d0] hover:text-[#0842a0] dark:text-[#8ab4f8] text-base lg:text-lg font-medium hover:underline text-left truncate cursor-pointer block tracking-normal transition-colors font-google-sans"
+                    >
+                      {publisherDisplayName || app.developer}
+                    </button>
+                    {isVerifiedPublisher && <VerifiedBadge size="sm" />}
+                  </div>
                   <h1 className="text-3xl lg:text-4xl xl:text-5xl font-normal font-google-sans text-[#1f1f1f] dark:text-[#f3f4f6] leading-[1.12] tracking-tight mt-1 mb-2 break-words line-clamp-2">
                     {app.name}
                   </h1>

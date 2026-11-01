@@ -128,6 +128,7 @@ export interface UserProfile {
   isEmailVerified?: boolean;
   isPublisher?: boolean;
   isAdmin?: boolean;
+  isVerifiedPublisher?: boolean;
   publisherName?: string;
   publisherRole?: string;
   publisherBio?: string;
@@ -233,6 +234,7 @@ export interface AppDetails {
   isPrivate?: boolean;
   isPublisherBlocked?: boolean;
   isPublisherRestricted?: boolean;
+  isVerifiedPublisher?: boolean;
   moderationReason?: string;
   reviews?: Review[];
   createdAt?: any;

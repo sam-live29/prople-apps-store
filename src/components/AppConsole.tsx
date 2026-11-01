@@ -643,7 +643,7 @@ interface AppConsoleProps {
 
 export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps) {
   const { showToast } = useToast();
-  const { openPrivacyPolicy, openTermsOfService, openAuthPage, registerBackHandler } = useNavigation();
+  const { openPrivacyPolicy, openTermsOfService, openAuthPage, registerBackHandler, changeTab, setYouView } = useNavigation();
   const { banners, addBanner, updateBanner, appsList, publishApp, deleteApp, isLoadingApps, hasInitialSyncCompleted } = useStoreConfig();
   const { addNotification } = useInstall();
   const { user, isLoading: isAuthLoading, isPublisher, isPublisherOfApp, loginWithGoogle, togglePublisherStatus, updateUserProfile, isAdmin } = useAuth();
@@ -1213,50 +1213,16 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     return () => clearTimeout(timer);
   }, [newCandidatePublisherName, activePublisherName, isPublisherNameConflict, user?.uid, user?.email, appsList]);
 
-  const handleSaveNewPublisherName = async () => {
-    const cleanName = newCandidatePublisherName.trim();
-    if (!cleanName || cleanName.length < 2) {
-      showToast('Please enter a valid publisher name (at least 2 characters).', { type: 'error' });
-      return;
-    }
-    if (!isCandidateAvailable) {
-      showToast(candidateValidationMsg || 'This publisher name is already taken. Please choose another name.', { type: 'error' });
-      return;
-    }
-
-    setIsSavingPublisherName(true);
-    try {
-      if (user?.uid && user?.email) {
-        const claimRes = await claimPublisherName(cleanName, user.uid, user.email);
-        if (!claimRes.success) {
-          showToast(claimRes.message || 'Failed to claim publisher name.', { type: 'error' });
-          setIsSavingPublisherName(false);
-          return;
-        }
-      }
-
-      await updateUserProfile({
-        publisherName: cleanName,
-        displayName: cleanName,
-        isPublisher: true
-      });
-
-      setDeveloperName(cleanName);
-      setIsPublisherNameConflict(false);
-      setConflictMessage('');
-      setShowChangePublisherModal(false);
-      showToast(`Publisher name updated to "${cleanName}"! You can now publish applications.`);
-    } catch (err: any) {
-      showToast(err?.message || 'Failed to update publisher name.', { type: 'error' });
-    } finally {
-      setIsSavingPublisherName(false);
-    }
+  const handleGoToSettingsForName = () => {
+    setShowChangePublisherModal(false);
+    onClose();
+    changeTab('you');
+    setYouView('edit-profile');
   };
 
   const handleAttemptNext = () => {
     if (isPublisherNameConflict) {
-      showToast(conflictMessage || 'Your publisher name is already taken. Please change your publisher name to continue publishing.', { type: 'error', duration: 5000 });
-      setNewCandidatePublisherName(activePublisherName);
+      showToast(conflictMessage || 'Publisher names can only be changed and claimed from Settings > Edit Profile.', { type: 'error', duration: 5000 });
       setShowChangePublisherModal(true);
       return;
     }
@@ -1265,8 +1231,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
   const handleAttemptStepTab = (targetStep: number) => {
     if (isPublisherNameConflict) {
-      showToast(conflictMessage || 'Your publisher name is already taken. Please change your publisher name to continue publishing.', { type: 'error', duration: 5000 });
-      setNewCandidatePublisherName(activePublisherName);
+      showToast(conflictMessage || 'Publisher names can only be changed and claimed from Settings > Edit Profile.', { type: 'error', duration: 5000 });
       setShowChangePublisherModal(true);
       return;
     }
@@ -5982,17 +5947,18 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
 
       {/* Modal: Change Publisher Name */}
+      {/* Modal: Change Publisher Name Only in Settings */}
       {showChangePublisherModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className="bg-theme-card border border-theme-border rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-600/10 text-blue-500 flex items-center justify-center font-bold">
-                  <UserCheck className="w-4 h-4" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-blue-600/10 text-blue-500 flex items-center justify-center font-bold shrink-0">
+                  <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-theme-text">Change Publisher Name</h3>
-                  <p className="text-[11px] text-theme-text-muted">Must be unique across the Prople Store database</p>
+                  <h3 className="text-sm font-bold text-theme-text">Publisher Name Settings</h3>
+                  <p className="text-[11px] text-theme-text-muted">Unique publisher identity</p>
                 </div>
               </div>
               <button
@@ -6004,86 +5970,36 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
               </button>
             </div>
 
-            {isPublisherNameConflict && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <span>
-                  The name <strong>"{activePublisherName}"</strong> is already claimed by another developer. Publishing forms and releases require an indexed unique publisher name.
-                </span>
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-amber-400">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Name change only from Settings</span>
               </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-theme-text mb-1.5">
-                New Unique Publisher Name
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  maxLength={50}
-                  value={newCandidatePublisherName}
-                  onChange={(e) => setNewCandidatePublisherName(e.target.value.slice(0, 50))}
-                  placeholder="e.g. Acme Software, Sahanur Studio"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-theme-text bg-theme-surface focus:outline-none transition-all ${
-                    newCandidatePublisherName.trim().length >= 2 && !isCandidateChecking && !isCandidateAvailable
-                      ? 'border-red-500 focus:ring-2 focus:ring-red-500/20'
-                      : newCandidatePublisherName.trim().length >= 2 && !isCandidateChecking && isCandidateAvailable
-                      ? 'border-emerald-500 focus:ring-2 focus:ring-emerald-500/20'
-                      : 'border-theme-border focus:border-blue-500'
-                  }`}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                  {isCandidateChecking ? (
-                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                  ) : newCandidatePublisherName.trim().length >= 2 && isCandidateAvailable ? (
-                    <Check className="w-4 h-4 text-emerald-500" />
-                  ) : newCandidatePublisherName.trim().length >= 2 && !isCandidateAvailable ? (
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Status Message */}
-              {isCandidateChecking ? (
-                <p className="mt-1 text-xs text-blue-400 flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                  <span>Checking availability in database...</span>
+              <p className="text-xs text-theme-text-muted leading-relaxed">
+                Publisher names can <strong>only be changed and claimed from Settings &gt; Edit Profile</strong>.
+              </p>
+              {isPublisherNameConflict && (
+                <p className="text-xs text-amber-200">
+                  The name <strong>"{activePublisherName}"</strong> is already claimed by another developer. Please update your publisher name in your profile settings to continue publishing.
                 </p>
-              ) : newCandidatePublisherName.trim().length >= 2 && !isCandidateAvailable ? (
-                <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{candidateValidationMsg || 'This publisher name is already taken.'}</span>
-                </p>
-              ) : newCandidatePublisherName.trim().length >= 2 && isCandidateAvailable ? (
-                <p className="mt-1 text-xs text-emerald-400 flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5 shrink-0" />
-                  <span>{candidateValidationMsg || 'Publisher name is unique and available!'}</span>
-                </p>
-              ) : null}
+              )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowChangePublisherModal(false)}
                 className="px-4 py-2 bg-theme-hover hover:bg-theme-hover/80 text-theme-text rounded-xl text-xs font-semibold cursor-pointer transition-colors"
               >
-                Cancel
+                Dismiss
               </button>
               <button
                 type="button"
-                onClick={handleSaveNewPublisherName}
-                disabled={isSavingPublisherName || isCandidateChecking || !isCandidateAvailable || !newCandidatePublisherName.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                onClick={handleGoToSettingsForName}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
               >
-                {isSavingPublisherName ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <span>Save & Activate Name</span>
-                )}
+                <span>Go to Settings</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

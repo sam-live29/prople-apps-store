@@ -13,6 +13,8 @@ import {
   recordNameChangeTimestamps
 } from '../services/publisherNameService';
 import { usePreserveScroll } from '../services/scrollManager';
+import VerifiedBadge from './VerifiedBadge';
+import { AdminModerationService } from '../services/adminModerationService';
 
 export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   const { user, isLoading: isAuthLoading, updateUserProfile } = useAuth();
@@ -37,6 +39,13 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   const nameChangeStatus = getNameChangeStatus(user);
   const isNameChanged = displayName.trim().toLowerCase() !== currentActiveName.trim().toLowerCase();
   const isNameLocked = !nameChangeStatus.canChange;
+
+  const isUserVerifiedPublisher = Boolean(
+    user?.isVerifiedPublisher ||
+    (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
+    (user?.displayName && AdminModerationService.isPublisherVerified(user.displayName)) ||
+    AdminModerationService.isPublisherVerified(currentActiveName)
+  );
 
   // Real-time publisher name uniqueness validator
   const nameValidation = usePublisherNameValidation(displayName, {
@@ -226,8 +235,9 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
           {/* Display Name / Publisher Name with Inline Uniqueness Error & 15-Day Policy */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium font-google-sans text-theme-text tracking-tight flex items-center gap-1.5">
+              <label className="block text-sm font-medium font-google-sans text-theme-text tracking-tight flex items-center gap-1.5 flex-wrap">
                 <span>Publisher / Display Name</span>
+                {isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
                 <span className="text-red-500">*</span>
                 {isNameLocked && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">

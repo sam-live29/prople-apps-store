@@ -76,6 +76,7 @@ import PullToRefresh from './PullToRefresh';
 import { usePreserveScroll } from '../services/scrollManager';
 import StoreCircleLoader from './StoreCircleLoader';
 import { formatDownloadCount, parseDownloadCount } from '../utils/appMetricsAlgorithm';
+import VerifiedBadge from './VerifiedBadge';
 
 interface AdminControlPanelProps {
   onClose: () => void;
@@ -1108,6 +1109,7 @@ export default function AdminControlPanel({
       totalDownloads: number;
       isRestricted: boolean;
       isBlocked: boolean;
+      isVerified: boolean;
     }>();
 
     fullAppsList.forEach(app => {
@@ -1117,6 +1119,7 @@ export default function AdminControlPanel({
       const restriction = publisherRestrictions[key];
       const isRestricted = Boolean(restriction?.isRestricted);
       const isBlocked = Boolean(restriction?.isBlocked || (restriction as any)?.isSuspended);
+      const isVerified = Boolean(restriction?.isVerified || AdminModerationService.isPublisherVerified(pubName) || app.isVerifiedPublisher);
 
       const existing = pubMap.get(key) || {
         name: pubName,
@@ -1125,11 +1128,13 @@ export default function AdminControlPanel({
         email: app.developerEmail || app.publisherEmail,
         totalDownloads: 0,
         isRestricted,
-        isBlocked
+        isBlocked,
+        isVerified
       };
 
       existing.isRestricted = isRestricted;
       existing.isBlocked = isBlocked;
+      existing.isVerified = isVerified || existing.isVerified;
       existing.appCount += 1;
       existing.totalDownloads += (app.downloadsCount || 10);
       if (!existing.email && (app.developerEmail || app.publisherEmail)) {
@@ -1152,6 +1157,8 @@ export default function AdminControlPanel({
     let list = detectedPublishers;
     if (publishersFilter === 'active') {
       list = list.filter(p => !p.isRestricted && !p.isBlocked);
+    } else if (publishersFilter === 'verified') {
+      list = list.filter(p => p.isVerified);
     } else if (publishersFilter === 'restricted') {
       list = list.filter(p => p.isRestricted);
     } else if (publishersFilter === 'blocked') {
@@ -1278,6 +1285,7 @@ export default function AdminControlPanel({
   const publishersFilterOptions: FilterSheetOption[] = useMemo(() => {
     return [
       { key: 'all', label: 'All publishers', count: detectedPublishers.length },
+      { key: 'verified', label: 'Verified Publishers (Blue Tick)', count: detectedPublishers.filter(p => p.isVerified).length },
       { key: 'active', label: 'Active & Clear', count: detectedPublishers.filter(p => !p.isRestricted && !p.isBlocked).length },
       { key: 'restricted', label: 'Restricted', count: detectedPublishers.filter(p => p.isRestricted).length },
       { key: 'blocked', label: 'Blocked / Suspended', count: detectedPublishers.filter(p => p.isBlocked).length },
@@ -1641,6 +1649,27 @@ export default function AdminControlPanel({
         refreshCatalogue().catch(() => {});
         setConfirmAction(prev => ({ ...prev, isOpen: false }));
         showToast(`All ${pubApps.length} apps by ${pubName} made Public (Visible in store)`);
+      }
+    });
+  };
+
+  const handleTogglePublisherVerified = (pubName: string, currentlyVerified: boolean, email?: string) => {
+    setOpenMenuPublisherKey(null);
+    const next = !currentlyVerified;
+    setConfirmAction({
+      isOpen: true,
+      title: next ? `Grant Verified Status to "${pubName}"?` : `Remove Verified Status from "${pubName}"?`,
+      description: next
+        ? `Granting verified status gives "${pubName}" an official X/Instagram-style blue verified checkmark badge across their published applications, details pages, and publisher profiles.`
+        : `This will remove the blue verified badge from "${pubName}" and all of their applications.`,
+      confirmLabel: next ? 'Verify Publisher' : 'Remove Verification',
+      isDestructive: !next,
+      onConfirm: async () => {
+        setConfirmAction(prev => ({ ...prev, isOpen: false }));
+        await AdminModerationService.setPublisherVerified(pubName, next, email);
+        refreshData();
+        refreshCatalogue().catch(() => {});
+        showToast(next ? `Publisher "${pubName}" is now Verified (Blue Tick active)` : `Verification removed for "${pubName}"`, { type: 'success' });
       }
     });
   };
@@ -2085,10 +2114,13 @@ export default function AdminControlPanel({
 
                         {/* Publisher Details */}
                         <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <div className="flex items-center gap-2 mb-0.5 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5 min-w-0 flex-wrap">
                             <h4 className="text-theme-text text-[15px] sm:text-base font-medium leading-tight truncate group-hover:text-blue-500 transition-colors">
                               {pub.name}
                             </h4>
+                            {pub.isVerified && (
+                              <VerifiedBadge size="sm" />
+                            )}
                             {pub.isBlocked && (
                               <span className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[10px] font-bold shrink-0">
                                 Blocked
@@ -2772,6 +2804,29 @@ export default function AdminControlPanel({
               className="w-56 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 border border-theme-border/20 flex flex-col animate-in fade-in zoom-in-95 duration-100 overflow-y-auto scrollbar-hide"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenMenuPublisherKey(null);
+                  setPubMenuCoords(null);
+                  pubMenuTriggerRef.current = null;
+                  handleTogglePublisherVerified(pub.name, Boolean(pub.isVerified), pub.email);
+                }}
+                className="w-full text-left px-4 py-2 hover:bg-blue-500/10 text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center justify-between group"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <VerifiedBadge size="xs" />
+                  <span className="truncate group-hover:text-blue-500 transition-colors">
+                    {pub.isVerified ? 'Remove Verified Status' : 'Verify Publisher'}
+                  </span>
+                </span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                  pub.isVerified ? 'bg-blue-500/20 text-blue-500' : 'bg-theme-hover text-theme-text-muted'
+                }`}>
+                  {pub.isVerified ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {

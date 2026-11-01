@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 
 /**
@@ -653,10 +655,23 @@ export function getInternalHmacSecret(): string {
     return secret.trim();
   }
   if (!ephemeralInternalSecret) {
-    ephemeralInternalSecret = crypto.randomBytes(32).toString("hex");
-    console.warn(
-      "[Security Notice] No strong SESSION_SECRET or INTERNAL_SECURITY_KEY configured in environment. Generated ephemeral 256-bit random secret for this instance."
-    );
+    const secretFile = path.join(process.cwd(), "data", ".auth_secret");
+    try {
+      if (fs.existsSync(secretFile)) {
+        const saved = fs.readFileSync(secretFile, "utf-8").trim();
+        if (saved && saved.length >= 16) {
+          ephemeralInternalSecret = saved;
+        }
+      }
+    } catch {}
+
+    if (!ephemeralInternalSecret) {
+      ephemeralInternalSecret = crypto.randomBytes(32).toString("hex");
+      try {
+        fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+        fs.writeFileSync(secretFile, ephemeralInternalSecret, "utf-8");
+      } catch {}
+    }
   }
   return ephemeralInternalSecret;
 }

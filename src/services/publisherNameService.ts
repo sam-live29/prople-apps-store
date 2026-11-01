@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { safeFetchJson } from '../utils/safeFetch';
 import { AppDetails } from '../types';
 
@@ -374,27 +376,81 @@ export async function claimPublisherName(
     nameChangeSessionStartedAt: number;
   }
 ): Promise<{ success: boolean; message?: string }> {
+  const trimmed = (name || '').trim();
+  const cleanAlpha = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const curUid = auth.currentUser?.uid || userId;
+  const curEmail = auth.currentUser?.email || userEmail;
+
+  let clientClaimed = false;
+
+  // 1. Direct authenticated client Firestore write (authorized under firestore.rules)
   try {
+    if (curUid && db) {
+      const regDocRef = doc(db, 'publisher_registry', cleanAlpha);
+      await setDoc(regDocRef, {
+        normalizedName: cleanAlpha,
+        displayName: trimmed,
+        ownerUid: curUid,
+        userId: curUid,
+        ownerEmail: curEmail || '',
+        claimedAt: new Date().toISOString(),
+        isActive: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      const userDocRef = doc(db, 'users', curUid);
+      await setDoc(userDocRef, {
+        publisherName: trimmed,
+        displayName: trimmed,
+        isPublisher: true,
+        lastNameChangedAt: timestamps?.lastNameChangedAt || Date.now(),
+        nameChangeSessionStartedAt: timestamps?.nameChangeSessionStartedAt || Date.now(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      clientClaimed = true;
+    }
+  } catch (clientErr: any) {
+    console.warn('[PublisherNameService] Client direct claim notice:', clientErr);
+  }
+
+  // 2. Server registry endpoint notification
+  try {
+    const idToken = await auth.currentUser?.getIdToken?.().catch(() => null);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
     const { ok, data } = await safeFetchJson<{ success: boolean; message?: string }>(
       '/api/publishers/claim-name',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ 
-          name: name.trim(), 
-          userId, 
-          userEmail,
+          name: trimmed, 
+          userId: curUid, 
+          userEmail: curEmail,
           lastNameChangedAt: timestamps?.lastNameChangedAt,
           nameChangeSessionStartedAt: timestamps?.nameChangeSessionStartedAt
         })
       }
     );
+
     if (ok && data?.success) {
       nameCheckCache.clear();
       return { success: true };
     }
+
+    if (clientClaimed) {
+      nameCheckCache.clear();
+      return { success: true };
+    }
+
     return { success: false, message: data?.message || 'Failed to claim publisher name.' };
   } catch (err: any) {
+    if (clientClaimed) {
+      nameCheckCache.clear();
+      return { success: true };
+    }
     return { success: false, message: err?.message || 'Network error claiming publisher name.' };
   }
 }

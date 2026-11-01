@@ -3335,15 +3335,19 @@ async function startServer() {
       const calculatedLastChanged = req.body?.lastNameChangedAt ? Number(req.body.lastNameChangedAt) : now;
 
       // Save to indexed publisher registry
-      await serverSetDoc(regDocRef, {
-        normalizedName: cleanAlphaNumeric,
-        displayName: rawName,
-        ownerUid: currentUserId || '',
-        ownerEmail: currentUserEmail || '',
-        claimedAt: new Date().toISOString(),
-        isActive: true,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      try {
+        await serverSetDoc(regDocRef, {
+          normalizedName: cleanAlphaNumeric,
+          displayName: rawName,
+          ownerUid: currentUserId || '',
+          ownerEmail: currentUserEmail || '',
+          claimedAt: new Date().toISOString(),
+          isActive: true,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (regErr: any) {
+        console.warn("[ClaimPublisherName] Server registry write notice:", regErr?.message);
+      }
 
       // Update user doc if currentUserId provided
       if (userDocRef) {

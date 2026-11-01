@@ -50,6 +50,7 @@ import { useBookmarks } from '../services/bookmarkService';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AppListing } from '../types';
 import StoreCircleLoader from './StoreCircleLoader';
+import VerifiedBadge from './VerifiedBadge';
 
 export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClick?: (id: string) => void; onOpenNotifications?: () => void }) {
   const { unreadNotificationsCount, markAllNotificationsAsRead, openAuthDialog } = useInstall();
@@ -160,6 +161,12 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
 
   const userEmail = user?.email || "Guest User";
   const userName = user?.publisherName || user?.displayName || "Guest";
+  const isUserVerifiedPublisher = Boolean(
+    user?.isVerifiedPublisher ||
+    (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
+    (user?.displayName && AdminModerationService.isPublisherVerified(user.displayName)) ||
+    AdminModerationService.isPublisherVerified(userName)
+  );
 
   const handleGoogleSignIn = async () => {
     setIsSigningIn(true);
@@ -612,9 +619,12 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
             </div>
 
             {/* User Name */}
-            <h2 className="text-lg sm:text-xl font-semibold text-theme-text tracking-tight truncate max-w-full">
-              Hi, {userName}!
-            </h2>
+            <div className="flex items-center justify-center gap-1.5 max-w-full">
+              <h2 className="text-lg sm:text-xl font-semibold text-theme-text tracking-tight truncate">
+                Hi, {userName}!
+              </h2>
+              {isUserVerifiedPublisher && <VerifiedBadge size="md" />}
+            </div>
           </div>
         ) : (
           <div className="p-4 sm:p-5 bg-theme-card rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
