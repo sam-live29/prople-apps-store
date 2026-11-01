@@ -202,42 +202,21 @@ export function getDirectDownloadUrl(downloadUrl?: string, fileName?: string, pl
 
   const exactName = extractExactPackageFileName(cleanUrl, fileName);
 
-  // 1. If it's a GitHub release tag URL, resolve directly to the authentic binary release link!
-  if (cleanUrl.includes('github.com') && cleanUrl.includes('/releases/tag/') && exactName) {
-    const parts = cleanUrl.replace(/^https?:\/\/github\.com\//i, '').split('/releases/tag/');
-    const repo = parts[0];
-    const tag = parts[1]?.split('/')[0]?.split('?')[0];
-    if (repo && tag) {
-      return `https://github.com/${repo}/releases/download/${tag}/${exactName}`;
-    }
-  }
-
-  // 2. If it's already a direct release download link or binary package, return the direct link!
-  if (cleanUrl.includes('/releases/download/') || isBinaryFileName(cleanUrl)) {
-    return cleanUrl;
-  }
-
-  // 3. Fallback: if it's another repository URL or needs resolving via proxy
-  if (cleanUrl.includes('github.com/')) {
-    const params = new URLSearchParams();
-    params.set('url', cleanUrl);
-    if (exactName) params.set('name', exactName);
-    if (platform) params.set('platform', platform);
-    return `/api/download-apk?${params.toString()}`;
-  }
-
-  return cleanUrl;
+  // ALWAYS stream through same-origin /api/download-apk so users NEVER navigate to GitHub or leave Prople Store!
+  const params = new URLSearchParams();
+  params.set('url', cleanUrl);
+  if (exactName) params.set('name', exactName);
+  if (platform) params.set('platform', platform);
+  return `/api/download-apk?${params.toString()}`;
 }
 
 /**
  * Instant Zero-Buffering Native Stream Dispatcher:
- * Triggers the browser's native DownloadManager immediately at t=0ms via direct CDN release link
- * or same-origin fallback without holding files in memory.
- * - Direct Fastly CDN streaming (zero Prople Store bandwidth consumption)
- * - Zero delay on page
- * - Zero page navigation, zero new tabs, and zero address bar loading line
+ * Triggers native browser download directly via Prople Store same-origin streaming proxy (/api/download-apk)
+ * - Zero Prople Store window navigation, zero GitHub redirect tabs, zero address bar loading interruptions
+ * - Streams directly with Content-Disposition: attachment for immediate native OS notification tray download
  * - Uses only the exact package filename (no bloat fallback files)
- * - Strictly rejects downloads for package sizes under 1 MB to prevent 10.33 KB apk bloat download
+ * - Strictly rejects downloads for package sizes under 1 MB to prevent corrupted stubs
  */
 export function dispatchInstantNativeDownload(
   targetUrl: string,
@@ -300,25 +279,7 @@ export function dispatchInstantNativeDownload(
     return { success: false, error: err };
   }
 
-  // DIRECT RELEASE DOWNLOAD OPTIMIZATION:
-  // If the target is already a genuine GitHub release asset or binary package, trigger native download directly from GitHub CDN!
-  let directBinaryUrl = '';
-  if (cleanUrl.includes('/releases/download/') || isBinaryFileName(cleanUrl)) {
-    directBinaryUrl = cleanUrl;
-  } else if (cleanUrl.includes('github.com') && cleanUrl.includes('/releases/tag/') && exactFileName) {
-    const parts = cleanUrl.replace(/^https?:\/\/github\.com\//i, '').split('/releases/tag/');
-    const repo = parts[0];
-    const tag = parts[1]?.split('/')[0]?.split('?')[0];
-    if (repo && tag) {
-      directBinaryUrl = `https://github.com/${repo}/releases/download/${tag}/${exactFileName}`;
-    }
-  }
-
-  if (directBinaryUrl) {
-    triggerAnchorDownload(directBinaryUrl, exactFileName);
-    return { success: true };
-  }
-
+  // ALWAYS stream through same-origin /api/download-apk so the user never navigates away to GitHub!
   let sameOriginDownloadUrl = cleanUrl;
   if (!cleanUrl.startsWith('/api/download-apk') && !cleanUrl.startsWith('blob:')) {
     const params = new URLSearchParams();
@@ -329,29 +290,6 @@ export function dispatchInstantNativeDownload(
   }
 
   try {
-    // If the URL is going through our /api/download-apk proxy, perform an async head/pre-check
-    // to verify that the upstream server is returning a real binary and not a 422 JSON error or 10.33 KB HTML page!
-    if (sameOriginDownloadUrl.startsWith('/api/download-apk')) {
-      fetch(sameOriginDownloadUrl, { method: 'HEAD' })
-        .then((headRes) => {
-          if (!headRes.ok || headRes.status === 204 || headRes.status === 422) {
-            headRes.json().catch(() => ({})).then((errData: any) => {
-              const errMsg = errData?.error || 'The binary package for this application is not accessible or currently updating.';
-              console.warn('[InstallContext] Download pre-check failed:', errMsg);
-              onError?.(errMsg);
-            });
-            return;
-          }
-          // Direct real binary verified! Trigger native browser download directly
-          triggerAnchorDownload(sameOriginDownloadUrl, exactFileName);
-        })
-        .catch(() => {
-          // In case HEAD is not allowed by intermediate proxy, fall back to direct anchor download
-          triggerAnchorDownload(sameOriginDownloadUrl, exactFileName);
-        });
-      return { success: true };
-    }
-
     triggerAnchorDownload(sameOriginDownloadUrl, exactFileName);
     return { success: true };
   } catch (err: any) {
@@ -363,15 +301,29 @@ export function dispatchInstantNativeDownload(
 
 function triggerAnchorDownload(url: string, fileName?: string) {
   try {
+    const isSameOrigin = url.startsWith('/') || (typeof window !== 'undefined' && url.startsWith(window.location.origin));
+
+    // For same-origin streamed downloads, use a hidden iframe to initiate the browser's download manager
+    // without navigating the SPA, without flashing an empty blank tab, and without leaving Prople Store!
+    if (isSameOrigin) {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 30000);
+      return;
+    }
+
     const a = document.createElement('a');
     a.href = url;
     if (fileName) {
       a.download = fileName;
       a.setAttribute('download', fileName);
     }
-    // Prevent navigating active store window if browser falls back on cross-origin URL
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();

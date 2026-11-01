@@ -39,17 +39,13 @@ export const InstallProgressButton: React.FC<InstallProgressButtonProps> = ({
     if (onDownload) {
       onDownload();
     } else if (directReleaseUrl && directReleaseUrl !== '#') {
-      const a = document.createElement('a');
-      a.href = directReleaseUrl;
-      if (app.assetName) a.download = app.assetName;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = directReleaseUrl;
+      document.body.appendChild(iframe);
       setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-      }, 2000);
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 30000);
     }
   };
 

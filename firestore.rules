@@ -9,6 +9,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (request.auth.token.email_verified == true && (
+          request.auth.token.email == 'sahanurmolla7076@gmail.com' ||
           request.auth.token.email == 'sahanurmolla2886@gmail.com' ||
           request.auth.token.email == 'sahanurmolla190@gmail.com' ||
           request.auth.token.email == 'prople.site@gmail.com' ||
@@ -41,6 +42,10 @@ service cloud.firestore {
         request.resource.data.owner == request.auth.uid ||
         request.resource.data.developerId == request.auth.uid ||
         request.resource.data.creatorUid == request.auth.uid ||
+        (request.auth.token.email != null && (
+          request.resource.data.developerEmail == request.auth.token.email ||
+          request.resource.data.publisherEmail == request.auth.token.email
+        )) ||
         isAdmin()
       ) && (
         isAdmin() ||
@@ -58,9 +63,17 @@ service cloud.firestore {
           (
             resource.data.owner == request.auth.uid ||
             resource.data.developerId == request.auth.uid ||
-            resource.data.creatorUid == request.auth.uid
+            resource.data.creatorUid == request.auth.uid ||
+            resource.data.owner == 'developer' ||
+            resource.data.owner == 'dev-publisher' ||
+            resource.data.owner == 'guest' ||
+            !('owner' in resource.data) ||
+            (request.auth.token.email != null && (
+              resource.data.developerEmail == request.auth.token.email ||
+              resource.data.publisherEmail == request.auth.token.email ||
+              resource.data.ownerEmail == request.auth.token.email
+            ))
           ) &&
-          request.resource.data.owner == resource.data.owner &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
         )
       );
@@ -69,6 +82,11 @@ service cloud.firestore {
         resource.data.owner == request.auth.uid ||
         resource.data.developerId == request.auth.uid ||
         resource.data.creatorUid == request.auth.uid ||
+        (request.auth.token.email != null && (
+          resource.data.developerEmail == request.auth.token.email ||
+          resource.data.publisherEmail == request.auth.token.email ||
+          resource.data.ownerEmail == request.auth.token.email
+        )) ||
         isAdmin()
       );
 

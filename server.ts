@@ -5172,6 +5172,40 @@ async function startServer() {
     return { success: true, appId, version };
   }
 
+  // Web Console & Developer Publishing endpoint:
+  // Authoritative server-side app creation/update pipeline directly writing to Firestore
+  app.post("/api/apps/publish", async (req, res) => {
+    try {
+      const { app: appPayload, userId, userEmail, featureOnSpotlight } = req.body || {};
+      if (!appPayload) {
+        return res.status(400).json({ success: false, error: "Missing app data in request body." });
+      }
+
+      const effectiveUid = String(userId || req.headers['x-user-id'] || appPayload.owner || appPayload.developerId || appPayload.creatorUid || 'dev-publisher').trim();
+      const effectiveEmail = String(userEmail || req.headers['x-user-email'] || appPayload.developerEmail || appPayload.publisherEmail || '').toLowerCase().trim();
+
+      const result = await executeAppPublish(appPayload, effectiveUid, effectiveEmail, { featureOnSpotlight });
+      return res.json({ success: true, app: result.app, isNew: !result.app.updatedAt });
+    } catch (err: any) {
+      console.error("[Backend Publish Error]:", err.message);
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  // Dedicated app release update endpoint
+  app.post("/api/apps/update-release", async (req, res) => {
+    try {
+      const { appId, version, downloadUrl, releaseNotes, userId, sizeFormatted } = req.body || {};
+      if (!appId || !version || !downloadUrl) {
+        return res.status(400).json({ success: false, error: "Missing required release fields" });
+      }
+      const result = await executeAppReleaseUpdate(appId, version, downloadUrl, releaseNotes || '', userId || '', sizeFormatted);
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
   // Vite middleware for development vs static dist serving in production
   const isProduction = process.env.NODE_ENV === "production";
   let viteServer: any = null;
