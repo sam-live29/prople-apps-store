@@ -56,7 +56,7 @@
   "functions": {
     "api/**/*.ts": {
       "maxDuration": 15,
-      "includeFiles": "server/**"
+      "includeFiles": "{server/**,index.html,dist/index.html,public/**}"
     }
   },
   "rewrites": [
@@ -73,12 +73,36 @@
       "destination": "/security.txt"
     },
     {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemaps?name=index"
+    },
+    {
+      "source": "/sitemaps/:name*",
+      "destination": "/api/sitemaps?name=:name*"
+    },
+    {
       "source": "/app/:match*",
-      "destination": "/index.html"
+      "destination": "/api/seo?type=app&slug=:match*"
     },
     {
       "source": "/apps/:match*",
-      "destination": "/index.html"
+      "destination": "/api/seo?type=app&slug=:match*"
+    },
+    {
+      "source": "/developers/:match*",
+      "destination": "/api/seo?type=developer&slug=:match*"
+    },
+    {
+      "source": "/developer/:match*",
+      "destination": "/api/seo?type=developer&slug=:match*"
+    },
+    {
+      "source": "/categories/:match*",
+      "destination": "/api/seo?type=category&slug=:match*"
+    },
+    {
+      "source": "/platforms/:match*",
+      "destination": "/api/seo?type=platform&slug=:match*"
     },
     {
       "source": "/download/:match*",

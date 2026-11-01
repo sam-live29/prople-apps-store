@@ -616,10 +616,10 @@ async function startServer() {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    const domain = "https://www.prople.co.in";
+    const domain = "https://prople.co.in";
     const robots = [
       "# Prople Store - Robots Directives for Search Engines & AI Models",
-      "# Canonical: https://www.prople.co.in/robots.txt",
+      "# Canonical: https://prople.co.in/robots.txt",
       "",
       "User-agent: *",
       "Allow: /",
@@ -814,7 +814,7 @@ async function startServer() {
   }
 
   // Canonical domain for sitemaps
-  const SITEMAP_BASE = "https://www.prople.co.in";
+  const SITEMAP_BASE = "https://prople.co.in";
 
   // Search Engine Optimization (SEO): Sitemaps Index at /sitemap.xml
   app.get(["/sitemap.xml", "/sitemap_index.xml"], async (req, res) => {

@@ -15,7 +15,7 @@ export function getAppShareUrl(app: { id: string; name?: string } | string, appN
   const slug = name ? slugifyAppName(name) : '';
   const finalSlug = slug || appId;
   try {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.prople.co.in';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://prople.co.in';
     return `${origin}/apps/${encodeURIComponent(finalSlug)}`;
   } catch {
     return `/apps/${encodeURIComponent(finalSlug)}`;
@@ -28,7 +28,7 @@ export function getAppDownloadShareUrl(app: { id: string; name?: string } | stri
   const slug = name ? slugifyAppName(name) : '';
   const finalSlug = slug || appId;
   try {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.prople.co.in';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://prople.co.in';
     return `${origin}/apps/${encodeURIComponent(finalSlug)}/download`;
   } catch {
     return `/apps/${encodeURIComponent(finalSlug)}/download`;

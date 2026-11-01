@@ -1,6 +1,6 @@
 # Prople Store - Robots Directives for Search Engines & AI Models
 # Compliant with Googlebot, Bingbot, and AI Generative Search Engines
-# Canonical: https://www.prople.co.in/robots.txt
+# Canonical: https://prople.co.in/robots.txt
 
 User-agent: *
 Allow: /
@@ -31,4 +31,4 @@ User-agent: CCBot
 Allow: /
 
 # Canonical Sitemaps
-Sitemap: https://www.prople.co.in/sitemap.xml
+Sitemap: https://prople.co.in/sitemap.xml

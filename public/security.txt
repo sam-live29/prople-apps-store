@@ -5,7 +5,7 @@ Contact: mailto:cloaktailsupport@gmail.com
 Contact: mailto:cloaktailofficial@gmail.com
 Expires: 2027-12-31T23:59:59.000Z
 Preferred-Languages: en
-Canonical: https://www.prople.co.in/.well-known/security.txt
-Policy: https://www.prople.co.in/terms
-Acknowledgments: https://www.prople.co.in/terms
-Hiring: https://www.prople.co.in/about
+Canonical: https://prople.co.in/.well-known/security.txt
+Policy: https://prople.co.in/terms
+Acknowledgments: https://prople.co.in/terms
+Hiring: https://prople.co.in/about
