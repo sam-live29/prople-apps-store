@@ -1118,7 +1118,38 @@ export default function AppDetailPage({
     setTimeout(() => setCopiedHash(false), 2500);
   };
 
-  const handleShare = () => {
+  const lastDownloadClickRef = useRef<number>(0);
+
+  const handleDownloadAction = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!app || !app.downloadUrl) return;
+
+    const now = Date.now();
+    if (now - lastDownloadClickRef.current < 1200) {
+      return; // Debounce rapid multiple taps
+    }
+    lastDownloadClickRef.current = now;
+
+    const directReleaseUrl = getDirectDownloadUrl(app.downloadUrl, app.assetName, resolvedPlatform) || app.downloadUrl || '';
+    const exactFileName = extractExactPackageFileName(directReleaseUrl, app.assetName);
+
+    startInstall(appId, {
+      downloadUrl: directReleaseUrl,
+      appName: app.name,
+      sizeString: getUnifiedAppSize(app),
+      iconUrl: app.iconUrl,
+      sha256: app.sha256,
+      fileName: exactFileName || app.assetName,
+      platform: resolvedPlatform,
+      packageFormat: app.packageFormat,
+      skipNativeDispatch: false,
+    });
+  };
+
+  const handleShare = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!app) return;
     shareAppNative(app, showToast);
   };
 
@@ -1631,59 +1662,14 @@ export default function AppDetailPage({
                     </div>
                   ) : (
                     <div key="state-download-mob" className="flex flex-col gap-2 w-full">
-                      {(() => {
-                        const directReleaseUrl = getDirectDownloadUrl(app.downloadUrl, app.assetName, resolvedPlatform) || app.downloadUrl || '';
-                        const exactFileName = extractExactPackageFileName(directReleaseUrl, app.assetName);
-                        const isDirectLink = Boolean(directReleaseUrl && directReleaseUrl !== '#');
-
-                        if (isDirectLink) {
-                          return (
-                            <a 
-                              href={directReleaseUrl}
-                              download={exactFileName || ''}
-                              onClick={() => {
-                                startInstall(appId, {
-                                  downloadUrl: directReleaseUrl,
-                                  appName: app.name,
-                                  sizeString: getUnifiedAppSize(app),
-                                  iconUrl: app.iconUrl,
-                                  sha256: app.sha256,
-                                  fileName: exactFileName || app.assetName,
-                                  platform: resolvedPlatform,
-                                  packageFormat: app.packageFormat,
-                                  skipNativeDispatch: true
-                                });
-                              }}
-                              className="w-full h-11 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:active:bg-[#7cacf8] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none no-underline"
-                            >
-                              {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
-                              <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
-                            </a>
-                          );
-                        }
-
-                        return (
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              startInstall(appId, {
-                                downloadUrl: app.downloadUrl,
-                                appName: app.name,
-                                sizeString: getUnifiedAppSize(app),
-                                iconUrl: app.iconUrl,
-                                sha256: app.sha256,
-                                fileName: app.assetName,
-                                platform: resolvedPlatform,
-                                packageFormat: app.packageFormat
-                              });
-                            }}
-                            className="w-full h-11 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:active:bg-[#7cacf8] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none"
-                          >
-                            {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
-                            <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
-                          </button>
-                        );
-                      })()}
+                      <button 
+                        type="button"
+                        onClick={handleDownloadAction}
+                        className="w-full h-11 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:active:bg-[#7cacf8] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none border-0"
+                      >
+                        {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
+                        <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
+                      </button>
                     </div>
                   )}
 
@@ -1825,71 +1811,24 @@ export default function AppDetailPage({
                   {/* Primary CTA Action Row for Desktop/Tablet */}
                   <div className="flex items-center gap-3 mt-4 flex-wrap">
                     {/* Desktop Download/Install Button */}
-                    {(() => {
-                      const directReleaseUrl = getDirectDownloadUrl(app.downloadUrl, app.assetName, resolvedPlatform) || app.downloadUrl || '';
-                      const exactFileName = extractExactPackageFileName(directReleaseUrl, app.assetName);
-                      const isDirectLink = Boolean(directReleaseUrl && directReleaseUrl !== '#');
-
-                      if (!app.downloadUrl) {
-                        return (
-                          <button 
-                            disabled
-                            className="h-11 px-7 bg-theme-hover text-theme-text-muted font-medium rounded-full text-sm cursor-not-allowed opacity-80 flex items-center justify-center gap-2"
-                          >
-                            {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0 opacity-60" /> : <AndroidIcon className="w-4 h-4 shrink-0 opacity-60" />}
-                            <span>Coming Soon</span>
-                          </button>
-                        );
-                      }
-
-                      if (isDirectLink) {
-                        return (
-                          <a 
-                            href={directReleaseUrl}
-                            download={exactFileName || ''}
-                            onClick={() => {
-                              startInstall(appId, {
-                                downloadUrl: directReleaseUrl,
-                                appName: app.name,
-                                sizeString: getUnifiedAppSize(app),
-                                iconUrl: app.iconUrl,
-                                sha256: app.sha256,
-                                fileName: exactFileName || app.assetName,
-                                platform: resolvedPlatform,
-                                packageFormat: app.packageFormat,
-                                skipNativeDispatch: true
-                              });
-                            }}
-                            className="h-11 px-7 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none no-underline"
-                          >
-                            {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
-                            <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
-                          </a>
-                        );
-                      }
-
-                      return (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            startInstall(appId, {
-                              downloadUrl: app.downloadUrl,
-                              appName: app.name,
-                              sizeString: getUnifiedAppSize(app),
-                              iconUrl: app.iconUrl,
-                              sha256: app.sha256,
-                              fileName: app.assetName,
-                              platform: resolvedPlatform,
-                              packageFormat: app.packageFormat
-                            });
-                          }}
-                          className="h-11 px-7 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none"
-                        >
-                          {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
-                          <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
-                        </button>
-                      );
-                    })()}
+                    {!app.downloadUrl ? (
+                      <button 
+                        disabled
+                        className="h-11 px-7 bg-theme-hover text-theme-text-muted font-medium rounded-full text-sm cursor-not-allowed opacity-80 flex items-center justify-center gap-2"
+                      >
+                        {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0 opacity-60" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0 opacity-60" /> : <AndroidIcon className="w-4 h-4 shrink-0 opacity-60" />}
+                        <span>Coming Soon</span>
+                      </button>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={handleDownloadAction}
+                        className="h-11 px-7 bg-[#0b57d0] hover:bg-[#0842a0] text-white dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] dark:text-[#041e49] font-medium font-google-sans rounded-full text-sm sm:text-base transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer select-none border-0"
+                      >
+                        {resolvedPlatform === 'ios' ? <AppleIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'mac' ? <MacIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'windows' ? <WindowsIcon className="w-4 h-4 shrink-0" /> : resolvedPlatform === 'linux' ? <LinuxIcon className="w-4 h-4 shrink-0" /> : <AndroidIcon className="w-4 h-4 shrink-0" />}
+                        <span>{getAppActionFileLabel(app, resolvedPlatform)}</span>
+                      </button>
+                    )}
 
                     {/* Wishlist Button */}
                     <button 

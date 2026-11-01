@@ -362,20 +362,27 @@ export function dispatchInstantNativeDownload(
 }
 
 function triggerAnchorDownload(url: string, fileName?: string) {
-  const a = document.createElement('a');
-  a.href = url;
-  if (fileName) {
-    a.download = fileName;
-    a.setAttribute('download', fileName);
-  }
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    if (document.body.contains(a)) {
-      document.body.removeChild(a);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    if (fileName) {
+      a.download = fileName;
+      a.setAttribute('download', fileName);
     }
-  }, 2000);
+    // Prevent navigating active store window if browser falls back on cross-origin URL
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+    }, 2000);
+  } catch (err) {
+    console.warn('[InstallContext] triggerAnchorDownload notice:', err);
+  }
 }
 
 export async function downloadBinaryAsBlob(

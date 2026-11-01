@@ -1,14 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   injectAppSeoIntoHtml, 
   injectCategorySeoIntoHtml, 
   injectDeveloperSeoIntoHtml, 
   injectPlatformSeoIntoHtml, 
   injectHomeSeoIntoHtml, 
-  renderNotFoundHtml, 
   slugifyAppName,
   SeoAppMetadata 
 } from '../server/seoRenderer';
@@ -20,14 +17,39 @@ let memoryAppsCache: any[] = [];
 let lastCacheFetch = 0;
 const CACHE_TTL_MS = 60 * 1000; // 60s cache in serverless memory
 
-function getFirebaseDb() {
-  const fbConfig = getServerFirebaseConfig();
-  const existingApps = getApps();
-  const fbApp = existingApps.find(a => a.name === 'prople-seo-client') || 
-    initializeApp(fbConfig, 'prople-seo-client');
-  return fbConfig.firestoreDatabaseId && !fbConfig.firestoreDatabaseId.includes('example')
-    ? getFirestore(fbApp, fbConfig.firestoreDatabaseId)
-    : getFirestore(fbApp);
+function parseFirestoreField(val: any): any {
+  if (!val || typeof val !== 'object') return undefined;
+  if (val.stringValue !== undefined) return val.stringValue;
+  if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+  if (val.doubleValue !== undefined) return parseFloat(val.doubleValue);
+  if (val.booleanValue !== undefined) return val.booleanValue;
+  if (val.timestampValue !== undefined) return val.timestampValue;
+  if (val.nullValue !== undefined) return null;
+  if (val.arrayValue !== undefined) {
+    return (val.arrayValue.values || []).map((v: any) => parseFirestoreField(v));
+  }
+  if (val.mapValue !== undefined) {
+    const obj: Record<string, any> = {};
+    for (const [k, v] of Object.entries<any>(val.mapValue.fields || {})) {
+      obj[k] = parseFirestoreField(v);
+    }
+    return obj;
+  }
+  return undefined;
+}
+
+function parseFirestoreDoc(doc: any): any {
+  if (!doc || !doc.fields) return null;
+  const id = doc.name ? doc.name.split('/').pop() : '';
+  const fields = doc.fields || {};
+  const parsed: any = { id };
+  if (doc.createTime) parsed.createdAt = doc.createTime;
+  if (doc.updateTime) parsed.updatedAt = doc.updateTime;
+  for (const [key, val] of Object.entries<any>(fields)) {
+    const fieldVal = parseFirestoreField(val);
+    if (fieldVal !== undefined) parsed[key] = fieldVal;
+  }
+  return parsed;
 }
 
 async function fetchAllPublishedApps(): Promise<any[]> {
@@ -37,26 +59,66 @@ async function fetchAllPublishedApps(): Promise<any[]> {
   }
 
   try {
-    const db = getFirebaseDb();
-    const snap = await getDocs(collection(db, 'apps'));
-    const list: any[] = [];
-    snap.forEach(d => {
-      const data = d.data();
-      if (data.isPublished !== false) {
-        list.push({ id: d.id, ...data });
-      }
-    });
+    const fbConfig = getServerFirebaseConfig();
+    const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
+    const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
 
-    if (list.length > 0) {
-      memoryAppsCache = list;
-      lastCacheFetch = now;
-      return list;
+    if (!projectId) {
+      return memoryAppsCache;
+    }
+
+    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps?pageSize=200`;
+
+    // Strict 2000ms timeout to guarantee serverless functions NEVER hang or hit Vercel 15s limit
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    const res = await fetch(firestoreUrl, { signal: controller.signal }).catch(() => null);
+    clearTimeout(timeout);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data && Array.isArray(data.documents)) {
+        const apps = data.documents.map(parseFirestoreDoc).filter(Boolean);
+        const publishedApps = apps.filter((a: any) => a && a.isPublished !== false);
+        if (publishedApps.length > 0) {
+          memoryAppsCache = publishedApps;
+          lastCacheFetch = now;
+          return publishedApps;
+        }
+      }
     }
   } catch (err: any) {
-    console.warn('[Vercel SEO] Error fetching apps via Firebase SDK:', err?.message || err);
+    console.warn('[Vercel SEO] Fast REST fetch notice:', err?.message || err);
   }
 
   return memoryAppsCache;
+}
+
+async function fetchSingleAppDirect(appIdOrSlug: string): Promise<any | null> {
+  try {
+    const fbConfig = getServerFirebaseConfig();
+    const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
+    const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
+
+    if (!projectId || !appIdOrSlug) return null;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1800);
+
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps/${encodeURIComponent(appIdOrSlug)}`;
+    const res = await fetch(docUrl, { signal: controller.signal }).catch(() => null);
+    clearTimeout(timeout);
+
+    if (res && res.ok) {
+      const docData = await res.json().catch(() => null);
+      const app = parseFirestoreDoc(docData);
+      if (app && app.isPublished !== false) {
+        return app;
+      }
+    }
+  } catch {}
+  return null;
 }
 
 function getBaseTemplate(): string {
@@ -137,24 +199,23 @@ export default async function handler(req: any, res: any) {
 
       // If not in cache, attempt direct document lookup by exact ID
       if (!matchedApp) {
-        try {
-          const db = getFirebaseDb();
-          const docSnap = await getDoc(doc(db, 'apps', slug));
-          if (docSnap.exists()) {
-            matchedApp = { id: docSnap.id, ...docSnap.data() };
-          }
-        } catch {}
+        matchedApp = await fetchSingleAppDirect(slug);
       }
 
       if (matchedApp) {
-        const transformedHtml = injectAppSeoIntoHtml(templateHtml, matchedApp, baseUrl);
+        let transformedHtml = injectAppSeoIntoHtml(templateHtml, matchedApp, baseUrl);
+        const hydrationJson = JSON.stringify(matchedApp).replace(/</g, '\\u003c');
+        const hydrationScript = `<script id="prople-initial-app" type="application/json">${hydrationJson}</script><script>try{window.__INITIAL_APP__=JSON.parse(document.getElementById("prople-initial-app").textContent);}catch(e){}</script>`;
+        if (transformedHtml.includes('</head>')) {
+          transformedHtml = transformedHtml.replace('</head>', `${hydrationScript}\n</head>`);
+        } else {
+          transformedHtml = `${hydrationScript}\n${transformedHtml}`;
+        }
         return res.status(200).send(transformedHtml);
       }
 
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('X-Robots-Tag', 'noindex, follow');
-      const notFoundHtml = renderNotFoundHtml(templateHtml, slug, baseUrl);
-      return res.status(404).send(notFoundHtml);
+      // If not yet matched or newly created, deliver the SPA shell directly so the client-side router loads it gracefully!
+      return res.status(200).send(templateHtml);
     }
 
     // 2. Developer Page: /developers/:slug
@@ -204,7 +265,7 @@ export default async function handler(req: any, res: any) {
     const fallbackHtml = injectHomeSeoIntoHtml(templateHtml, baseUrl, allApps);
     return res.status(200).send(fallbackHtml);
   } catch (err: any) {
-    console.error('[Vercel SEO Handler Error]:', err?.message || err);
+    console.error('[Vercel SEO Handler Notice]:', err?.message || err);
     return res.status(200).send(templateHtml);
   }
 }

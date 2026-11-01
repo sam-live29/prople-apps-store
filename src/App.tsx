@@ -10,6 +10,7 @@ import ExplorePage from './components/ExplorePage';
 import ActiveSearchPage from './components/ActiveSearchPage';
 import NotificationsPage from './components/NotificationsPage';
 import AppDetailPage from './components/AppDetailPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import SimilarAppsPage from './components/SimilarAppsPage';
 import WishlistPage from './components/WishlistPage';
 import SearchResultsPage from './components/SearchResultsPage';
@@ -386,18 +387,34 @@ export default function App() {
 
     if (activeAppDetailsId) {
       return (
-        <AppDetailPage 
-          key={activeAppDetailsId}
-          appId={activeAppDetailsId} 
-          onBack={goBack} 
-          onShowSimilarApps={openSimilarApps} 
-          onOpenSearch={() => openSearch(false)} 
-          onOrgClick={(orgName) => {
-            const cleanOrg = (orgName || '').trim();
-            performSearch(`pub:${cleanOrg}`);
-          }}
-          onAppClick={openAppDetail}
-        />
+        <ErrorBoundary fallback={
+          <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-6 bg-theme-bg text-theme-text text-center font-sans">
+            <h2 className="text-xl font-medium mb-2">Unable to display app details</h2>
+            <p className="text-sm text-theme-text-muted mb-6 max-w-sm">
+              We encountered an unexpected issue while loading this application.
+            </p>
+            <button
+              type="button"
+              onClick={goBack}
+              className="px-6 py-2.5 rounded-full bg-[#0b57d0] hover:bg-[#0842a0] dark:bg-[#a8c7fa] dark:hover:bg-[#d3e3fd] text-white dark:text-[#041e49] font-medium text-sm cursor-pointer shadow-xs"
+            >
+              Back to Store
+            </button>
+          </div>
+        }>
+          <AppDetailPage 
+            key={activeAppDetailsId}
+            appId={activeAppDetailsId} 
+            onBack={goBack} 
+            onShowSimilarApps={openSimilarApps} 
+            onOpenSearch={() => openSearch(false)} 
+            onOrgClick={(orgName) => {
+              const cleanOrg = (orgName || '').trim();
+              performSearch(`pub:${cleanOrg}`);
+            }}
+            onAppClick={openAppDetail}
+          />
+        </ErrorBoundary>
       );
     }
 

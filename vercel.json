@@ -56,7 +56,7 @@
   "functions": {
     "api/**/*.ts": {
       "maxDuration": 15,
-      "includeFiles": "{server/**,index.html,dist/index.html,public/**}"
+      "includeFiles": "{server/**,index.html,dist/index.html,dist/**,public/**,firebase-applet-config.json}"
     }
   },
   "rewrites": [
