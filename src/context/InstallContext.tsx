@@ -828,22 +828,65 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const markNotificationAsRead = (id: string) => {
-    setRawNotifications(prev => prev.map(n => n.id === id ? { ...n, isUnread: false } : n));
+  const markNotificationAsRead = useCallback((id: string) => {
+    if (!id) return;
+    setRawNotifications(prev => {
+      const updated = prev.map(n => n.id === id ? { ...n, isUnread: false } : n);
+      try {
+        localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(updated));
+        const storeRaw = localStorage.getItem('prople_store_notifications_v5');
+        if (storeRaw) {
+          const storeList: NotificationItem[] = JSON.parse(storeRaw);
+          const updatedStore = storeList.map(n => n.id === id ? { ...n, isUnread: false } : n);
+          localStorage.setItem('prople_store_notifications_v5', JSON.stringify(updatedStore));
+        }
+      } catch {}
+      return updated;
+    });
     markNotificationAsReadInFirestore(id).catch((err) => {
       console.warn('markNotificationAsReadInFirestore error:', err);
     });
-  };
+  }, []);
 
-  const markAllNotificationsAsRead = () => {
-    const unreadIds = visibleNotifications.filter(n => n.isUnread).map(n => n.id);
-    setRawNotifications(prev => prev.map(n => unreadIds.includes(n.id) ? { ...n, isUnread: false } : n));
-    if (unreadIds.length > 0) {
-      markAllNotificationsAsReadInFirestore(unreadIds).catch((err) => {
-        console.warn('markAllNotificationsAsReadInFirestore error:', err);
-      });
+  const markAllNotificationsAsRead = useCallback(() => {
+    const unreadIds = visibleNotifications
+      .filter(n => n.isUnread !== false)
+      .map(n => n.id);
+    
+    if (unreadIds.length === 0) return;
+
+    const unreadIdSet = new Set(unreadIds);
+
+    // 1. Immediately update in-memory state & localStorage
+    setRawNotifications(prev => {
+      const updated = prev.map(n => unreadIdSet.has(n.id) ? { ...n, isUnread: false } : n);
+      try {
+        localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(updated));
+        const storeRaw = localStorage.getItem('prople_store_notifications_v5');
+        if (storeRaw) {
+          const storeList: NotificationItem[] = JSON.parse(storeRaw);
+          const updatedStore = storeList.map(n => unreadIdSet.has(n.id) ? { ...n, isUnread: false } : n);
+          localStorage.setItem('prople_store_notifications_v5', JSON.stringify(updatedStore));
+        }
+      } catch {}
+      return updated;
+    });
+
+    // 2. Dispatch custom event so all listeners immediately update
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('prople_store_notifications_v5');
+        if (raw) {
+          window.dispatchEvent(new CustomEvent('prople:notifications:updated', { detail: JSON.parse(raw) }));
+        }
+      } catch {}
     }
-  };
+
+    // 3. Persist to Firestore
+    markAllNotificationsAsReadInFirestore(unreadIds).catch((err) => {
+      console.warn('markAllNotificationsAsReadInFirestore error:', err);
+    });
+  }, [visibleNotifications]);
 
   const clearNotification = useCallback((id: string) => {
     if (!id) return;

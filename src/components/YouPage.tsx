@@ -52,7 +52,7 @@ import { AppListing } from '../types';
 import StoreCircleLoader from './StoreCircleLoader';
 
 export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClick?: (id: string) => void; onOpenNotifications?: () => void }) {
-  const { unreadNotificationsCount, openAuthDialog } = useInstall();
+  const { unreadNotificationsCount, markAllNotificationsAsRead, openAuthDialog } = useInstall();
   const { showToast, hasActiveToast } = useToast();
   const { user, isLoading: isAuthLoading, logout, loginWithGoogle, isAdmin } = useAuth();
   const { isInstalled } = usePWAInstall();
@@ -676,7 +676,14 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
             rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
           />
           <MenuItem 
-            onClick={() => onOpenNotifications ? onOpenNotifications() : setActiveView('notifications')} 
+            onClick={() => {
+              markAllNotificationsAsRead();
+              if (onOpenNotifications) {
+                onOpenNotifications();
+              } else {
+                setActiveView('notifications');
+              }
+            }} 
             icon={<Bell className="w-5 h-5 text-theme-text-muted" />} 
             label="Notifications & offers" 
             badge={unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined}

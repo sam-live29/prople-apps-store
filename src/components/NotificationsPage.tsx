@@ -224,6 +224,7 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
     notifications, 
     markNotificationAsRead, 
     markAllNotificationsAsRead,
+    unreadNotificationsCount,
     clearNotification,
     clearAllNotifications
   } = useInstall();
@@ -235,6 +236,22 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
 
   const notifScrollRef = useRef<HTMLDivElement | null>(null);
   usePreserveScroll('notifications-page', notifScrollRef);
+
+  // Automatically mark all notifications as read upon visiting NotificationsPage
+  // Users do not need to click or visit each individual target app or link to clear unread status
+  useEffect(() => {
+    markAllNotificationsAsRead();
+  }, [markAllNotificationsAsRead]);
+
+  // If new unread notifications arrive or sync while on this page, automatically mark them as read
+  useEffect(() => {
+    if (unreadNotificationsCount > 0) {
+      const timer = setTimeout(() => {
+        markAllNotificationsAsRead();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [unreadNotificationsCount, markAllNotificationsAsRead]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -343,6 +360,31 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
             <h1 className="text-[17px] sm:text-[19px] font-medium tracking-tight text-theme-text font-google-sans truncate">
               Notifications &amp; updates
             </h1>
+          </div>
+
+          {/* Right Header Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {unreadNotificationsCount > 0 && (
+              <button 
+                type="button"
+                onClick={markAllNotificationsAsRead}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-500 hover:bg-blue-500/10 active:bg-blue-500/20 rounded-lg transition-colors cursor-pointer"
+                title="Mark all as read"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Mark all as read</span>
+              </button>
+            )}
+            {notifications.length > 0 && (
+              <button 
+                type="button"
+                onClick={clearAllNotifications}
+                className="px-2.5 py-1.5 text-xs font-medium text-theme-text-muted hover:text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 rounded-lg transition-colors cursor-pointer"
+                title="Clear all notifications"
+              >
+                Clear all
+              </button>
+            )}
           </div>
         </div>
       </header>

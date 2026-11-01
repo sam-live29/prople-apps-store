@@ -58,7 +58,7 @@ export default function MarketplaceShell({
   hideBottomNav
 }: LayoutProps) {
   const mainRef = useRef<HTMLElement | null>(null);
-  const { unreadNotificationsCount } = useInstall();
+  const { unreadNotificationsCount, markAllNotificationsAsRead } = useInstall();
   const { user, loginWithGoogle, logout } = useAuth();
   const { showToast } = useToast();
   const { 
@@ -231,7 +231,10 @@ export default function MarketplaceShell({
                     <div className="relative flex items-center justify-center w-9 h-9">
                       <button 
                         className="w-9 h-9 text-[#444746] dark:text-theme-text hover:bg-theme-hover rounded-full transition-colors flex items-center justify-center cursor-pointer" 
-                        onClick={onOpenNotifications}
+                        onClick={() => {
+                          markAllNotificationsAsRead();
+                          onOpenNotifications?.();
+                        }}
                         aria-label="Notifications"
                       >
                         <Bell className="w-5 h-5" />
@@ -539,6 +542,7 @@ export default function MarketplaceShell({
                       type="button"
                       onClick={() => {
                         setIsDrawerOpen(false);
+                        markAllNotificationsAsRead();
                         onOpenNotifications?.();
                       }}
                       className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium text-theme-text hover:bg-theme-hover transition-colors cursor-pointer"
