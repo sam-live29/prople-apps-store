@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronDown, Check, AlertCircle, Loader2, Lock, Clock } from
 import { useAuth } from '../context/AuthContext';
 import { useStoreConfig } from '../context/StoreConfigContext';
 import { useToast } from '../context/ToastContext';
+import { auth } from '../firebase';
 import ConfirmationDialog from './ConfirmationDialog';
 import StoreCircleLoader from './StoreCircleLoader';
 import { 
@@ -152,8 +153,10 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
           nameChangeSessionStartedAt: calculated.nameChangeSessionStartedAt
         };
 
-        if (user?.uid && user?.email) {
-          const claimRes = await claimPublisherName(cleanName, user.uid, user.email, calculated);
+        const effectiveUid = user?.uid || auth.currentUser?.uid || '';
+        const effectiveEmail = user?.email || auth.currentUser?.email || '';
+        if (effectiveUid || effectiveEmail) {
+          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, true);
           if (!claimRes.success) {
             showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
             setIsSaving(false);

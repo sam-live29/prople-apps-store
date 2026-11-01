@@ -25,6 +25,8 @@ import type { Request as ExpressRequest, Response as ExpressResponse, NextFuncti
 
 const DEFAULT_ADMIN_EMAILS = [
   "sahanurmolla2886@gmail.com",
+  "sahanurmolla190@gmail.com",
+  "prople.site@gmail.com",
   "cloaktailsupport@gmail.com",
   "cloaktailofficial@gmail.com",
   "prople.org@gmail.com",

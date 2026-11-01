@@ -372,9 +372,10 @@ export async function claimPublisherName(
   userId: string,
   userEmail: string,
   timestamps?: {
-    lastNameChangedAt: number;
-    nameChangeSessionStartedAt: number;
-  }
+    lastNameChangedAt?: number;
+    nameChangeSessionStartedAt?: number;
+  },
+  isResolvingConflict?: boolean
 ): Promise<{ success: boolean; message?: string }> {
   const trimmed = (name || '').trim();
   const cleanAlpha = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -430,7 +431,8 @@ export async function claimPublisherName(
           userId: curUid, 
           userEmail: curEmail,
           lastNameChangedAt: timestamps?.lastNameChangedAt,
-          nameChangeSessionStartedAt: timestamps?.nameChangeSessionStartedAt
+          nameChangeSessionStartedAt: timestamps?.nameChangeSessionStartedAt,
+          isResolvingConflict: Boolean(isResolvingConflict)
         })
       }
     );

@@ -10,6 +10,8 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (request.auth.token.email_verified == true && (
           request.auth.token.email == 'sahanurmolla2886@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla190@gmail.com' ||
+          request.auth.token.email == 'prople.site@gmail.com' ||
           request.auth.token.email == 'prople.org@gmail.com' ||
           request.auth.token.email == 'cloaktailofficial@gmail.com' ||
           request.auth.token.email == 'cloaktailsupport@gmail.com' ||
@@ -94,11 +96,16 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (
         request.resource.data.ownerUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid ||
+        (request.auth.token.email != null && request.resource.data.ownerEmail == request.auth.token.email) ||
         isAdmin()
       );
       allow update: if isAuthenticated() && (
         resource.data.ownerUid == request.auth.uid ||
         resource.data.userId == request.auth.uid ||
+        (request.auth.token.email != null && (
+          resource.data.ownerEmail == request.auth.token.email ||
+          request.resource.data.ownerEmail == request.auth.token.email
+        )) ||
         isAdmin()
       );
       allow delete: if isAdmin();

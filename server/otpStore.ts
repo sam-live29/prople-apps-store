@@ -3,7 +3,33 @@
 // Ensures OTPs persist across serverless function instances, Vercel lambdas, and reboots.
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { hmacDigest, timingSafeEqualString, getInternalHmacSecret } from './securityDefense.ts';
+
+const LOCAL_CRED_DIR = path.join(process.cwd(), 'server', 'data');
+const LOCAL_CRED_FILE = path.join(LOCAL_CRED_DIR, 'auth_credentials.json');
+
+function readLocalCredentials(): Record<string, { hash: string; updatedAt?: number | string }> {
+  try {
+    if (fs.existsSync(LOCAL_CRED_FILE)) {
+      const raw = fs.readFileSync(LOCAL_CRED_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return {};
+}
+
+function writeLocalCredentials(data: Record<string, { hash: string; updatedAt?: number | string }>) {
+  try {
+    if (!fs.existsSync(LOCAL_CRED_DIR)) {
+      fs.mkdirSync(LOCAL_CRED_DIR, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_CRED_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err: any) {
+    console.warn('[Local Password Store] Write notice:', err?.message || err);
+  }
+}
 
 function timingSafeStringMatch(a: string, b: string): boolean {
   return timingSafeEqualString(a, b);
@@ -55,6 +81,11 @@ const memoryStore = globalThis.__PROPLE_MEMORY_OTPS;
 const passwordMemoryStore = globalThis.__PROPLE_MEMORY_PASSWORDS;
 const sessionMemoryStore = globalThis.__PROPLE_AUTH_SESSIONS;
 const consumedCodesStore = globalThis.__PROPLE_CONSUMED_CODES;
+
+let otpStoreDb: any = null;
+export function initOtpStoreDb(db: any): void {
+  otpStoreDb = db;
+}
 
 // Prune expired consumed codes every 15 minutes
 setInterval(() => {
@@ -323,13 +354,51 @@ async function deleteOtpRecord(email: string, key: string): Promise<void> {
 }
 
 /**
- * Persists a user's hashed password in RTDB under _auth_otps/pwd_${key}.json
- * and in memory cache for high availability and instant auth.
+ * Persists a user's hashed password in local file storage, Firestore,
+ * and in-memory cache for high availability and instant auth.
  */
 export async function persistUserPasswordHash(email: string, hash: string): Promise<void> {
   const norm = email.toLowerCase().trim();
   passwordMemoryStore.set(norm, hash);
 
+  // 1. Instant local persistent storage (guaranteed survival across reboots)
+  try {
+    const creds = readLocalCredentials();
+    creds[norm] = { hash, updatedAt: Date.now() };
+    writeLocalCredentials(creds);
+  } catch (err: any) {
+    console.warn('[Local Password Store] Write notice:', err?.message || err);
+  }
+
+  // 2. Authoritative Firestore persistence
+  if (otpStoreDb) {
+    try {
+      const { doc, setDoc, collection, query, where, getDocs, limit } = await import('firebase/firestore');
+      const key = getOtpKey(norm);
+      const credDocRef = doc(otpStoreDb, 'auth_credentials', key);
+      await setDoc(credDocRef, {
+        email: norm,
+        hash,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // Also mirror to user document in users collection if present
+      const usersCol = collection(otpStoreDb, 'users');
+      const q = query(usersCol, where('email', '==', norm), limit(1));
+      const userSnap = await getDocs(q);
+      if (!userSnap.empty) {
+        const uDoc = userSnap.docs[0];
+        await setDoc(doc(otpStoreDb, 'users', uDoc.id), {
+          passwordHash: hash,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch (fsErr: any) {
+      console.warn('[Distributed Password Store] Firestore write notice:', fsErr?.message || fsErr);
+    }
+  }
+
+  // 3. Realtime Database fallback
   try {
     const key = getOtpKey(norm);
     const url = `${RTDB_URL}/_auth_otps/pwd_${key}.json`;
@@ -340,12 +409,12 @@ export async function persistUserPasswordHash(email: string, hash: string): Prom
       signal: AbortSignal.timeout(4000),
     });
   } catch (err: any) {
-    console.warn('[Distributed Password Store] RTDB write notice:', err?.message || err);
+    // Graceful RTDB notice
   }
 }
 
 /**
- * Retrieves a user's hashed password from memory cache or RTDB.
+ * Retrieves a user's hashed password from memory cache, local file storage, Firestore, or RTDB.
  */
 export async function getUserPasswordHash(email: string): Promise<string | null> {
   const norm = email.toLowerCase().trim();
@@ -353,6 +422,47 @@ export async function getUserPasswordHash(email: string): Promise<string | null>
     return passwordMemoryStore.get(norm)!;
   }
 
+  // 1. Instant local persistent storage lookup
+  try {
+    const creds = readLocalCredentials();
+    if (creds[norm]?.hash && typeof creds[norm].hash === 'string' && creds[norm].hash.includes(':')) {
+      passwordMemoryStore.set(norm, creds[norm].hash);
+      return creds[norm].hash;
+    }
+  } catch {}
+
+  // 2. Authoritative Firestore lookup from auth_credentials
+  if (otpStoreDb) {
+    try {
+      const { doc, getDoc, collection, query, where, getDocs, limit } = await import('firebase/firestore');
+      const key = getOtpKey(norm);
+      const credDocRef = doc(otpStoreDb, 'auth_credentials', key);
+      const credSnap = await getDoc(credDocRef);
+      if (credSnap.exists()) {
+        const data = credSnap.data();
+        if (data && typeof data.hash === 'string' && data.hash.includes(':')) {
+          passwordMemoryStore.set(norm, data.hash);
+          return data.hash;
+        }
+      }
+
+      // Check users collection for passwordHash field
+      const usersCol = collection(otpStoreDb, 'users');
+      const q = query(usersCol, where('email', '==', norm), limit(1));
+      const userSnap = await getDocs(q);
+      if (!userSnap.empty) {
+        const uData = userSnap.docs[0].data();
+        if (uData && typeof uData.passwordHash === 'string' && uData.passwordHash.includes(':')) {
+          passwordMemoryStore.set(norm, uData.passwordHash);
+          return uData.passwordHash;
+        }
+      }
+    } catch (fsErr: any) {
+      console.warn('[Distributed Password Store] Firestore read notice:', fsErr?.message || fsErr);
+    }
+  }
+
+  // 3. Realtime Database fallback lookup
   try {
     const key = getOtpKey(norm);
     const url = `${RTDB_URL}/_auth_otps/pwd_${key}.json`;
@@ -365,7 +475,7 @@ export async function getUserPasswordHash(email: string): Promise<string | null>
       }
     }
   } catch (err: any) {
-    console.warn('[Distributed Password Store] RTDB read notice:', err?.message || err);
+    // Graceful RTDB notice
   }
 
   return null;

@@ -57,7 +57,8 @@ import {
   completeAuthSession,
   getAuthSessionStatus,
   consumeAuthSession,
-  createSignedChallengeToken
+  createSignedChallengeToken,
+  initOtpStoreDb
 } from "./server/otpStore.ts";
 import {
   initAuthSecurity,
@@ -92,6 +93,7 @@ try {
       : initFirestore(fbApp);
     console.log("[Backend] Firestore initialized with secure env config on DB:", fbConfig.firestoreDatabaseId || "(default)");
     initAuthSecurity(serverDb);
+    initOtpStoreDb(serverDb);
     serverGetDoc(serverDoc(serverDb, "system_config", "resend")).then((snap: any) => {
       if (snap && snap.exists()) {
         const data = snap.data();
@@ -1705,6 +1707,14 @@ async function startServer() {
             existingData = docSnap.data();
             displayName = existingData.displayName || displayName;
           }
+          const userDocRef = serverDoc(serverDb, "users", userUid);
+          await serverSetDoc(userDocRef, {
+            email: cleanEmail,
+            displayName,
+            passwordHash: pwdHash,
+            isEmailVerified: true,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
         } catch (dbErr: any) {
           console.warn("[Auth API] Firestore user query notice:", dbErr.message);
         }
@@ -3143,6 +3153,7 @@ async function startServer() {
       }
 
       // 1. Check indexed publisher_registry collection in database (O(1) direct document key lookup)
+      const isRequesterAdminOrDev = isStrictAdminEmail(currentUserEmail);
       const regDocRef = serverDoc(serverDb, "publisher_registry", cleanAlphaNumeric);
       try {
         const regSnap = await serverGetDoc(regDocRef);
@@ -3151,10 +3162,11 @@ async function startServer() {
           const regOwnerUid = (reg.ownerUid || '').trim();
           const regOwnerEmail = (reg.ownerEmail || '').toLowerCase().trim();
 
-          // If claimed by another user/developer, it is unavailable
-          if ((currentUserId && regOwnerUid === currentUserId) || (currentUserEmail && regOwnerEmail === currentUserEmail)) {
-            // Belongs to the current requesting user
-          } else {
+          const isOwnerMatch = (currentUserId && regOwnerUid === currentUserId) || 
+                               (currentUserEmail && regOwnerEmail === currentUserEmail) ||
+                               (isRequesterAdminOrDev && (isStrictAdminEmail(regOwnerEmail) || !regOwnerEmail));
+
+          if (!isOwnerMatch) {
             return res.json({
               available: false,
               isTaken: true,
@@ -3167,8 +3179,6 @@ async function startServer() {
       }
 
       // 2. Check active publishers in Firestore users collection
-      // CRITICAL: ONLY check users where isPublisher === true and publisherName is assigned!
-      // A regular user signing up with a personal displayName (e.g. Sahanur Molla) is NOT a publisher!
       const usersCol = serverCollection(serverDb, "users");
       const userSnap = await serverGetDocs(usersCol);
 
@@ -3178,7 +3188,11 @@ async function startServer() {
         const uEmail = (u.email || '').toLowerCase().trim();
 
         // Skip current user's own identity docs
-        if ((currentUserId && uId === currentUserId) || (currentUserEmail && uEmail === currentUserEmail)) {
+        if (
+          (currentUserId && uId === currentUserId) || 
+          (currentUserEmail && uEmail === currentUserEmail) ||
+          (isRequesterAdminOrDev && isStrictAdminEmail(uEmail))
+        ) {
           continue;
         }
 
@@ -3205,10 +3219,11 @@ async function startServer() {
         const appOwner = (a.owner || a.creatorUid || a.developerId || '').trim();
         const appOwnerEmail = (a.ownerEmail || a.developerEmail || a.publisherEmail || '').toLowerCase().trim();
 
-        // Skip apps owned by current user
+        // Skip apps owned by current user or associated developers
         if (
           (currentUserId && appOwner === currentUserId) ||
-          (currentUserEmail && appOwnerEmail === currentUserEmail)
+          (currentUserEmail && appOwnerEmail === currentUserEmail) ||
+          (isRequesterAdminOrDev && isStrictAdminEmail(appOwnerEmail))
         ) {
           continue;
         }
@@ -3248,6 +3263,7 @@ async function startServer() {
       const rawName = (req.body?.name || "").toString().trim();
       const currentUserId = (req.body?.userId || req.body?.currentUserId || "").toString().trim();
       const currentUserEmail = (req.body?.userEmail || req.body?.currentUserEmail || "").toString().toLowerCase().trim();
+      const isResolvingConflict = Boolean(req.body?.isResolvingConflict || req.body?.force);
 
       if (!rawName || rawName.length < 2 || rawName.length > 50) {
         return res.status(400).json({ success: false, message: "Publisher name must be between 2 and 50 characters." });
@@ -3270,6 +3286,8 @@ async function startServer() {
         return res.status(503).json({ success: false, message: "Database temporarily unavailable." });
       }
 
+      const isRequesterAdminOrDev = isStrictAdminEmail(currentUserEmail);
+
       // Check if already claimed by someone else
       const regDocRef = serverDoc(serverDb, "publisher_registry", cleanAlphaNumeric);
       const regSnap = await serverGetDoc(regDocRef);
@@ -3277,16 +3295,17 @@ async function startServer() {
         const reg = regSnap.data();
         const ownerUid = (reg.ownerUid || '').trim();
         const ownerEmail = (reg.ownerEmail || '').toLowerCase().trim();
-        if ((currentUserId && ownerUid && ownerUid !== currentUserId) && (currentUserEmail && ownerEmail && ownerEmail !== currentUserEmail)) {
+
+        const isOwnerMatch = (currentUserId && ownerUid && ownerUid === currentUserId) || 
+                             (currentUserEmail && ownerEmail && ownerEmail === currentUserEmail) ||
+                             (isRequesterAdminOrDev && (isStrictAdminEmail(ownerEmail) || !ownerEmail));
+
+        if (!isOwnerMatch) {
           return res.status(409).json({ success: false, message: `The publisher name "${rawName}" is already claimed by another developer.` });
         }
       }
 
-      // Cooldown validation: 30 minutes grace window for back-to-back edits, followed by 15-day waiting period
-      const GRACE_PERIOD_MS = 30 * 60 * 1000;
-      const COOLDOWN_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
-      const now = Date.now();
-
+      // User document lookup
       let targetUserDoc: any = null;
       let userDocRef: any = null;
       if (currentUserId && serverDb) {
@@ -3301,7 +3320,36 @@ async function startServer() {
         }
       }
 
-      if (targetUserDoc && targetUserDoc.publisherName && targetUserDoc.publisherName.trim().toLowerCase() !== cleanLower) {
+      // Fallback lookup by email if UID doc not yet populated
+      if (!targetUserDoc && currentUserEmail && serverDb) {
+        try {
+          const uQuery = serverQuery(
+            serverCollection(serverDb, "users"),
+            serverWhere("email", "==", currentUserEmail),
+            serverLimit(1)
+          );
+          const uSnap = await serverGetDocs(uQuery);
+          if (!uSnap.empty) {
+            userDocRef = uSnap.docs[0].ref;
+            targetUserDoc = uSnap.docs[0].data();
+          }
+        } catch (e: any) {
+          console.warn("[ClaimPublisherName] Email user lookup notice:", e.message);
+        }
+      }
+
+      const GRACE_PERIOD_MS = 30 * 60 * 1000;
+      const COOLDOWN_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+
+      // Cooldown validation: Only apply to regular non-admin changes when not resolving conflicts
+      if (
+        !isRequesterAdminOrDev && 
+        !isResolvingConflict && 
+        targetUserDoc && 
+        targetUserDoc.publisherName && 
+        targetUserDoc.publisherName.trim().toLowerCase() !== cleanLower
+      ) {
         const sessionStartedAt = targetUserDoc.nameChangeSessionStartedAt ? new Date(targetUserDoc.nameChangeSessionStartedAt).getTime() : 0;
         const lastChangedAt = targetUserDoc.lastNameChangedAt ? new Date(targetUserDoc.lastNameChangedAt).getTime() : sessionStartedAt;
 
@@ -3334,7 +3382,7 @@ async function startServer() {
       }
       const calculatedLastChanged = req.body?.lastNameChangedAt ? Number(req.body.lastNameChangedAt) : now;
 
-      // Save to indexed publisher registry
+      // 1. Authoritative write to publisher_registry
       try {
         await serverSetDoc(regDocRef, {
           normalizedName: cleanAlphaNumeric,
@@ -3349,13 +3397,15 @@ async function startServer() {
         console.warn("[ClaimPublisherName] Server registry write notice:", regErr?.message);
       }
 
-      // Update user doc if currentUserId provided
-      if (userDocRef) {
+      // 2. Authoritative write to user document
+      const effectiveUserRef = userDocRef || (currentUserId ? serverDoc(serverDb, "users", currentUserId) : null);
+      if (effectiveUserRef) {
         try {
-          await serverSetDoc(userDocRef, {
+          await serverSetDoc(effectiveUserRef, {
             isPublisher: true,
             publisherName: rawName,
-            displayName: rawName,
+            displayName: targetUserDoc?.displayName || rawName,
+            email: currentUserEmail || targetUserDoc?.email || '',
             lastNameChangedAt: calculatedLastChanged,
             nameChangeSessionStartedAt: calculatedSessionStarted,
             updatedAt: new Date().toISOString()
@@ -3364,6 +3414,9 @@ async function startServer() {
           console.warn("[ClaimPublisherName] User doc update notice:", uErr?.message);
         }
       }
+
+      serverAppsCatalogCache = [];
+      seoAppsCache.clear();
 
       return res.json({ success: true, message: `Publisher name "${rawName}" successfully claimed.` });
     } catch (err: any) {
