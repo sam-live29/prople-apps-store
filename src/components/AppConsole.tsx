@@ -106,6 +106,35 @@ import PackageFormatIcon from './PackageFormatIcon';
 import { checkPublisherNameAvailability, claimPublisherName } from '../services/publisherNameService';
 import { computeDeterministicSha256, extractSha256FromText } from '../utils/securityUtils';
 
+export function parseSizeString(raw: string): { num: string; unit: 'MB' | 'GB' } {
+  if (!raw || raw === 'Varies with device' || raw === 'Direct Binary' || raw === 'No binary available') {
+    return { num: '', unit: 'MB' };
+  }
+  const str = raw.trim();
+  const match = str.match(/^([\d.]+)\s*(GB|MB|G|M)?/i);
+  if (match) {
+    const n = match[1];
+    const u = (match[2] || 'MB').toUpperCase();
+    return { num: n, unit: (u === 'GB' || u === 'G') ? 'GB' : 'MB' };
+  }
+  const numOnly = str.replace(/[^0-9.]/g, '');
+  if (numOnly) {
+    return { num: numOnly, unit: str.toUpperCase().includes('GB') ? 'GB' : 'MB' };
+  }
+  return { num: '', unit: 'MB' };
+}
+
+export function getPlatformForPackageFormat(fmt: string): 'android' | 'windows' | 'linux' | 'mac' | 'ios' | 'web' | 'universal' {
+  const norm = (fmt || '').toLowerCase().replace(/^\./, '').trim();
+  if (['apk', 'aab', 'aar'].includes(norm)) return 'android';
+  if (['exe', 'msi', 'msix', 'appx'].includes(norm)) return 'windows';
+  if (['deb', 'appimage', 'rpm', 'snap', 'flatpak', 'tar.gz', 'tar.xz', 'tar.zst', 'bin', 'run'].includes(norm)) return 'linux';
+  if (['dmg', 'pkg'].includes(norm)) return 'mac';
+  if (norm === 'ipa') return 'ios';
+  if (['pwa', 'web'].includes(norm)) return 'web';
+  return 'universal';
+}
+
 export function inferPlatformAndFormat(urlOrFilename: string): {
   platform: 'android' | 'windows' | 'linux' | 'mac' | 'ios';
   packageFormat: 'apk' | 'aar' | 'aab' | 'exe' | 'msi' | 'zip' | '7z' | 'rar' | 'msix' | 'appx' | 'deb' | 'AppImage' | 'rpm' | 'tar.gz' | 'tar.xz' | 'tar.zst' | 'snap' | 'flatpak' | 'bin' | 'run' | 'dmg' | 'pkg' | 'jar' | 'ipa';
@@ -1291,6 +1320,124 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [downloadUrl, setDownloadUrl] = useState(() => initialDraft?.downloadUrl || '');
   const [assetName, setAssetName] = useState(() => initialDraft?.assetName || '');
   const [assetSize, setAssetSize] = useState(() => initialDraft?.assetSize || '');
+  const [sizeNum, setSizeNum] = useState<string>(() => parseSizeString(initialDraft?.assetSize || '').num);
+  const [sizeUnit, setSizeUnit] = useState<'MB' | 'GB'>(() => parseSizeString(initialDraft?.assetSize || '').unit);
+  const [sizeNotice, setSizeNotice] = useState<string | null>(null);
+
+  const applyNewAssetSize = useCallback((raw: string) => {
+    setAssetSize(raw);
+    const p = parseSizeString(raw);
+    setSizeNum(p.num);
+    setSizeUnit(p.unit);
+    setSizeNotice(null);
+  }, []);
+
+  const handleSizeNumChange = (val: string) => {
+    // 1. Strict positive decimal number sanitization
+    let cleaned = val.replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      cleaned = parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    if (!cleaned) {
+      setSizeNum('');
+      setAssetSize('');
+      setSizeNotice(null);
+      return;
+    }
+
+    const numericVal = parseFloat(cleaned);
+
+    // 2. Strict contradiction check (e.g. 6889 MB -> auto-convert to GB)
+    if (sizeUnit === 'MB' && !isNaN(numericVal) && numericVal >= 1024) {
+      const inGb = +(numericVal / 1024).toFixed(1);
+      const strGb = String(inGb);
+      setSizeNum(strGb);
+      setSizeUnit('GB');
+      setAssetSize(`${strGb} GB`);
+      setSizeNotice(`Auto-converted ${numericVal.toLocaleString()} MB → ${strGb} GB to maintain valid store sizing.`);
+      return;
+    }
+
+    setSizeNum(cleaned);
+    setAssetSize(`${cleaned} ${sizeUnit}`);
+    setSizeNotice(null);
+  };
+
+  const handleSizeUnitChange = (newUnit: 'MB' | 'GB') => {
+    if (newUnit === sizeUnit) return;
+    if (!sizeNum) {
+      setSizeUnit(newUnit);
+      return;
+    }
+
+    const n = parseFloat(sizeNum);
+    if (isNaN(n) || n <= 0) {
+      setSizeUnit(newUnit);
+      return;
+    }
+
+    if (newUnit === 'GB') {
+      if (n >= 1024) {
+        const inGb = +(n / 1024).toFixed(1);
+        setSizeNum(String(inGb));
+        setSizeUnit('GB');
+        setAssetSize(`${inGb} GB`);
+        setSizeNotice(`Auto-converted ${n.toLocaleString()} MB → ${inGb} GB.`);
+      } else {
+        const inGb = +(n / 1024).toFixed(2);
+        setSizeNum(String(inGb));
+        setSizeUnit('GB');
+        setAssetSize(`${inGb} GB`);
+        setSizeNotice(null);
+      }
+    } else {
+      // Switching from GB to MB
+      const inMb = Math.round(n * 1024);
+      if (inMb >= 1024) {
+        setSizeNotice('Sizes of 1 GB and above must use the GB unit to avoid contradictory sizing.');
+        return;
+      }
+      setSizeNum(String(inMb));
+      setSizeUnit('MB');
+      setAssetSize(`${inMb} MB`);
+      setSizeNotice(null);
+    }
+  };
+
+  const handleSizeBlur = () => {
+    if (!sizeNum) return;
+    let normalized = sizeNum;
+    if (normalized.endsWith('.')) {
+      normalized = normalized.slice(0, -1);
+    }
+    const n = parseFloat(normalized);
+    if (isNaN(n) || n <= 0) {
+      setSizeNum('');
+      setAssetSize('');
+      setSizeNotice(null);
+      return;
+    }
+    if (sizeUnit === 'MB' && n >= 1024) {
+      const inGb = +(n / 1024).toFixed(1);
+      const strGb = String(inGb);
+      setSizeNum(strGb);
+      setSizeUnit('GB');
+      setAssetSize(`${strGb} GB`);
+      setSizeNotice(`Auto-converted ${n.toLocaleString()} MB → ${strGb} GB.`);
+      return;
+    }
+    setSizeNum(normalized);
+    setAssetSize(`${normalized} ${sizeUnit}`);
+  };
+
+  const applySizePreset = (num: string, unit: 'MB' | 'GB') => {
+    setSizeNum(num);
+    setSizeUnit(unit);
+    setAssetSize(`${num} ${unit}`);
+    setSizeNotice(null);
+  };
   const [detectedDownloadsCount, setDetectedDownloadsCount] = useState<number>(() => initialDraft?.detectedDownloadsCount || 0);
   const [sha256, setSha256] = useState(() => initialDraft?.sha256 || '');
   const [minAndroid, setMinAndroid] = useState(() => initialDraft?.minAndroid || 'Android 8.0 and up');
@@ -1737,6 +1884,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setDownloadUrl('');
     setAssetName('');
     setAssetSize('');
+    setSizeNum('');
+    setSizeUnit('MB');
+    setSizeNotice(null);
     setDetectedDownloadsCount(0);
     setSha256('');
     setMinAndroid('Android 8.0 and up');
@@ -1813,6 +1963,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setDownloadUrl(d.downloadUrl || '');
     setAssetName(d.assetName || '');
     setAssetSize(d.assetSize || '');
+    const parsedDraftSize = parseSizeString(d.assetSize || '');
+    setSizeNum(parsedDraftSize.num);
+    setSizeUnit(parsedDraftSize.unit);
+    setSizeNotice(null);
     setDetectedDownloadsCount(d.detectedDownloadsCount || 0);
     setSha256(d.sha256 || (d.assetName || d.downloadUrl ? computeDeterministicSha256(`${d.name || 'draft'}:${d.versionName || 'v1'}:${d.assetName || d.downloadUrl || ''}`) : ''));
     setMinAndroid(d.minAndroid || 'Android 8.0 and up');
@@ -1890,6 +2044,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setDownloadUrl(app.downloadUrl || '');
     setAssetName(app.assetName || '');
     setAssetSize(app.size || 'Varies with device');
+    const parsedAppSize = parseSizeString(app.size || '');
+    setSizeNum(parsedAppSize.num);
+    setSizeUnit(parsedAppSize.unit);
+    setSizeNotice(null);
     setDetectedDownloadsCount(app.downloadsCount ?? 0);
     const effectiveSha = app.sha256 || computeDeterministicSha256(`${app.id || app.name}:${app.releaseTag || app.versionName || 'v1'}:${app.assetName || ''}`);
     setSha256(effectiveSha);
@@ -2418,7 +2576,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
           setVersion(data.tagName);
           setVersionName(data.tagName.replace(/^v/i, ''));
         }
-        if (data.sizeFormatted) setAssetSize(data.sizeFormatted);
+        if (data.sizeFormatted) applyNewAssetSize(data.sizeFormatted);
         const detected = inferPlatformAndFormat(resolvedName || data.resolvedUrl);
         setPlatform(detected.platform);
         setPackageFormat(detected.packageFormat as any);
@@ -2615,7 +2773,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         const detected = inferPlatformAndFormat(finalActiveName || finalDownloadUrl || cleanUrl);
         setAssetName(finalActiveName);
         setDownloadUrl(finalDownloadUrl);
-        setAssetSize(finalSize);
+        applyNewAssetSize(finalSize);
         setPlatform(detected.platform);
         setPackageFormat(detected.packageFormat as any);
         setMinAndroid(detected.minRequirement);
@@ -3746,56 +3904,27 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1 min-h-[20px]">
-                      <label className="block text-xs font-medium text-theme-text flex items-center gap-1.5 whitespace-nowrap">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
+                      <label className="block text-xs font-medium text-theme-text flex items-center gap-1.5 truncate" title="Publisher Name">
                         <UserCheck className="w-3.5 h-3.5 text-theme-text-muted shrink-0" />
-                        <span>Publisher Name *</span>
+                        <span className="truncate">Publisher Name</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewCandidatePublisherName(activePublisherName);
-                          setShowChangePublisherModal(true);
-                        }}
-                        className="text-[11px] text-blue-500 hover:text-blue-400 font-semibold cursor-pointer transition-colors"
-                      >
-                        Change
-                      </button>
                     </div>
                     <div className="relative">
                       <input 
                         type="text" 
                         required
                         readOnly
-                        onClick={() => {
-                          if (isPublisherNameConflict) {
-                            setNewCandidatePublisherName(activePublisherName);
-                            setShowChangePublisherModal(true);
-                          }
-                        }}
+                        disabled
                         value={activePublisherName || currentGoogleName} 
-                        className={`w-full rounded-lg px-3 py-2 text-sm text-theme-text transition-colors ${
-                          isPublisherNameConflict
-                            ? 'bg-red-500/10 border border-red-500 text-red-200 cursor-pointer'
-                            : 'bg-theme-hover/20 border border-theme-border/60 cursor-default'
-                        }`}
-                        title="Click Change to update your unique publisher name"
+                        className="w-full rounded-lg px-3 py-2 text-xs sm:text-sm text-theme-text bg-theme-hover/20 border border-theme-border/60 cursor-not-allowed select-none opacity-85"
+                        title="Publisher name is linked to your developer profile and immutable in the publishing form"
                       />
                     </div>
-                    {isPublisherNameConflict ? (
-                      <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1 font-medium">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Name already taken. Click "Change" above to set a unique publisher name.</span>
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-theme-text-muted mt-1">
-                        Verified unique publisher name across Prople Store.
-                      </p>
-                    )}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center justify-between mb-1 min-h-[20px]">
                       <label className="block text-xs font-medium text-theme-text whitespace-nowrap">Category *</label>
                     </div>
@@ -4036,9 +4165,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
                 {/* Target Platform & Package Format Specification */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center justify-between mb-1 min-h-[20px]">
-                      <label className="block text-xs font-medium text-theme-text whitespace-nowrap">Target Platform *</label>
+                      <label className="block text-xs font-medium text-theme-text truncate" title="Target Platform">Target Platform *</label>
                     </div>
                     <select
                       value={platform}
@@ -4065,55 +4194,157 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                           setTargetOs('Android 8.0 and up');
                         }
                       }}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs text-theme-text outline-none focus:border-blue-500"
+                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-2.5 py-2 text-xs text-theme-text outline-none focus:border-blue-500 truncate cursor-pointer"
                     >
                       <option value="android">Android</option>
-                      <option value="ios">Apple (iOS / iPadOS)</option>
-                      <option value="mac">Mac (macOS)</option>
-                      <option value="linux">Linux</option>
                       <option value="windows">Windows</option>
+                      <option value="linux">Linux</option>
+                      <option value="mac">Mac (macOS)</option>
+                      <option value="ios">Apple (iOS / iPadOS)</option>
                       <option value="web">Web Store (PWA / Web App)</option>
                       <option value="multiplatform">Multiplatform</option>
                     </select>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1 min-h-[20px]">
-                      <label className="block text-xs font-medium text-theme-text whitespace-nowrap">Package Format *</label>
-                      <div className="flex items-center gap-1 shrink-0">
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
+                      <label className="block text-xs font-medium text-theme-text truncate" title="Package Format">Package Format *</label>
+                      <div className="flex items-center gap-1 shrink-0 overflow-hidden">
                         <PackageFormatIcon format={packageFormat} className="w-3.5 h-3.5 shrink-0" />
-                        <span className="text-[10px] font-mono text-theme-text-muted">{packageFormat ? `.${packageFormat.replace(/^\./, '').toLowerCase().slice(0, 8)}` : ''}</span>
-                        <span className="text-[10px] text-theme-text-muted ml-0.5">{(packageFormat || '').length}/12</span>
+                        <span className="text-[10px] font-mono font-medium text-blue-400 truncate max-w-[55px]">
+                          .{packageFormat ? packageFormat.replace(/^\./, '').toLowerCase() : ''}
+                        </span>
                       </div>
                     </div>
-                    <input 
-                      type="text" 
-                      maxLength={12}
-                      placeholder="e.g. apk, dmg, deb, exe"
+                    <select 
+                      id="package-format-select"
                       value={packageFormat} 
-                      onChange={e => setPackageFormat(e.target.value.replace(/^\./, '').trim().slice(0, 12) as any)}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs font-mono text-theme-text outline-none focus:border-blue-500"
-                    />
+                      onChange={e => {
+                        const selected = e.target.value as any;
+                        setPackageFormat(selected);
+                        const mappedPlat = getPlatformForPackageFormat(selected);
+                        if (mappedPlat && mappedPlat !== 'universal' && mappedPlat !== platform) {
+                          setPlatform(mappedPlat as any);
+                          if (mappedPlat === 'android') setTargetOs('Android 8.0 and up');
+                          else if (mappedPlat === 'windows') setTargetOs('Windows 10, 11 (64-bit)');
+                          else if (mappedPlat === 'linux') setTargetOs('Linux (Debian, Ubuntu, Fedora, Arch)');
+                          else if (mappedPlat === 'mac') setTargetOs('macOS 12.0 Monterey or later');
+                          else if (mappedPlat === 'ios') setTargetOs('iOS 14.0 or later');
+                          else if (mappedPlat === 'web') setTargetOs('Modern Web Browser / Universal PWA');
+                        }
+                      }}
+                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-2.5 py-2 text-xs font-medium text-theme-text outline-none focus:border-blue-500 truncate cursor-pointer"
+                    >
+                      <optgroup label="Android Formats">
+                        <option value="apk">APK (.apk) - Android Package</option>
+                        <option value="aab">AAB (.aab) - Android App Bundle</option>
+                        <option value="aar">AAR (.aar) - Android Archive</option>
+                      </optgroup>
+                      <optgroup label="Windows Formats">
+                        <option value="exe">EXE (.exe) - Windows Executable</option>
+                        <option value="msi">MSI (.msi) - Windows Installer</option>
+                        <option value="msix">MSIX (.msix) - Modern Windows Package</option>
+                        <option value="appx">APPX (.appx) - Universal AppX</option>
+                      </optgroup>
+                      <optgroup label="Linux Formats">
+                        <option value="deb">DEB (.deb) - Debian / Ubuntu Package</option>
+                        <option value="AppImage">AppImage (.AppImage) - Universal Linux</option>
+                        <option value="rpm">RPM (.rpm) - Red Hat / Fedora Package</option>
+                        <option value="snap">SNAP (.snap) - Canonical Snap Package</option>
+                        <option value="flatpak">Flatpak (.flatpak) - Linux Container</option>
+                        <option value="tar.gz">TAR.GZ (.tar.gz) - Linux Archive</option>
+                        <option value="bin">BIN (.bin) - Linux Executable Binary</option>
+                        <option value="run">RUN (.run) - Linux Self-Extracting</option>
+                      </optgroup>
+                      <optgroup label="Apple macOS Formats">
+                        <option value="dmg">DMG (.dmg) - Apple Disk Image</option>
+                        <option value="pkg">PKG (.pkg) - macOS Installer Package</option>
+                      </optgroup>
+                      <optgroup label="Apple iOS Formats">
+                        <option value="ipa">IPA (.ipa) - iOS App Package</option>
+                      </optgroup>
+                      <optgroup label="Universal Archives">
+                        <option value="zip">ZIP (.zip) - Compressed Zip Archive</option>
+                        <option value="7z">7Z (.7z) - 7-Zip Compressed Archive</option>
+                        <option value="rar">RAR (.rar) - WinRAR Compressed Archive</option>
+                        <option value="jar">JAR (.jar) - Java Executable Archive</option>
+                      </optgroup>
+                      <optgroup label="Web & Cloud Platforms">
+                        <option value="pwa">PWA (.pwa) - Progressive Web App</option>
+                        <option value="web">WEB (.web) - Cloud Web Application</option>
+                      </optgroup>
+                    </select>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1 min-h-[20px]">
-                      <label className="block text-xs font-medium text-theme-text whitespace-nowrap">Package Size</label>
-                      <span className="text-[10px] text-theme-text-muted shrink-0">{assetSize.length}/15</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
+                      <label className="block text-xs font-medium text-theme-text truncate" title="Package Size">Package Size</label>
+                      <span className="text-[10px] font-mono text-theme-text-muted shrink-0 truncate max-w-[80px]">
+                        {assetSize ? assetSize : 'Optional'}
+                      </span>
                     </div>
-                    <input 
-                      type="text" 
-                      maxLength={15}
-                      placeholder="24 MB"
-                      value={assetSize} 
-                      onChange={e => setAssetSize(e.target.value.slice(0, 15))}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
-                    />
+                    {/* Compound Strict Numeric Input & Unit Dropdown */}
+                    <div className="flex items-center bg-theme-hover/40 border border-theme-border rounded-lg overflow-hidden focus-within:border-blue-500 transition-colors">
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        pattern="[0-9]*[.]?[0-9]*"
+                        placeholder="e.g. 24"
+                        value={sizeNum} 
+                        onChange={e => handleSizeNumChange(e.target.value)}
+                        onBlur={handleSizeBlur}
+                        className="w-full min-w-0 bg-transparent px-2.5 py-2 text-xs sm:text-sm font-semibold text-theme-text outline-none placeholder:text-theme-text-muted/40"
+                      />
+                      <select
+                        value={sizeUnit}
+                        onChange={e => handleSizeUnitChange(e.target.value as 'MB' | 'GB')}
+                        className="bg-theme-bg/80 border-l border-theme-border/60 text-xs font-bold text-theme-text px-2 py-2 outline-none cursor-pointer hover:bg-theme-hover/60 transition-colors shrink-0"
+                      >
+                        <option value="MB">MB</option>
+                        <option value="GB">GB</option>
+                      </select>
+                    </div>
+
+                    {/* Auto-conversion Notice Banner */}
+                    {sizeNotice && (
+                      <div className="mt-1.5 p-1.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-[11px] text-blue-400 flex items-start gap-1 leading-tight">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-400" />
+                        <span>{sizeNotice}</span>
+                      </div>
+                    )}
+
+                    {/* Quick Preset Buttons */}
+                    <div className="mt-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                      {[
+                        { num: '25', unit: 'MB' as const },
+                        { num: '50', unit: 'MB' as const },
+                        { num: '100', unit: 'MB' as const },
+                        { num: '500', unit: 'MB' as const },
+                        { num: '1.2', unit: 'GB' as const },
+                        { num: '2.5', unit: 'GB' as const },
+                      ].map(p => {
+                        const isSelected = sizeNum === p.num && sizeUnit === p.unit;
+                        return (
+                          <button
+                            key={`${p.num}-${p.unit}`}
+                            type="button"
+                            onClick={() => applySizePreset(p.num, p.unit)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors shrink-0 font-mono ${
+                              isSelected
+                                ? 'bg-blue-500/20 border-blue-500 text-blue-400 font-semibold'
+                                : 'bg-theme-hover/30 border-theme-border/50 text-theme-text-muted hover:text-theme-text hover:bg-theme-hover/60'
+                            }`}
+                          >
+                            {p.num}{p.unit}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1 min-h-[20px]">
-                      <label className="block text-xs font-medium text-theme-text whitespace-nowrap">OS Requirement</label>
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
+                      <label className="block text-xs font-medium text-theme-text truncate" title="OS Requirement">OS Requirement</label>
                       <span className="text-[10px] text-theme-text-muted shrink-0">{minAndroid.length}/40</span>
                     </div>
                     <input 
