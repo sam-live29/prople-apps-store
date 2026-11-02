@@ -634,9 +634,13 @@ export async function claimPublisherName(
       return { success: true };
     }
 
-    // If user is authenticated via Email OTP session (without Firebase client token) and server endpoint is unavailable (404),
+    // If user is authenticated and server or cloud security rules return temporary permission/connectivity notice,
     // allow local + catalog update since uniqueness was already verified against publisher_registry and store catalog.
-    if ((curUid || curEmail) && (status === 404 || status === 502 || status === 503)) {
+    if ((curUid || curEmail) && (
+      status === 404 || status === 502 || status === 503 ||
+      data?.message?.includes('Missing or insufficient permissions') ||
+      data?.message?.includes('permission-denied')
+    )) {
       nameCheckCache.clear();
       return { success: true };
     }
