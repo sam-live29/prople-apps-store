@@ -48,6 +48,15 @@ export interface PublisherRestriction {
   updatedAt: number;
 }
 
+export interface VerifiedAccountRecord {
+  accountEmail?: string;
+  accountUid?: string;
+  publisherName?: string;
+  isVerified: boolean;
+  verifiedAt?: string;
+  updatedAt?: string;
+}
+
 export interface BannedReleaseLink {
   id: string;
   urlOrRepo: string;
@@ -214,6 +223,7 @@ const LOCAL_STORAGE_REVIEW_REPORTS = 'prople_admin_review_reports_v1';
 const LOCAL_STORAGE_PUBLISHER_RESTRICTIONS = 'prople_admin_publisher_restrictions_v1';
 const LOCAL_STORAGE_BANNED_RELEASES = 'prople_admin_banned_releases_v1';
 const LOCAL_STORAGE_APP_MODERATION = 'prople_admin_app_moderation_v1';
+const LOCAL_STORAGE_VERIFIED_ACCOUNTS = 'prople_admin_verified_accounts_v1';
 
 // In-memory cache
 let appReportsCache: Record<string, AppReportItem> = {};
@@ -221,11 +231,14 @@ let reviewReportsCache: Record<string, ReviewReportItem> = {};
 let publisherRestrictionsCache: Record<string, PublisherRestriction> = {};
 let bannedReleasesCache: BannedReleaseLink[] = [];
 let appModerationCache: Record<string, AppModerationState> = {};
+let verifiedAccountsByEmail: Record<string, VerifiedAccountRecord> = {};
+let verifiedAccountsByUid: Record<string, VerifiedAccountRecord> = {};
 
 export function dispatchModerationEvent() {
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new CustomEvent('admin:moderation:updated'));
+      window.dispatchEvent(new CustomEvent('admin:verification:updated'));
     } catch {}
   }
 }
@@ -285,7 +298,37 @@ export function initModerationFirestoreSync() {
       }
     }, () => {});
 
-    // 3. Banned Releases
+    // 3. Verified Accounts bound to Account Owner & Email
+    onSnapshot(collection(db, 'verified_accounts'), (snap) => {
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        if (data) {
+          const rec: VerifiedAccountRecord = {
+            accountEmail: data.accountEmail ? String(data.accountEmail).toLowerCase().trim() : undefined,
+            accountUid: data.accountUid ? String(data.accountUid).trim() : undefined,
+            publisherName: data.publisherName,
+            isVerified: Boolean(data.isVerified),
+            verifiedAt: data.verifiedAt,
+            updatedAt: data.updatedAt
+          };
+          if (rec.accountEmail) {
+            verifiedAccountsByEmail[rec.accountEmail] = rec;
+          }
+          if (rec.accountUid) {
+            verifiedAccountsByUid[rec.accountUid] = rec;
+          }
+          if (docSnap.id.includes('@')) {
+            verifiedAccountsByEmail[docSnap.id.toLowerCase().trim()] = rec;
+          } else {
+            verifiedAccountsByUid[docSnap.id] = rec;
+          }
+        }
+      });
+      saveVerifiedAccounts();
+      dispatchModerationEvent();
+    }, () => {});
+
+    // 4. Banned Releases
     onSnapshot(collection(db, 'banned_releases'), (snap) => {
       const items: BannedReleaseLink[] = [];
       snap.forEach((docSnap) => {
@@ -363,6 +406,14 @@ function initLocalCache() {
     const rawMod = localStorage.getItem(LOCAL_STORAGE_APP_MODERATION);
     if (rawMod) appModerationCache = JSON.parse(rawMod);
   } catch {}
+  try {
+    const rawVer = localStorage.getItem(LOCAL_STORAGE_VERIFIED_ACCOUNTS);
+    if (rawVer) {
+      const parsed = JSON.parse(rawVer);
+      if (parsed?.byEmail) verifiedAccountsByEmail = parsed.byEmail;
+      if (parsed?.byUid) verifiedAccountsByUid = parsed.byUid;
+    }
+  } catch {}
 }
 
 initLocalCache();
@@ -399,6 +450,16 @@ function saveAppModeration() {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(LOCAL_STORAGE_APP_MODERATION, JSON.stringify(appModerationCache));
+  } catch {}
+}
+
+function saveVerifiedAccounts() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_STORAGE_VERIFIED_ACCOUNTS, JSON.stringify({
+      byEmail: verifiedAccountsByEmail,
+      byUid: verifiedAccountsByUid
+    }));
   } catch {}
 }
 
@@ -1044,71 +1105,134 @@ export const AdminModerationService = {
     return Boolean(publisherRestrictionsCache[key]?.isRestricted);
   },
 
-  isPublisherVerified(publisherName?: string): boolean {
-    if (!publisherName) return false;
+  /**
+   * Authoritative account verification: bound to account owner & its email, NOT user name.
+   */
+  isAccountVerified(params: {
+    email?: string;
+    uid?: string;
+    publisherName?: string;
+    app?: any;
+  }): boolean {
     initLocalCache();
-    const key = publisherName.trim().toLowerCase();
-    const alphaKey = key.replace(/[^a-z0-9]/g, '');
-    const item = publisherRestrictionsCache[key] || publisherRestrictionsCache[alphaKey];
-    return Boolean(item?.isVerified);
+    const cleanEmail = (params.email || params.app?.developerEmail || params.app?.ownerEmail || params.app?.publisherEmail || '').toLowerCase().trim();
+    const cleanUid = (params.uid || params.app?.owner || params.app?.developerId || params.app?.creatorUid || '').trim();
+
+    // 1. Direct check against verifiedAccountsByEmail
+    if (cleanEmail && verifiedAccountsByEmail[cleanEmail]?.isVerified) {
+      return true;
+    }
+    if (cleanEmail) {
+      const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      if (verifiedAccountsByEmail[emailDocKey]?.isVerified) return true;
+    }
+
+    // 2. Direct check against verifiedAccountsByUid
+    if (cleanUid && verifiedAccountsByUid[cleanUid]?.isVerified) {
+      return true;
+    }
+
+    // 3. Direct app-level flag if verified by backend
+    if (params.app?.isVerifiedAccount || params.app?.isVerifiedPublisher) {
+      return true;
+    }
+
+    // 4. Fallback check on publisher restrictions
+    if (cleanEmail && publisherRestrictionsCache[cleanEmail]?.isVerified) {
+      return true;
+    }
+    if (cleanUid && publisherRestrictionsCache[cleanUid]?.isVerified) {
+      return true;
+    }
+    if (params.publisherName) {
+      const pKey = params.publisherName.trim().toLowerCase();
+      const pAlpha = pKey.replace(/[^a-z0-9]/g, '');
+      const item = publisherRestrictionsCache[pKey] || publisherRestrictionsCache[pAlpha];
+      if (item?.isVerified) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  /**
+   * Sets verification status bound to the account owner (email and UID).
+   */
+  async setAccountVerified(params: {
+    email?: string;
+    uid?: string;
+    publisherName?: string;
+    isVerified: boolean;
+  }): Promise<void> {
+    initLocalCache();
+    const cleanEmail = (params.email || '').toLowerCase().trim();
+    const cleanUid = (params.uid || '').trim();
+    const isVerified = Boolean(params.isVerified);
+    const nowIso = new Date().toISOString();
+
+    const record: VerifiedAccountRecord = {
+      accountEmail: cleanEmail || undefined,
+      accountUid: cleanUid || undefined,
+      publisherName: params.publisherName,
+      isVerified,
+      verifiedAt: isVerified ? nowIso : undefined,
+      updatedAt: nowIso
+    };
+
+    if (cleanEmail) {
+      verifiedAccountsByEmail[cleanEmail] = record;
+      const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      verifiedAccountsByEmail[emailDocKey] = record;
+    }
+    if (cleanUid) {
+      verifiedAccountsByUid[cleanUid] = record;
+    }
+
+    saveVerifiedAccounts();
+    dispatchModerationEvent();
+
+    // 1. Write to Firestore 'verified_accounts' collection
+    try {
+      if (cleanEmail) {
+        const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+        await setDoc(doc(db, 'verified_accounts', emailDocKey), record, { merge: true }).catch(() => {});
+      }
+      if (cleanUid) {
+        await setDoc(doc(db, 'verified_accounts', cleanUid), record, { merge: true }).catch(() => {});
+        // Also update users/{cleanUid}
+        await setDoc(doc(db, 'users', cleanUid), { isVerifiedAccount: isVerified, updatedAt: nowIso }, { merge: true }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[setAccountVerified] Firestore write notice:', err);
+    }
+
+    // 2. Call backend /api/admin/verify-account to propagate to all apps owned by this account
+    try {
+      const adminEmail = getCurrentAdminEmail();
+      const headers = await getAdminAuthHeaders();
+      await fetch('/api/admin/verify-account', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          userEmail: adminEmail,
+          targetEmail: cleanEmail,
+          targetUid: cleanUid,
+          publisherName: params.publisherName,
+          isVerified
+        })
+      });
+    } catch (apiErr) {
+      console.warn('[setAccountVerified] Backend API notice:', apiErr);
+    }
+  },
+
+  isPublisherVerified(publisherName?: string, email?: string, uid?: string): boolean {
+    return this.isAccountVerified({ publisherName, email, uid });
   },
 
   async setPublisherVerified(publisherName: string, isVerified: boolean, email?: string, uid?: string) {
-    initLocalCache();
-    const key = publisherName.trim().toLowerCase();
-    const alphaKey = key.replace(/[^a-z0-9]/g, '');
-    const current: PublisherRestriction = publisherRestrictionsCache[key] || {
-      publisherKey: key,
-      publisherName,
-      publisherEmail: email,
-      isBlocked: false,
-      isRestricted: false,
-      isVerified: false,
-      updatedAt: Date.now()
-    };
-    current.isVerified = isVerified;
-    current.updatedAt = Date.now();
-    if (email) current.publisherEmail = email;
-    publisherRestrictionsCache[key] = current;
-    if (alphaKey && alphaKey !== key) {
-      publisherRestrictionsCache[alphaKey] = current;
-    }
-    savePublisherRestrictions();
-    dispatchModerationEvent();
-
-    // 1. Sync to publisher_restrictions collection in Firestore
-    try {
-      const docRef = doc(db, 'publisher_restrictions', key.replace(/[^a-zA-Z0-9_-]/g, '_'));
-      await setDoc(docRef, { ...current, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
-    } catch {}
-
-    // 2. Sync to publisher_registry in Firestore
-    try {
-      if (alphaKey) {
-        const regDocRef = doc(db, 'publisher_registry', alphaKey);
-        await setDoc(regDocRef, { isVerifiedPublisher: isVerified, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-      }
-    } catch {}
-
-    // 3. Sync to user document in Firestore if uid is known
-    if (uid) {
-      try {
-        const userDocRef = doc(db, 'users', uid);
-        await setDoc(userDocRef, { isVerifiedPublisher: isVerified, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-      } catch {}
-    }
-
-    // 4. Notify admin endpoint if available
-    const adminEmail = getCurrentAdminEmail();
-    if (adminEmail) {
-      getAdminAuthHeaders().then(headers => {
-        fetch('/api/admin/publisher-restrictions', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ userEmail: adminEmail, pubKey: key, restriction: current })
-        }).catch(() => {});
-      }).catch(() => {});
-    }
+    await this.setAccountVerified({ publisherName, isVerified, email, uid });
   },
 
   // Comprehensive check for whether an app is blocked, its publisher is blocked, or its repo/release is banned

@@ -16,6 +16,7 @@ import { generateDeveloperKeystore } from '../services/keystoreService';
 import { safeFetchJson } from '../utils/safeFetch';
 import { sanitizeErrorMessage } from '../utils/errorUtils';
 import { propagatePublisherNameToAllReleases } from '../services/publisherNameService';
+import { AdminPermissionsService, DEFAULT_ADMIN_EMAILS } from '../services/adminPermissionsService';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -48,7 +49,9 @@ const SESSION_PENDING_2FA_KEY = 'prople_pending_2fa';
 export const isDeveloperEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
+  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
   return (
+    norm === 'ventureforge.corp@gmail.com' ||
     norm === 'sahanurmolla1777@gmail.com' ||
     norm === 'sahanurmolla7076@gmail.com' ||
     norm === 'sahanurmolla2886@gmail.com' ||
@@ -64,7 +67,10 @@ export const isDeveloperEmail = (email?: string): boolean => {
 export const isAdminEmail = (email?: string): boolean => {
   if (!email) return false;
   const norm = email.toLowerCase().trim();
+  if (AdminPermissionsService.isAdmin({ email: norm })) return true;
+  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
   if (
+    norm === 'ventureforge.corp@gmail.com' ||
     norm === 'sahanurmolla1777@gmail.com' ||
     norm === 'sahanurmolla7076@gmail.com' ||
     norm === 'sahanurmolla2886@gmail.com' ||
@@ -95,26 +101,34 @@ export async function unifyUserProfileAcrossAccounts(
   let localAccountData: Partial<UserProfile> | null = null;
   try {
     if (typeof localStorage !== 'undefined') {
-      const savedRaw = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-      if (savedRaw) {
-        const parsed = JSON.parse(savedRaw);
-        if (
-          parsed &&
-          ((currentUid && parsed.uid === currentUid) ||
-            (cleanEmail && (parsed.email || '').toLowerCase().trim() === cleanEmail))
-        ) {
-          localAccountData = parsed;
+      const savedBackup = localStorage.getItem('prople_saved_profile_' + cleanEmail);
+      if (savedBackup) {
+        localAccountData = JSON.parse(savedBackup);
+      }
+      if (!localAccountData) {
+        const savedRaw = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+        if (savedRaw) {
+          const parsed = JSON.parse(savedRaw);
+          if (
+            parsed &&
+            ((currentUid && parsed.uid === currentUid) ||
+              (cleanEmail && (parsed.email || '').toLowerCase().trim() === cleanEmail))
+          ) {
+            localAccountData = parsed;
+          }
         }
       }
     }
   } catch {}
 
   let mergedIsPublisher = isDevHardcoded ? true : Boolean(initialData.isPublisher || localAccountData?.isPublisher);
+  const isDefaultInitialName = !initialData.publisherName || initialData.publisherName === 'User' || initialData.publisherName === 'Developer' || initialData.publisherName === cleanEmail.split('@')[0];
   let mergedPublisherName =
-    initialData.publisherName ||
+    (!isDefaultInitialName ? initialData.publisherName : undefined) ||
     localAccountData?.publisherName ||
-    initialData.displayName ||
+    initialData.publisherName ||
     localAccountData?.displayName ||
+    initialData.displayName ||
     cleanEmail.split('@')[0] ||
     'User';
   let mergedPublisherRole = isAdminHardcoded
@@ -959,11 +973,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Retrieve any previous local profile cache for immediate zero-latency population
       let cachedProfile: Partial<UserProfile> = {};
       try {
-        const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-        if (saved) {
-          const p = JSON.parse(saved);
-          if (p && p.email && p.email.toLowerCase() === email) {
-            cachedProfile = p;
+        const persistentSaved = localStorage.getItem('prople_saved_profile_' + email);
+        if (persistentSaved) {
+          cachedProfile = JSON.parse(persistentSaved);
+        }
+        if (!cachedProfile.publisherName) {
+          const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+          if (saved) {
+            const p = JSON.parse(saved);
+            if (p && p.email && p.email.toLowerCase() === email) {
+              cachedProfile = p;
+            }
           }
         }
       } catch {}
@@ -1359,6 +1379,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
+        if (updated.email) {
+          localStorage.setItem('prople_saved_profile_' + updated.email.toLowerCase().trim(), JSON.stringify(updated));
+        }
       } catch {}
 
       try {
@@ -1375,9 +1398,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const targetProfile = resolvedUpdatedProfile as UserProfile | null;
     if (targetProfile) {
+      // 1. Authoritative server-side persistence across all account docs and developer registry
+      try {
+        await safeFetchJson('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: targetProfile.uid,
+            userEmail: targetProfile.email,
+            displayName: targetProfile.displayName,
+            publisherName: targetProfile.publisherName,
+            bio: targetProfile.bio,
+            age: targetProfile.age,
+            gender: targetProfile.gender,
+            location: targetProfile.location,
+            photoURL: targetProfile.photoURL,
+            lastNameChangedAt: targetProfile.lastNameChangedAt,
+            nameChangeSessionStartedAt: targetProfile.nameChangeSessionStartedAt
+          })
+        });
+      } catch (err) {
+        console.warn('[updateUserProfile] Server profile API notice:', err);
+      }
+
+      // 2. Client-side Firestore sync
       await syncUserProfileToFirestore(targetProfile);
 
-      // Universally propagate the updated publisher name across all releases owned by this user
+      // 3. Universally propagate the updated publisher name across all releases owned by this user
       if (newName && (targetProfile.uid || targetProfile.email)) {
         await propagatePublisherNameToAllReleases(
           newName,
@@ -1439,6 +1486,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = Boolean(
     user && (
+      AdminPermissionsService.isAdmin(user) ||
       isAdminEmail(user.email) ||
       user.publisherRole === 'Store Administrator' ||
       user.publisherRole === 'Super Admin' ||

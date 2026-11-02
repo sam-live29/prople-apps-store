@@ -767,11 +767,16 @@ export default function AppDetailPage({
   ).trim();
 
   const isVerifiedPublisher = Boolean(
+    AdminModerationService.isAccountVerified({
+      email: app?.developerEmail || app?.publisherEmail || app?.ownerEmail || app?.developerInfo?.email || (isPublisherAccount ? user?.email : undefined),
+      uid: app?.developerId || app?.owner || app?.creatorUid || (isPublisherAccount ? user?.uid : undefined),
+      publisherName: publisherDisplayName,
+      app
+    }) ||
+    app?.isVerifiedAccount ||
     app?.isVerifiedPublisher ||
     (app as any)?.isVerified ||
-    AdminModerationService.isPublisherVerified(publisherDisplayName) ||
-    AdminModerationService.isPublisherVerified(app?.developer) ||
-    (isPublisherAccount && (user?.isVerifiedPublisher || AdminModerationService.isPublisherVerified(user?.publisherName || user?.displayName || '')))
+    (isPublisherAccount && (user?.isVerifiedPublisher || (user as any)?.isVerifiedAccount))
   );
 
   // Support email: preserved authenticated publisher email, non-hideable

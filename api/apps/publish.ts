@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const DEFAULT_ADMIN_EMAILS = [
+  'ventureforge.corp@gmail.com',
   'sahanurmolla7076@gmail.com',
   'sahanurmolla2886@gmail.com',
   'sahanurmolla190@gmail.com',

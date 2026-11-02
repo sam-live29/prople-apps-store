@@ -19,6 +19,7 @@ import { AppDetails, Review, AppListing, DeveloperConsoleConfig } from '../types
 import { appDetailsMock, featuredApp } from '../data';
 import { notifyAppPublished, notifyAppUpdated } from './firestoreNotificationService';
 import { isAdminEmail } from '../context/AuthContext';
+import { AdminPermissionsService } from './adminPermissionsService';
 
 import { 
   formatDownloadCount, 
@@ -506,11 +507,12 @@ export async function publishAppToFirestore(
         existingData?.developerId === currentAuthUid ||
         existingData?.creatorUid === currentAuthUid
       )) ||
-      isMatchingEmail ||
-      (currentAuthEmail && isAdminEmail(currentAuthEmail));
+      isMatchingEmail;
 
-    if (!isOwner) {
-      throw new Error('Forbidden: You do not own this application and cannot update it.');
+    const canAdminUpdate = AdminPermissionsService.hasPermission('UPDATE_APP', { uid: currentAuthUid, email: currentAuthEmail });
+
+    if (!isOwner && !canAdminUpdate) {
+      throw new Error('Forbidden: You do not own this application and are not an authorized administrator.');
     }
 
     finalDownloadsCount = typeof existingData?.downloadsCount === 'number' 
@@ -782,19 +784,10 @@ export async function deleteAppFromFirestore(
       )
     );
 
-    const isOwner = 
-      (currentAuthUid && (
-        data.owner === currentAuthUid ||
-        data.developerId === currentAuthUid ||
-        data.publisherId === currentAuthUid ||
-        data.userId === currentAuthUid ||
-        data.creatorUid === currentAuthUid
-      )) ||
-      isMatchingEmail ||
-      (currentAuthEmail && isAdminEmail(currentAuthEmail));
+    const canDelete = AdminPermissionsService.canDeleteApp(data as any, { uid: currentAuthUid, email: currentAuthEmail });
 
-    if (!isOwner) {
-      throw new Error('Forbidden: You do not own this application and cannot delete it.');
+    if (!canDelete) {
+      throw new Error('Forbidden: You do not own this application and are not an authorized administrator.');
     }
   }
 

@@ -8,12 +8,14 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.publisherRole == 'Store Administrator'
         )) ||
         (request.auth.token.email != null && (
+          request.auth.token.email == 'ventureforge.corp@gmail.com' ||
           request.auth.token.email == 'sahanurmolla1777@gmail.com' ||
           request.auth.token.email == 'sahanurmolla7076@gmail.com' ||
           request.auth.token.email == 'sahanurmolla2886@gmail.com' ||

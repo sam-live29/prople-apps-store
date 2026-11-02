@@ -24,6 +24,7 @@ import type { Request as ExpressRequest, Response as ExpressResponse, NextFuncti
 // ==========================================
 
 const DEFAULT_ADMIN_EMAILS = [
+  "ventureforge.corp@gmail.com",
   "sahanurmolla1777@gmail.com",
   "sahanurmolla7076@gmail.com",
   "sahanurmolla2886@gmail.com",

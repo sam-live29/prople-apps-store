@@ -1106,6 +1106,7 @@ export default function AdminControlPanel({
       key: string;
       appCount: number;
       email?: string;
+      uid?: string;
       totalDownloads: number;
       isRestricted: boolean;
       isBlocked: boolean;
@@ -1119,13 +1120,24 @@ export default function AdminControlPanel({
       const restriction = publisherRestrictions[key];
       const isRestricted = Boolean(restriction?.isRestricted);
       const isBlocked = Boolean(restriction?.isBlocked || (restriction as any)?.isSuspended);
-      const isVerified = Boolean(restriction?.isVerified || AdminModerationService.isPublisherVerified(pubName) || app.isVerifiedPublisher);
+      const isVerified = Boolean(
+        restriction?.isVerified || 
+        AdminModerationService.isAccountVerified({
+          email: app.developerEmail || app.publisherEmail,
+          uid: app.owner || app.developerId,
+          publisherName: pubName,
+          app
+        }) ||
+        app.isVerifiedAccount ||
+        app.isVerifiedPublisher
+      );
 
       const existing = pubMap.get(key) || {
         name: pubName,
         key,
         appCount: 0,
         email: app.developerEmail || app.publisherEmail,
+        uid: app.owner || app.developerId,
         totalDownloads: 0,
         isRestricted,
         isBlocked,
@@ -1139,6 +1151,9 @@ export default function AdminControlPanel({
       existing.totalDownloads += (app.downloadsCount || 10);
       if (!existing.email && (app.developerEmail || app.publisherEmail)) {
         existing.email = app.developerEmail || app.publisherEmail;
+      }
+      if (!existing.uid && (app.owner || app.developerId)) {
+        existing.uid = app.owner || app.developerId;
       }
       pubMap.set(key, existing);
     });
@@ -1653,23 +1668,24 @@ export default function AdminControlPanel({
     });
   };
 
-  const handleTogglePublisherVerified = (pubName: string, currentlyVerified: boolean, email?: string) => {
+  const handleTogglePublisherVerified = (pubName: string, currentlyVerified: boolean, email?: string, uid?: string) => {
     setOpenMenuPublisherKey(null);
     const next = !currentlyVerified;
+    const accountIdentifier = email ? `${pubName} (${email})` : pubName;
     setConfirmAction({
       isOpen: true,
-      title: next ? `Grant Verified Status to "${pubName}"?` : `Remove Verified Status from "${pubName}"?`,
+      title: next ? `Grant Verified Account Status to ${accountIdentifier}?` : `Remove Verified Status from ${accountIdentifier}?`,
       description: next
-        ? `Granting verified status gives "${pubName}" an official X/Instagram-style blue verified checkmark badge across their published applications, details pages, and publisher profiles.`
-        : `This will remove the blue verified badge from "${pubName}" and all of their applications.`,
-      confirmLabel: next ? 'Verify Publisher' : 'Remove Verification',
+        ? `Granting verified status links an official blue checkmark badge to this account owner (${email || pubName}). If the account owner changes their username, their verified badge is preserved and will not be lost.`
+        : `This will remove the blue verified badge from this account owner (${email || pubName}) and all of their applications.`,
+      confirmLabel: next ? 'Verify Account Owner' : 'Remove Verification',
       isDestructive: !next,
       onConfirm: async () => {
         setConfirmAction(prev => ({ ...prev, isOpen: false }));
-        await AdminModerationService.setPublisherVerified(pubName, next, email);
+        await AdminModerationService.setAccountVerified({ publisherName: pubName, isVerified: next, email, uid });
         refreshData();
         refreshCatalogue().catch(() => {});
-        showToast(next ? `Publisher "${pubName}" is now Verified (Blue Tick active)` : `Verification removed for "${pubName}"`, { type: 'success' });
+        showToast(next ? `Account owner "${accountIdentifier}" is now Verified (Blue Tick active)` : `Verification removed for "${accountIdentifier}"`, { type: 'success' });
       }
     });
   };
@@ -2810,14 +2826,14 @@ export default function AdminControlPanel({
                   setOpenMenuPublisherKey(null);
                   setPubMenuCoords(null);
                   pubMenuTriggerRef.current = null;
-                  handleTogglePublisherVerified(pub.name, Boolean(pub.isVerified), pub.email);
+                  handleTogglePublisherVerified(pub.name, Boolean(pub.isVerified), pub.email, (pub as any).uid);
                 }}
                 className="w-full text-left px-4 py-2 hover:bg-blue-500/10 text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center justify-between group"
               >
                 <span className="flex items-center gap-2 min-w-0">
                   <VerifiedBadge size="xs" />
                   <span className="truncate group-hover:text-blue-500 transition-colors">
-                    {pub.isVerified ? 'Remove Verified Status' : 'Verify Publisher'}
+                    {pub.isVerified ? 'Remove Verified Status' : 'Verify Account Owner'}
                   </span>
                 </span>
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${

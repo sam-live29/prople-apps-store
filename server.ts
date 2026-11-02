@@ -81,6 +81,11 @@ import {
   deepSanitizeObject
 } from "./server/securityDefense.ts";
 import { getServerFirebaseConfig } from "./server/firebaseConfig.ts";
+import {
+  bootstrapDefaultAdmins,
+  isAuthorizedAdmin,
+  hasAdminPermission
+} from "./server/adminPermissions.ts";
 
 // Server-side Firestore initialization using secure environment or project configuration
 let serverDb: any = null;
@@ -94,6 +99,7 @@ try {
     console.log("[Backend] Firestore initialized with secure env config on DB:", fbConfig.firestoreDatabaseId || "(default)");
     initAuthSecurity(serverDb);
     initOtpStoreDb(serverDb);
+    bootstrapDefaultAdmins(serverDb).catch(() => {});
     serverGetDoc(serverDoc(serverDb, "system_config", "resend")).then((snap: any) => {
       if (snap && snap.exists()) {
         const data = snap.data();
@@ -2430,13 +2436,14 @@ async function startServer() {
           existingData.developerId === userId ||
           existingData.creatorUid === userId
         )) ||
-        isMatchingEmail ||
-        (normUserEmail && isServerAdminEmail(normUserEmail));
+        isMatchingEmail;
 
-      if (!isOwner) {
+      const hasUpdatePermission = await hasAdminPermission(serverDb, 'UPDATE_APP', normUserEmail, userId);
+
+      if (!isOwner && !hasUpdatePermission) {
         return res.status(403).json({
           success: false,
-          error: "Forbidden: You do not own this application."
+          error: "Forbidden: You do not own this application and are not an authorized administrator."
         });
       }
 
@@ -2608,13 +2615,14 @@ async function startServer() {
           existingData.userId === userId ||
           existingData.creatorUid === userId
         )) ||
-        isMatchingEmail ||
-        (normUserEmail && isServerAdminEmail(normUserEmail));
+        isMatchingEmail;
 
-      if (!isOwner) {
+      const hasDeletePermission = await hasAdminPermission(serverDb, 'DELETE_APP', normUserEmail, userId);
+
+      if (!isOwner && !hasDeletePermission) {
         return res.status(403).json({
           success: false,
-          error: "Forbidden: You do not own this application and cannot delete it."
+          error: "Forbidden: You do not own this application and are not an authorized administrator."
         });
       }
 
@@ -2925,8 +2933,17 @@ async function startServer() {
           if (data.isAdmin || data.role === 'admin' || data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
             isAdmin = true;
           }
-          if (data.publisherName && data.publisherName.trim()) {
-            mergedPublisherName = data.publisherName.trim();
+          if (data.publisherName && data.publisherName.trim() && data.publisherName.trim() !== 'User' && data.publisherName.trim() !== 'Developer') {
+            const trimmedRemote = data.publisherName.trim();
+            if (clientPublisherName && clientPublisherName.trim() && clientPublisherName.trim() !== cleanEmail.split('@')[0]) {
+              const remoteTime = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
+              const clientTime = clientLastNameChangedAt ? new Date(clientLastNameChangedAt).getTime() : 0;
+              if (remoteTime > clientTime) {
+                mergedPublisherName = trimmedRemote;
+              }
+            } else {
+              mergedPublisherName = trimmedRemote;
+            }
           }
           if (data.publisherRole) {
             if (data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
@@ -3488,16 +3505,8 @@ async function startServer() {
       return true;
     }
 
-    // 3. Check if UID or email exists in serverDb admins collection
-    if (serverDb && bodyUid) {
-      try {
-        const adminDoc = await serverGetDoc(serverDoc(serverDb, "admins", bodyUid));
-        if (adminDoc.exists()) return true;
-      } catch {}
-    }
-
-    // 4. In dev or when authenticated via session
-    if (bodyEmail && isServerAdminEmail(bodyEmail)) {
+    // 3. Centralized Admin Permissions Service check (Firestore admins collection, RBAC, and defaults)
+    if (await isAuthorizedAdmin(serverDb, bodyEmail, bodyUid)) {
       return true;
     }
 
@@ -3723,6 +3732,232 @@ async function startServer() {
 
       return res.json({ success: true });
     } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Dedicated authoritative endpoint: Update User Profile & Publisher details permanently
+  app.post("/api/user/profile", async (req, res) => {
+    try {
+      const { 
+        userId, 
+        userEmail, 
+        displayName, 
+        publisherName, 
+        bio, 
+        age, 
+        gender, 
+        location, 
+        photoURL, 
+        lastNameChangedAt, 
+        nameChangeSessionStartedAt 
+      } = req.body || {};
+
+      if (!userId && !userEmail) {
+        return res.status(400).json({ success: false, error: "Missing userId or userEmail" });
+      }
+
+      if (!serverDb) {
+        return res.status(503).json({ success: false, error: "Database temporarily unavailable" });
+      }
+
+      const cleanUid = (userId || '').trim();
+      const cleanEmail = (userEmail || '').toLowerCase().trim();
+      const cleanName = (publisherName || displayName || '').trim();
+      const nowIso = new Date().toISOString();
+
+      const profilePayload: Record<string, any> = {
+        updatedAt: nowIso
+      };
+
+      if (cleanEmail) profilePayload.email = cleanEmail;
+      if (cleanUid) profilePayload.uid = cleanUid;
+      if (cleanName) {
+        profilePayload.displayName = cleanName;
+        profilePayload.publisherName = cleanName;
+      }
+      if (bio !== undefined) {
+        profilePayload.bio = String(bio).trim();
+        profilePayload.publisherBio = String(bio).trim();
+      }
+      if (age !== undefined) profilePayload.age = String(age);
+      if (gender !== undefined) profilePayload.gender = String(gender);
+      if (location !== undefined) {
+        profilePayload.location = String(location).trim();
+        profilePayload.publisherLocation = String(location).trim();
+      }
+      if (photoURL !== undefined) profilePayload.photoURL = photoURL;
+      if (lastNameChangedAt !== undefined) profilePayload.lastNameChangedAt = lastNameChangedAt;
+      if (nameChangeSessionStartedAt !== undefined) profilePayload.nameChangeSessionStartedAt = nameChangeSessionStartedAt;
+
+      // 1. Authoritative write to primary user doc
+      if (cleanUid) {
+        try {
+          const userRef = serverDoc(serverDb, "users", cleanUid);
+          await serverSetDoc(userRef, profilePayload, { merge: true });
+        } catch (uErr: any) {
+          console.warn("[UserProfileAPI] Primary doc write notice:", uErr.message);
+        }
+      }
+
+      // 2. Synchronize any alternate user documents matching email
+      if (cleanEmail) {
+        try {
+          const qUsers = serverQuery(serverCollection(serverDb, "users"), serverWhere("email", "==", cleanEmail), serverLimit(10));
+          const uSnap = await serverGetDocs(qUsers);
+          for (const d of uSnap.docs) {
+            if (d.id !== cleanUid) {
+              await serverSetDoc(d.ref, profilePayload, { merge: true }).catch(() => {});
+            }
+          }
+        } catch (e: any) {
+          console.warn("[UserProfileAPI] Alternate docs sync notice:", e.message);
+        }
+      }
+
+      // 3. Claim publisher name in publisher_registry
+      if (cleanName && cleanName.length >= 2) {
+        try {
+          const alphaKey = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (alphaKey) {
+            const regRef = serverDoc(serverDb, "publisher_registry", alphaKey);
+            await serverSetDoc(regRef, {
+              normalizedName: alphaKey,
+              displayName: cleanName,
+              ownerUid: cleanUid,
+              ownerEmail: cleanEmail,
+              updatedAt: nowIso
+            }, { merge: true });
+          }
+        } catch (regErr: any) {
+          console.warn("[UserProfileAPI] Registry write notice:", regErr.message);
+        }
+      }
+
+      // 4. Universally propagate updated publisher name across all apps owned by this user
+      if (cleanName && (cleanUid || cleanEmail)) {
+        try {
+          const appsCol = serverCollection(serverDb, "apps");
+          const snap = await serverGetDocs(appsCol);
+          for (const d of snap.docs) {
+            const a = d.data();
+            const devEmail = (a.developerEmail || '').toLowerCase().trim();
+            const pubEmail = (a.publisherEmail || '').toLowerCase().trim();
+            const ownerEmail = (a.ownerEmail || '').toLowerCase().trim();
+            const isOwner = Boolean(
+              (cleanUid && (a.owner === cleanUid || a.developerId === cleanUid || a.creatorUid === cleanUid)) ||
+              (cleanEmail && (devEmail === cleanEmail || pubEmail === cleanEmail || ownerEmail === cleanEmail))
+            );
+            if (isOwner) {
+              const devInfo = a.developerInfo ? { ...a.developerInfo, publisherName: cleanName } : { publisherName: cleanName };
+              await serverSetDoc(d.ref, {
+                developer: cleanName,
+                publisherName: cleanName,
+                publishedBy: cleanName,
+                developerInfo: devInfo,
+                updatedAt: nowIso
+              }, { merge: true }).catch(() => {});
+            }
+          }
+        } catch (appErr: any) {
+          console.warn("[UserProfileAPI] App update notice:", appErr.message);
+        }
+      }
+
+      serverAppsCatalogCache = [];
+      seoAppsCache.clear();
+
+      console.log(`[UserProfileAPI] Successfully saved profile for ${cleanEmail || cleanUid} (Name: "${cleanName}")`);
+      return res.json({ success: true, user: profilePayload });
+    } catch (err: any) {
+      console.error("[UserProfileAPI] Error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Admin: Account Verification bound to account owner & email (not just username)
+  app.post("/api/admin/verify-account", async (req, res) => {
+    try {
+      const isAuthorized = await verifyAdminRequest(req);
+      if (!isAuthorized) {
+        return res.status(403).json({ success: false, error: "Forbidden: Administrator authorization required." });
+      }
+
+      const { targetEmail, targetUid, publisherName, isVerified } = req.body || {};
+      if (!serverDb || (!targetEmail && !targetUid)) {
+        return res.status(400).json({ success: false, error: "Missing targetEmail or targetUid" });
+      }
+
+      const cleanEmail = (targetEmail || '').toLowerCase().trim();
+      const cleanUid = (targetUid || '').trim();
+      const status = Boolean(isVerified);
+      const nowIso = new Date().toISOString();
+
+      const verificationRecord = {
+        accountEmail: cleanEmail || null,
+        accountUid: cleanUid || null,
+        publisherName: publisherName || '',
+        isVerified: status,
+        verifiedAt: status ? nowIso : null,
+        revokedAt: !status ? nowIso : null,
+        updatedAt: nowIso
+      };
+
+      // 1. Write verification record keyed by account email
+      if (cleanEmail) {
+        const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const emailRef = serverDoc(serverDb, "verified_accounts", emailDocKey);
+        await serverSetDoc(emailRef, verificationRecord, { merge: true });
+      }
+
+      // 2. Write verification record keyed by account UID
+      if (cleanUid) {
+        const uidRef = serverDoc(serverDb, "verified_accounts", cleanUid);
+        await serverSetDoc(uidRef, verificationRecord, { merge: true });
+
+        // Update user doc
+        try {
+          const userRef = serverDoc(serverDb, "users", cleanUid);
+          await serverSetDoc(userRef, {
+            isVerifiedAccount: status,
+            isVerifiedPublisher: status,
+            updatedAt: nowIso
+          }, { merge: true });
+        } catch {}
+      }
+
+      // 3. Propagate verification status to all applications owned by this account
+      try {
+        const appsCol = serverCollection(serverDb, "apps");
+        const snap = await serverGetDocs(appsCol);
+        for (const d of snap.docs) {
+          const a = d.data();
+          const devEmail = (a.developerEmail || '').toLowerCase().trim();
+          const pubEmail = (a.publisherEmail || '').toLowerCase().trim();
+          const ownerEmail = (a.ownerEmail || '').toLowerCase().trim();
+          const isOwner = Boolean(
+            (cleanUid && (a.owner === cleanUid || a.developerId === cleanUid || a.creatorUid === cleanUid)) ||
+            (cleanEmail && (devEmail === cleanEmail || pubEmail === cleanEmail || ownerEmail === cleanEmail))
+          );
+          if (isOwner) {
+            await serverSetDoc(d.ref, {
+              isVerifiedAccount: status,
+              isVerifiedPublisher: status,
+              updatedAt: nowIso
+            }, { merge: true }).catch(() => {});
+          }
+        }
+      } catch (appErr: any) {
+        console.warn("[VerifyAccountAPI] Apps update notice:", appErr.message);
+      }
+
+      serverAppsCatalogCache = [];
+      seoAppsCache.clear();
+
+      console.log(`[VerifyAccountAPI] Account verification set to ${status} for ${cleanEmail || cleanUid}`);
+      return res.json({ success: true, isVerified: status });
+    } catch (err: any) {
+      console.error("[VerifyAccountAPI] Error:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
