@@ -1094,26 +1094,36 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       requestAnimationFrame(() => {
         setTimeout(attemptScroll, 40);
       });
+    } else if (publishScrollRef.current) {
+      publishScrollRef.current.scrollTo({
+        top: 0,
+        behavior: 'instant' as ScrollBehavior
+      });
     }
   }, [step, performScrollToTarget]);
 
-  // Auto-scroll the top step navigation bar on step changes (mobile and tablet only)
+  // Keep active step tab visible without forcing unnecessary scroll jumps or layout jitter
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isMobileOrTablet = window.innerWidth < 1024;
     const container = stepTabsRef.current;
     const targetBtn = stepButtonRefs.current[step];
 
-    if (isMobileOrTablet && container && targetBtn) {
-      if (container.scrollWidth > container.clientWidth) {
-        const btnLeft = targetBtn.offsetLeft;
-        const btnWidth = targetBtn.offsetWidth;
-        const containerWidth = container.clientWidth;
-        const targetScrollLeft = btnLeft - (containerWidth / 2) + (btnWidth / 2);
+    if (container && targetBtn && container.scrollWidth > container.clientWidth) {
+      const containerRect = container.getBoundingClientRect();
+      const btnRect = targetBtn.getBoundingClientRect();
+      const edgePadding = 12;
 
+      if (btnRect.left < containerRect.left + edgePadding) {
+        const delta = (containerRect.left + edgePadding) - btnRect.left;
         container.scrollTo({
-          left: Math.max(0, targetScrollLeft),
-          behavior: 'instant' as ScrollBehavior
+          left: Math.max(0, container.scrollLeft - delta),
+          behavior: 'smooth'
+        });
+      } else if (btnRect.right > containerRect.right - edgePadding) {
+        const delta = btnRect.right - (containerRect.right - edgePadding);
+        container.scrollTo({
+          left: Math.min(container.scrollWidth - container.clientWidth, container.scrollLeft + delta),
+          behavior: 'smooth'
         });
       }
     }
@@ -1126,7 +1136,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [name, setName] = useState(() => initialDraft?.name || '');
   const currentGoogleName = user?.publisherName || user?.displayName || 'Verified Publisher';
   const currentGoogleEmail = user?.email || 'support@prople.co.in';
-  const [developerName, setDeveloperName] = useState(() => initialDraft?.developerName || currentGoogleName);
+  const [developerName, setDeveloperName] = useState(() => currentGoogleName);
   const [githubRepoOwner, setGithubRepoOwner] = useState(() => initialDraft?.githubRepoOwner || '');
   const [category, setCategory] = useState(() => initialDraft?.category || 'Productivity');
   const [tagline, setTagline] = useState(() => initialDraft?.tagline || '');
@@ -1298,6 +1308,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       setShowChangePublisherModal(true);
       return;
     }
+    if (targetStep === step) return;
     setStep(targetStep as any);
   };
 
@@ -1623,12 +1634,22 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   };
 
   // Section 5: Developer, Legal & Publisher Support
-  const [developerEmail, setDeveloperEmail] = useState(() => initialDraft?.developerEmail || user?.email || '');
+  const [developerEmail, setDeveloperEmail] = useState(() => user?.email || initialDraft?.developerEmail || '');
   const [websiteUrl, setWebsiteUrl] = useState(() => initialDraft?.websiteUrl || '');
   const [githubRepoUrl, setGithubRepoUrl] = useState(() => initialDraft?.githubRepoUrl || '');
   const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState(() => initialDraft?.privacyPolicyUrl || '');
   const [termsAndConditionsUrl, setTermsAndConditionsUrl] = useState(() => initialDraft?.termsAndConditionsUrl || '');
   const [developerAddress, setDeveloperAddress] = useState(() => initialDraft?.developerAddress || '');
+
+  // Keep immutable publisher identity fields continuously synced with the user's global account profile
+  useEffect(() => {
+    if (currentGoogleName) {
+      setDeveloperName(currentGoogleName);
+    }
+    if (currentGoogleEmail) {
+      setDeveloperEmail(currentGoogleEmail);
+    }
+  }, [currentGoogleName, currentGoogleEmail]);
 
   // Auto-derive upstream GitHub repository owner whenever githubUrl, downloadUrl or githubRepoUrl changes (clears cleanly for repo-free cloud/VPS URLs)
   useEffect(() => {
@@ -1981,8 +2002,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setEditingAppId(targetEditingAppId);
     setInitialAppSnapshot(d.initialAppSnapshot || null);
     setName(d.name || '');
-    setDeveloperName(d.developerName || currentGoogleName);
-    if (d.developerEmail) setDeveloperEmail(d.developerEmail);
+    setDeveloperName(currentGoogleName);
+    setDeveloperEmail(currentGoogleEmail);
     if (d.githubRepoOwner) setGithubRepoOwner(d.githubRepoOwner);
     setCategory(d.category || 'Productivity');
     setTagline(d.tagline || '');
@@ -2051,7 +2072,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setTermsAndConditionsUrl(d.termsAndConditionsUrl || '');
     setDeveloperAddress(d.developerAddress && d.developerAddress !== 'Venture Community Labs, 100 Innovation Way' ? d.developerAddress : '');
     setStep(d.step && d.step >= 1 && d.step <= 6 ? d.step : 1);
-  }, [currentGoogleName]);
+  }, [currentGoogleName, currentGoogleEmail]);
 
   const populateFormFromApp = useCallback((app: AppDetails) => {
     setEditingAppId(app.id);
@@ -3616,9 +3637,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
               <div className="flex items-start gap-3.5">
                 <Package className="w-5 h-5 text-theme-text-muted shrink-0 mt-0.5" strokeWidth={1.8} />
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[14px] font-medium text-theme-text">Direct APK & GitHub Releases</h4>
+                  <h4 className="text-[14px] font-medium text-theme-text">Cloud Storage, Direct Binaries &amp; GitHub Releases</h4>
                   <p className="text-[12px] text-theme-text-muted mt-0.5 leading-normal">
-                    Upload standalone APK packages or sync versions directly from GitHub releases.
+                    Publish multi-platform packages via Cloudflare R2, AWS S3, VPS/CDNs, or GitHub Releases.
                   </p>
                 </div>
               </div>
@@ -3869,7 +3890,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         {/* Step Wizard Progress Navigation Tabs */}
         <div 
           ref={stepTabsRef}
-          className="flex items-center gap-2 px-2.5 sm:px-4 py-2 overflow-x-auto scrollbar-hide shrink-0 w-full max-w-7xl mx-auto"
+          className="relative flex items-center gap-2 px-2.5 sm:px-4 py-2 overflow-x-auto scrollbar-hide shrink-0 w-full max-w-7xl mx-auto"
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
         >
           {[
@@ -3886,23 +3907,24 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                 stepButtonRefs.current[s.num] = el;
               }}
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 handleAttemptStepTab(s.num);
               }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors duration-150 select-none shrink-0 cursor-pointer ${
                 step === s.num
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : step > s.num
                   ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
                   : 'bg-theme-hover/50 text-theme-text-muted hover:bg-theme-hover hover:text-theme-text'
               }`}
             >
-              <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
+              <span className={`w-4 h-4 rounded-full text-[10px] leading-none tabular-nums flex items-center justify-center font-bold shrink-0 ${
                 step === s.num ? 'bg-white text-blue-600' : step > s.num ? 'bg-emerald-500 text-white' : 'bg-black/10 dark:bg-white/10 text-theme-text-muted'
               }`}>
-                {step > s.num ? '✓' : s.num}
+                {step > s.num ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : s.num}
               </span>
-              <span>{s.title}</span>
+              <span className="leading-none">{s.title}</span>
             </button>
           ))}
         </div>
@@ -5102,7 +5124,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         Edit
                       </button>
                     </div>
-                    <p className="text-xs text-theme-text-muted truncate">{developerName || 'Independent Publisher'}</p>
+                    <p className="text-xs text-theme-text-muted truncate">{activePublisherName || currentGoogleName || 'Independent Publisher'}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[11px] text-theme-text-muted">
                         {category}

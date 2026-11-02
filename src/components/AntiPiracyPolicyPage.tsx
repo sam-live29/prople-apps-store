@@ -21,7 +21,7 @@ export default function AntiPiracyPolicyPage({
   onOpenUserConsent,
   onOpenAbout
 }: AntiPiracyPolicyPageProps) {
-  const lastUpdated = 'September 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('anti-piracy-policy', scrollRef);
 
@@ -98,7 +98,7 @@ export default function AntiPiracyPolicyPage({
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
               <li><strong className="text-theme-text font-medium">Cracked &amp; Patched Packages:</strong> Binaries modified to bypass subscription paywalls, digital rights management (DRM), in-app purchases, or developer licensing checks.</li>
               <li><strong className="text-theme-text font-medium">Unauthorized Repackaging:</strong> Third-party repackaging of upstream open-source or proprietary software containing injected advertisements, telemetry wrappers, spyware, or malicious code.</li>
-              <li><strong className="text-theme-text font-medium">Trademark Impersonation:</strong> Deceptive use of protected brand names, registered trade dress, official application icons, or publisher identities designed to mislead consumers into believing an app originates from an official vendor.</li>
+              <li><strong className="text-theme-text font-medium">Trademark &amp; Publisher Impersonation:</strong> Deceptive use of protected brand names, registered trade dress, or application icons. Prople Store enforces globally unique Publisher Names locked inside release forms and bound to verified owner accounts to prevent brand spoofing across releases.</li>
               <li><strong className="text-theme-text font-medium">Circumvention Utilities:</strong> Tools, exploits, or key generation software whose primary design or commercial purpose is to defeat copyright protections or software licensing servers.</li>
               <li><strong className="text-theme-text font-medium">Unauthorized Commercial Redistribution:</strong> Re-uploading proprietary commercial software without explicit, demonstrable written authorization from the copyright holder.</li>
             </ul>
@@ -130,8 +130,8 @@ export default function AntiPiracyPolicyPage({
               To preserve absolute binary authenticity, Prople Store mandates cryptographic integrity verification:
             </p>
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-              <li>Published packages are matched directly against official upstream developer release repositories (such as verified GitHub release assets or signed publisher CDNs).</li>
-              <li>Every verified listing displays a pinned 64-character SHA-256 checksum digest. If a binary's bitwise checksum differs from the author's declared build artifact, the distribution is quarantined and denied from download delivery.</li>
+              <li>Published packages resolve directly from verified developer cloud storage endpoints (Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs) or tagged public GitHub Releases.</li>
+              <li>Every verified listing displays a pinned 64-character SHA-256 checksum digest. If a binary&apos;s bitwise checksum differs from the author&apos;s declared build artifact, the distribution is quarantined and denied from download delivery.</li>
             </ul>
           </section>
 

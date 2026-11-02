@@ -53,9 +53,10 @@ The application will boot on `http://localhost:3000` with full UI, search, categ
 
 ---
 
-## Contributor Tracks by Experience Level
+## Contributor Tracks & Platform Specifications
 
-Looking for an issue to tackle? We have two dedicated tracks:
+Looking for an issue to tackle or reviewing platform rules? Check out our core guides:
+- 📘 [**Publishing, Browsing & Available Data Guide**](docs/PLATFORM_GUIDE.md) — Official rules and architecture for multi-source cloud binary publishing, global publisher identity, discovery feeds, and public catalog data.
 - 🟢 [**Good First Issues Guide**](docs/GOOD_FIRST_ISSUES.md) — 6 actionable, beginner-friendly starter tasks (UI micro-interactions, accessibility, catalog validators, and help guides).
 - 🔴 [**Advanced Contributor Challenges**](docs/ADVANCED_CONTRIBUTOR_CHALLENGES.md) — 10 advanced engineering challenges covering streaming cryptography, binary mirroring, Android Keystore v2/v3 signatures, dynamic storefront section generators, ranking algorithms, and search engines.
 - 🗺️ [**Platform Roadmap**](ROADMAP.md) — Current priorities, planned milestones, and RFCs.

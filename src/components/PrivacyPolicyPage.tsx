@@ -35,7 +35,7 @@ export default function PrivacyPolicyPage({
   onOpenHowItWorks,
   onOpenUserConsent
 }: PrivacyPolicyPageProps) {
-  const lastUpdated = 'September 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('privacy-policy', scrollRef);
 
@@ -169,6 +169,12 @@ export default function PrivacyPolicyPage({
                     <td className="py-3 px-3 sm:px-4">Managed automatically by browser cache storage.</td>
                   </tr>
                   <tr>
+                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Developer Console Drafts (LocalStorage)</td>
+                    <td className="py-3 px-3 sm:px-4">Functional Preference</td>
+                    <td className="py-3 px-3 sm:px-4">Preserves isolated in-progress app submission and update drafts locally until published or discarded.</td>
+                    <td className="py-3 px-3 sm:px-4">Until published, discarded, or cleared by user.</td>
+                  </tr>
+                  <tr>
                     <td className="py-3 px-3 sm:px-4 font-medium text-emerald-500">Third-Party Tracking Cookies</td>
                     <td className="py-3 px-3 sm:px-4 font-medium text-emerald-500">PROHIBITED</td>
                     <td className="py-3 px-3 sm:px-4">None. We do not use Google AdSense, Facebook Pixel, TikTok SDK, or marketing cookies.</td>
@@ -243,10 +249,10 @@ export default function PrivacyPolicyPage({
               5. Direct CDN Binary Streaming &amp; Zero Payload Interception
             </h3>
             <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-              When you initiate an application download on Prople Store, the binary package streams directly from the author&apos;s verified release repository (e.g., GitHub Releases CDN, AWS S3, or verified publisher host) via direct browser download stream dispatch.
+              When you initiate an application download on Prople Store, the binary package streams directly within your active store session (with zero external new-tab redirects) from the publisher&apos;s verified HTTPS release endpoint—including Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, or GitHub Releases.
             </p>
             <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-              Prople Store does not proxy, intercept, decrypt, or log binary traffic payloads. Because downloads connect directly to upstream release CDNs, your personal device communicates at full native speed without intermediate corporate bottlenecks.
+              Prople Store does not repackage, inject SDKs into, decrypt, or log binary traffic payloads. Your device receives the exact developer-signed file matching the listing&apos;s published 64-character SHA-256 checksum.
             </p>
           </section>
 
@@ -346,9 +352,10 @@ export default function PrivacyPolicyPage({
             <p className="font-medium text-theme-text pt-1 text-[14px] sm:text-[15px]">What Data Can Be Permanently Purged:</p>
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] text-theme-text-muted">
               <li>User profile information, associated authentication IDs, and email records.</li>
+              <li>Claimed global Publisher Name reservations in <code className="text-xs bg-theme-hover px-1 py-0.5 rounded">publisher_registry</code> and associated cooldown records.</li>
               <li>All submitted community reviews, comments, and star ratings.</li>
               <li>Developer catalog entries, descriptions, release references, and publisher dashboard records.</li>
-              <li>Locally stored device caches, install states, and recent search history.</li>
+              <li>Locally stored device caches, isolated console drafts, install states, and recent search history.</li>
             </ul>
 
             <div className="space-y-2 text-[14px] sm:text-[15px] text-theme-text-muted pt-2 leading-relaxed">

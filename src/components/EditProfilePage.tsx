@@ -73,6 +73,32 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
     gender !== initialValues.current.gender ||
     location.trim() !== initialValues.current.location.trim();
 
+  // Keep form fields synced if user profile finishes loading or updates externally before user starts typing
+  useEffect(() => {
+    if (!user || isDirty || isSaving) return;
+    const latestName = user.publisherName || user.displayName || (user.email && !user.email.includes('user') ? user.email.split('@')[0] : '');
+    if (latestName && latestName !== initialValues.current.displayName) {
+      setDisplayName(latestName);
+      initialValues.current.displayName = latestName;
+    }
+    if ((user.bio || '') !== initialValues.current.bio) {
+      setBio(user.bio || '');
+      initialValues.current.bio = user.bio || '';
+    }
+    if ((user.age || '25') !== initialValues.current.age) {
+      setAge(user.age || '25');
+      initialValues.current.age = user.age || '25';
+    }
+    if ((user.gender || 'Prefer not to say') !== initialValues.current.gender) {
+      setGender(user.gender || 'Prefer not to say');
+      initialValues.current.gender = user.gender || 'Prefer not to say';
+    }
+    if ((user.location || 'Global') !== initialValues.current.location) {
+      setLocation(user.location || 'Global');
+      initialValues.current.location = user.location || 'Global';
+    }
+  }, [user?.publisherName, user?.displayName, user?.bio, user?.age, user?.gender, user?.location, user?.email, isDirty, isSaving]);
+
   const handleBackAttempt = () => {
     if (isDirty) {
       setShowDiscardDialog(true);
@@ -156,7 +182,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
         const effectiveUid = user?.uid || auth.currentUser?.uid || '';
         const effectiveEmail = user?.email || auth.currentUser?.email || '';
         if (effectiveUid || effectiveEmail) {
-          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, true);
+          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
           if (!claimRes.success) {
             showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
             setIsSaving(false);
@@ -165,8 +191,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
         }
       }
 
-      updateUserProfile({
-        displayName: isNameChanged ? cleanName : (user?.displayName || cleanName),
+      await updateUserProfile({
+        displayName: cleanName,
         publisherName: cleanName,
         age,
         gender,
@@ -176,13 +202,21 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
         nameChangeSessionStartedAt: updatedTimestamps.nameChangeSessionStartedAt
       });
 
+      initialValues.current = {
+        displayName: cleanName,
+        bio: bio.trim(),
+        age,
+        gender,
+        location: location.trim() || 'Global',
+      };
+
       if (isNameChanged) {
-        showToast('Publisher name updated successfully! You have 30 minutes to make any further quick adjustments.');
+        showToast('Publisher name updated across all your releases! You have 30 minutes for any quick adjustments.');
       } else {
         showToast('Profile updated successfully');
       }
 
-      // When user enters profile editing page after saving, return back to previous page
+      // Return back to previous page after all profile & release updates settle
       onBack();
     } catch (err: any) {
       showToast(err?.message || 'Failed to update profile.');
@@ -247,11 +281,6 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                     <Lock className="w-2.5 h-2.5" /> Locked
                   </span>
                 )}
-                {nameChangeStatus.isInGracePeriod && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                    <Clock className="w-2.5 h-2.5" /> 30m Edit Window
-                  </span>
-                )}
               </label>
               <span className="text-xs text-theme-text-muted">
                 {displayName.length}/50
@@ -300,7 +329,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                 </div>
               </div>
             ) : nameChangeStatus.isInGracePeriod ? (
-              <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs text-blue-300 mt-1">
+              <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 rounded-xl text-xs text-blue-300 mt-1">
                 <Clock className="w-4 h-4 shrink-0 mt-0.5 text-blue-400" />
                 <div className="flex-1 space-y-0.5">
                   <p className="font-medium text-blue-200">Active 30-Minute Edit Window</p>
@@ -323,8 +352,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                 <span>{nameValidation.successMessage}</span>
               </p>
             ) : (
-              <p className="text-xs text-theme-text-muted pt-0.5">
-                Each publisher has a unique name across the store. When changed, you have 30 minutes to make quick back-to-back edits before a 15-day waiting period takes effect.
+              <p className="text-xs text-theme-text-muted pt-0.5 leading-relaxed">
+                Applies universally across all your published apps and releases (publisher name is immutable inside individual release forms). When changed, you have 30 minutes for quick adjustments before a 15-day waiting period takes effect.
               </p>
             )}
           </div>

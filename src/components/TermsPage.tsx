@@ -21,7 +21,7 @@ export default function TermsPage({
   onOpenHowItWorks,
   onOpenUserConsent
 }: TermsPageProps) {
-  const lastUpdated = 'September 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('terms-page', scrollRef);
 
@@ -92,7 +92,7 @@ export default function TermsPage({
             2. Platform Purpose &amp; Permitted Personal Use
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Prople Store provides an open, high-performance marketplace enabling direct discovery, inspection, and unmediated downloading of verified software packages across Android (APKs, AAB), Linux (Debian .deb, AppImage, RPM, Tarballs), Mac (DMG, PKG), and Windows (executables and installers). Users are granted a revocable, non-exclusive, non-transferable license to browse the catalog and download published software for personal, lawful usage.
+            Prople Store provides an open, high-performance marketplace enabling direct discovery, inspection, and contained in-app downloading of verified software packages across Android (APKs, AAB), Apple (iOS/iPadOS .ipa), Linux (Debian .deb, AppImage, RPM, Flatpak, Tarballs), Mac (DMG, PKG), Windows (executables and installers), and Web/PWA applications. Users are granted a revocable, non-exclusive, non-transferable license to browse the catalog and download published software for personal, lawful usage.
           </p>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
             You agree not to engage in any activity that impairs or interferes with platform operations, including:
@@ -129,14 +129,15 @@ export default function TermsPage({
             4. Developer Covenants, Warranties &amp; Mandatory Indemnification
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Any developer or publisher submitting applications via the Publisher Console or GitHub Releases pipeline enters into a binding covenant:
+            Any developer or publisher submitting applications via the Developer Console—whether hosted on Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, or GitHub Releases—enters into a binding covenant:
           </p>
           <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
             <li><strong className="text-theme-text font-medium">Warranty of Originality &amp; Authorization:</strong> Publisher warrants that they own all requisite intellectual property rights, licenses, and authorizations to distribute the software, and that the software does not infringe upon any third party&apos;s copyright, trademark, trade secret, or patent.</li>
+            <li><strong className="text-theme-text font-medium">Global Publisher Identity &amp; Form Immutability:</strong> Publisher acknowledges that Publisher Name, Support Email, and Distribution Source are immutable inside individual app release and update forms to prevent per-release brand spoofing. Each publisher claims a globally unique Publisher Name managed exclusively in Settings &rarr; Edit Profile, where any update universally applies across all published apps and historical releases owned by that account (subject to a 30-minute adjustment grace window followed by a 15-day cooldown).</li>
             <li><strong className="text-theme-text font-medium">Warranty of Non-Malicious Code:</strong> Publisher warrants that all binaries, packages, and executables are completely free of trojan horses, backdoors, spyware, stalkerware, botnets, hidden miners, and unauthorized telemetry tools.</li>
             <li><strong className="text-theme-text font-medium">Mandatory Developer Indemnification:</strong> Publisher expressly agrees to defend, indemnify, and hold harmless Cloaktail Industries, Prople Store, its corporate affiliates, officers, directors, employees, and Founder &amp; CEO Sahanur Molla from and against any and all claims, actions, suits, demands, damages, obligations, losses, liabilities, costs, and expenses (including reasonable attorney&apos;s fees) arising out of or related to: (a) the publisher&apos;s software, packages, or updates; (b) any infringement or misappropriation of third-party intellectual property rights; (c) any violation of privacy, data safety, or consumer protection statutes; or (d) any breach of these Terms.</li>
-            <li><strong className="text-theme-text font-medium">Adoption of Platform Privacy Policy &amp; Terms for Hosted Apps:</strong> When publishing or updating software in the Developer Console, developers are required to link an accessible Privacy Policy and Terms &amp; Conditions. To lower barriers for independent creators, open-source maintainers, and hobbyist developers who do not operate independent legal websites, developers are explicitly permitted to link and adopt Prople Store&apos;s official legal documentation (Privacy Policy: <em>https://www.prople.co.in/privacy</em> and Terms: <em>https://www.prople.co.in/terms</em>). By doing so, the developer covenants that their application operates in strict conformance with Prople Store&apos;s Zero-Surveillance Covenant, collects zero undisclosed personal telemetry, and truthfully reports all device permissions in their Data Safety declarations.</li>
-            <li><strong className="text-theme-text font-medium">Catalog Sanctions &amp; Unilateral Removal:</strong> Cloaktail Industries reserves the unconstrained right to delist, suspend, or permanently ban any developer or application that violates platform policies, poses security hazards, or generates legal exposure.</li>
+            <li><strong className="text-theme-text font-medium">Adoption of Platform Privacy Policy &amp; Terms for Hosted Apps:</strong> When publishing or updating software in the Developer Console, developers are required to link an accessible HTTPS Privacy Policy and Terms &amp; Conditions. To lower barriers for independent creators, open-source maintainers, and hobbyist developers who do not operate independent legal websites, developers are explicitly permitted to link and adopt Prople Store&apos;s official legal documentation (Privacy Policy: <em>https://www.prople.co.in/privacy</em> and Terms: <em>https://www.prople.co.in/terms</em>). By doing so, the developer covenants that their application operates in strict conformance with Prople Store&apos;s Zero-Surveillance Covenant, collects zero undisclosed personal telemetry, and truthfully reports all device permissions in their Data Safety declarations.</li>
+            <li><strong className="text-theme-text font-medium">Submission Quotas &amp; Catalog Sanctions:</strong> Publishers agree to abide by automated submission rate limits (3 new applications per 15 minutes; 5 version updates per hour). Cloaktail Industries reserves the unconstrained right to delist, suspend, or permanently ban any developer or application that violates platform policies, poses security hazards, or generates legal exposure.</li>
           </ul>
         </section>
 

@@ -63,6 +63,85 @@ const defaultSections: HomeSectionConfig[] = [
 
 const StoreConfigContext = createContext<StoreConfigContextType | undefined>(undefined);
 
+/**
+ * Applies a publisher name update across all apps in a catalog map owned by the specified UID or email.
+ */
+function applyPublisherNameToOwnedCatalog(
+  catalog: Record<string, AppDetails>,
+  uid?: string,
+  email?: string,
+  publisherName?: string
+): { updated: Record<string, AppDetails>; changed: boolean } {
+  const cleanName = (publisherName || '').trim();
+  const cleanUid = (uid || '').trim();
+  const cleanEmail = (email || '').toLowerCase().trim();
+
+  if (!cleanName || (!cleanUid && !cleanEmail)) {
+    return { updated: catalog, changed: false };
+  }
+
+  let changed = false;
+  const nextCatalog: Record<string, AppDetails> = { ...catalog };
+
+  for (const [key, app] of Object.entries(catalog)) {
+    if (!app) continue;
+    const appOwnerUid = ((app as any).owner || app.developerId || (app as any).creatorUid || '').trim();
+    const appDevEmail = (app.developerEmail || '').toLowerCase().trim();
+    const appOwnerEmail = ((app as any).ownerEmail || '').toLowerCase().trim();
+    const appPubEmail = (app.publisherEmail || '').toLowerCase().trim();
+    const appDevInfoEmail = (app.developerInfo?.email || '').toLowerCase().trim();
+    const primaryEmail = appDevEmail || appOwnerEmail || appPubEmail || appDevInfoEmail;
+
+    let isOwned = false;
+    if (cleanEmail && primaryEmail) {
+      isOwned = primaryEmail === cleanEmail;
+    } else if (cleanUid && !['guest', 'developer', 'dev-publisher'].includes(cleanUid) && appOwnerUid === cleanUid) {
+      isOwned = true;
+    }
+
+    if (
+      isOwned &&
+      (app.developer !== cleanName ||
+        app.publisherName !== cleanName ||
+        app.publishedBy !== cleanName ||
+        app.developerInfo?.publisherName !== cleanName)
+    ) {
+      changed = true;
+      nextCatalog[key] = {
+        ...app,
+        developer: cleanName,
+        publisherName: cleanName,
+        publishedBy: cleanName,
+        developerInfo: app.developerInfo
+          ? { ...app.developerInfo, publisherName: cleanName }
+          : { publisherName: cleanName, email: primaryEmail || cleanEmail }
+      };
+    }
+  }
+
+  return { updated: changed ? nextCatalog : catalog, changed };
+}
+
+function overlayCurrentSavedUserPublisherName(catalog: Record<string, AppDetails>): Record<string, AppDetails> {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const savedUserRaw = localStorage.getItem('appmarket_user_profile');
+      if (savedUserRaw) {
+        const parsed = JSON.parse(savedUserRaw);
+        if (parsed && parsed.publisherName && parsed.lastNameChangedAt) {
+          return applyPublisherNameToOwnedCatalog(
+            catalog,
+            parsed.uid,
+            parsed.email,
+            parsed.publisherName
+          ).updated;
+        }
+      }
+    }
+  } catch {}
+  return catalog;
+}
+
 export function StoreConfigProvider({ children }: { children: ReactNode }) {
   // Instant cache hydration from window.__INITIAL_APP__ or sessionStorage/localStorage prevents any blank or empty flash
   const [apps, setApps] = useState<Record<string, AppDetails>>(() => {
@@ -137,6 +216,43 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('admin:moderation:updated', handleModerationUpdate);
   }, []);
 
+  // Immediately apply universal publisher name changes across all owned apps & banners without waiting for reload
+  useEffect(() => {
+    const handlePublisherNameUpdated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail;
+      if (!detail || !detail.publisherName) return;
+      const { uid, email, publisherName } = detail;
+
+      setApps((prevApps) => {
+        const { updated, changed } = applyPublisherNameToOwnedCatalog(prevApps, uid, email, publisherName);
+        if (changed) {
+          try {
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+            }
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+            }
+          } catch {}
+
+          setBanners((prevBanners) =>
+            prevBanners.map((b) => {
+              const matched = b.appId ? updated[b.appId] : undefined;
+              if (matched && matched.developer !== b.appDeveloper) {
+                return { ...b, appDeveloper: matched.developer };
+              }
+              return b;
+            })
+          );
+        }
+        return updated;
+      });
+    };
+
+    window.addEventListener('publisher:name:updated', handlePublisherNameUpdated);
+    return () => window.removeEventListener('publisher:name:updated', handlePublisherNameUpdated);
+  }, []);
+
   // Subscribe to real-time Firestore apps
   useEffect(() => {
     initializeFirestoreCatalogue();
@@ -146,7 +262,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
 
     const syncAppsAndBanners = (liveApps: Record<string, AppDetails> | null) => {
       if (!isMounted) return;
-      const freshApps = liveApps || {};
+      const freshApps = overlayCurrentSavedUserPublisherName(liveApps || {});
       const count = Object.keys(freshApps).length;
       
       // Update in-memory apps state: Firestore snapshot is the authoritative source of record

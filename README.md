@@ -11,6 +11,8 @@
 **Prople Store** is an independent, consumer-grade multi-platform application store and web store operated by **Cloaktail Industries**. It provides verified software distribution across Android, Apple (iOS/iPadOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.
 
 - **Official Marketplace**: [www.prople.co.in](https://www.prople.co.in)
+- **Publishing, Browsing & Data Guide**: [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
+- **Architecture & Concept Audit**: [PLATFORM_CONCEPT_AND_AUDIT.md](PLATFORM_CONCEPT_AND_AUDIT.md)
 - **Security Policy**: [SECURITY.md](SECURITY.md)
 - **Roadmap & Priorities**: [ROADMAP.md](ROADMAP.md)
 - **Beginner Issues**: [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
@@ -33,13 +35,14 @@
 
 ## Key Features
 
-- **Multi-Platform Independent Distribution**: Direct binary distribution for Android APK, Windows EXE/MSI, macOS DMG/PKG, Linux DEB/AppImage, and Progressive Web Apps.
-- **GitHub Release Integration**: Seamless ingestion of releases, release notes, and binary artifacts directly from public GitHub repositories.
-- **Zero Sponsored Auctions**: 100% Bayesian quality scoring and meritocratic catalog discovery with zero pay-to-play promotions.
-- **Developer Publishing Console**: Real-time app submission, media gallery uploads (AWS S3), version changelog management, and publisher analytics.
-- **Dual-Layer Authentication & 2FA**: Secure password hashing with PBKDF2-SHA512, 6-digit TOTP verification codes, and Google OAuth integration.
-- **Search & Generative Engine Optimization (GEO)**: Automated XML sitemaps, OpenGraph/Twitter cards, Schema.org `@graph` JSON-LD, and `/llms.txt` integration for AI search assistants.
-- **Offline & PWA Resilience**: Service Worker background caching, install prompt support, and IndexedDB download checkpointing.
+- **Multi-Source Binary Publishing (Cloud & GitHub)**: Distribute untouched binaries via direct HTTPS links from **Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs**, or **GitHub Releases**—supporting both open-source projects and proprietary private-repository builds across 22+ package formats.
+- **Global Publisher Identity & Immutability**: Globally unique Publisher Names managed in **Settings → Edit Profile** universally propagate across all published apps and releases (with a 30-minute adjustment grace window and 15-day cooldown), while remaining locked and immutable inside individual release forms to prevent per-release spoofing.
+- **Zero-Barrier Browsing & Contained In-App Downloads**: Browse Home, Explore, Top Charts, Categories, and instant Meilisearch/fuzzy search with zero login walls. Direct binary downloads stream within the app session without jarring new-tab redirects.
+- **Complete Package & Data Transparency**: Every listing surfaces verified SHA-256 checksums, CPU architectures, OS/RAM requirements, Data Safety disclosures, categorized permissions, and authentic `0+`-baseline verified download counts with Bayesian star ratings.
+- **Developer Publishing Console**: 6-step release wizard with isolated draft persistence, S3 media gallery uploads, rate-limited abuse protection (3 new apps / 15m, 5 updates / 1h), and strict per-account ownership isolation.
+- **Dual-Layer Authentication & 2FA**: Secure password hashing with PBKDF2-SHA512, 6-digit email OTP verification codes, and Google OAuth integration.
+- **Search & Generative Engine Optimization (GEO)**: Automated XML sitemaps, OpenGraph/Twitter cards, Schema.org `SoftwareApplication` JSON-LD, MCP discovery tools, and `/llms.txt` + `/llms-full.txt` specifications.
+- **Offline & PWA Resilience**: Service Worker background caching, install prompt support, and IndexedDB catalog caching.
 
 ---
 
@@ -47,9 +50,9 @@
 
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Motion.
 - **Backend / Server**: Express 4.x running in Node.js 22 with Vite development middleware.
-- **Database & Auth**: Firebase Firestore (multi-tenant app catalog), Firebase Authentication, Firebase Realtime Database.
-- **Search Engine**: Meilisearch indexer with client-side fallback fuzzy scoring.
-- **Storage**: AWS S3 pre-signed upload URLs with strict MIME and magic-byte validation against image poisoning.
+- **Database & Auth**: Firebase Firestore (`apps`, `users`, `publisher_registry`, `reviews`), Firebase Authentication, Firebase Realtime Database.
+- **Search Engine**: Meilisearch indexer with sub-5ms client-side fallback fuzzy scoring.
+- **Storage & Binary Hosting**: AWS S3 pre-signed media uploads with strict MIME/magic-byte validation; supports external binary delivery from Cloudflare R2, AWS S3, VPS, CDNs, and GitHub Releases.
 - **Transpiler & Bundler**: Vite 6, tsx, esbuild.
 
 ---
@@ -63,11 +66,15 @@
 │   └── PULL_REQUEST_TEMPLATE.md # Contributor pull request guidelines
 ├── api/                       # Serverless API endpoints (Vercel & cloud functions)
 │   ├── apps.ts                # Catalog retrieval endpoint
-│   ├── auth/[action].ts       # 2FA OTP and authentication gateway
-│   ├── download-apk.ts        # Secure binary stream proxy
-│   └── github-release-meta.ts # GitHub release asset metadata resolver
-├── docs/                      # Contributor and community documentation
-│   └── GOOD_FIRST_ISSUES.md   # Beginner-friendly starter tasks with acceptance criteria
+│   ├── auth/[action].ts       # 2FA OTP, profile sync, and authentication gateway
+│   ├── download-apk.ts        # Contained direct binary stream & redirect handler
+│   ├── github-release-meta.ts # GitHub release asset metadata resolver
+│   ├── resolve-apk.ts         # Multi-host binary URL & package format resolver
+│   └── seo.ts                 # Dynamic SSR metadata & SPA route handler
+├── docs/                      # Platform specifications & contributor documentation
+│   ├── PLATFORM_GUIDE.md      # Authoritative Publishing, Browsing & Available Data guide
+│   ├── GOOD_FIRST_ISSUES.md   # Beginner-friendly starter tasks with acceptance criteria
+│   └── ADVANCED_CONTRIBUTOR_CHALLENGES.md # Systems, crypto & ranking challenges
 ├── public/                    # Static public assets, PWA manifests, icons
 │   ├── manifest.webmanifest   # Progressive Web App manifest
 │   ├── robots.txt             # Search crawler directives & GEO permissions

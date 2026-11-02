@@ -21,7 +21,7 @@ export default function UserConsentPolicyPage({
   onOpenHowItWorks,
   onOpenAbout
 }: UserConsentPolicyPageProps) {
-  const lastUpdated = 'September 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('user-consent-policy', scrollRef);
 
@@ -120,15 +120,15 @@ export default function UserConsentPolicyPage({
                     <td className="py-3 px-3 sm:px-4">OTP codes expire in 10–15 minutes and are purged atomically upon single use.</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Optional Authentication</td>
-                    <td className="py-3 px-3 sm:px-4">Email, display name, avatar URL (Google OAuth or OTP).</td>
-                    <td className="py-3 px-3 sm:px-4">Authenticating community reviews, ratings, and publishing rights (GDPR Art. 6(1)(b)).</td>
+                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Optional Authentication &amp; Publisher Registry</td>
+                    <td className="py-3 px-3 sm:px-4">Email, globally unique Publisher Name (<code className="text-xs bg-theme-hover px-1 py-0.5 rounded">publisher_registry</code>), avatar URL, name-change cooldown timestamp.</td>
+                    <td className="py-3 px-3 sm:px-4">Authenticating reviews, wishlists, and universal publisher attribution across releases (GDPR Art. 6(1)(b)).</td>
                     <td className="py-3 px-3 sm:px-4">Until deletion or 30 days post-request.</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Developer Ingestion</td>
-                    <td className="py-3 px-3 sm:px-4">GitHub repository URL, release tags, SHA-256 hashes, contact.</td>
-                    <td className="py-3 px-3 sm:px-4">Automated package ingestion and release verification (GDPR Art. 6(1)(b)).</td>
+                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Multi-Source Developer Ingestion</td>
+                    <td className="py-3 px-3 sm:px-4">Direct HTTPS binary URLs (Cloudflare R2, AWS S3, VPS, CDNs) or GitHub release URLs, version tags, SHA-256 hashes, Data Safety &amp; permission disclosures.</td>
+                    <td className="py-3 px-3 sm:px-4">Package resolution, cryptographic verification, and public catalog transparency (GDPR Art. 6(1)(b)).</td>
                     <td className="py-3 px-3 sm:px-4">Duration of store listing.</td>
                   </tr>
                   <tr>
@@ -171,12 +171,12 @@ export default function UserConsentPolicyPage({
               4. Direct CDN Streaming &amp; Zero Binary Interception
             </h3>
             <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-              Application packages distributed on Prople Store stream directly from the developer&apos;s verified upstream release hosting (such as GitHub Releases CDN, AWS S3, or verified publisher servers):
+              Application packages distributed on Prople Store stream directly from the developer&apos;s verified upstream HTTPS hosting (including Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, or GitHub Releases):
             </p>
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
               <li><strong className="text-theme-text font-medium">Zero Repackaging:</strong> Prople Store never decompiles, injects, modifies, or repackages binaries. The file downloaded by your device is byte-for-byte identical to the developer&apos;s release.</li>
               <li><strong className="text-theme-text font-medium">No Injected Telemetry Wrappers:</strong> We reject the predatory practice of wrapping binaries in store telemetry or ad injection SDKs. Original developer cryptographic signatures are 100% preserved.</li>
-              <li><strong className="text-theme-text font-medium">Direct Stream Download Protocol:</strong> Downloads initiate via authentic direct browser stream dispatch executing verified HTTP 302 stream redirection without interrupting your active browsing session.</li>
+              <li><strong className="text-theme-text font-medium">Contained In-App Download Protocol:</strong> Downloads initiate directly within the active store interface without opening external browser tabs or interrupting your browsing session.</li>
             </ul>
           </section>
 
@@ -240,6 +240,12 @@ export default function UserConsentPolicyPage({
                     <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Firebase Session Tokens</td>
                     <td className="py-3 px-3 sm:px-4">IndexedDB</td>
                     <td className="py-3 px-3 sm:px-4">Cryptographic authentication session (if signed in)</td>
+                    <td className="py-3 px-3 sm:px-4">Client browser only</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 sm:px-4 font-medium text-theme-text">Console Drafts</td>
+                    <td className="py-3 px-3 sm:px-4">LocalStorage</td>
+                    <td className="py-3 px-3 sm:px-4">Isolated new-app and per-app update drafts during release editing</td>
                     <td className="py-3 px-3 sm:px-4">Client browser only</td>
                   </tr>
                   <tr>

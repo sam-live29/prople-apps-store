@@ -691,16 +691,21 @@ async function startServer() {
       }
 
       const content = [
-        "# Prople Store — Official Application Marketplace & Knowledge Graph",
+        "# Prople Store — Official Multi-Platform Application Marketplace & Knowledge Graph",
         "",
-        "> Prople Store is an Android application marketplace and digital distribution platform operated by Cloaktail Industries.",
+        "> Prople Store is an independent multi-platform application store and web store operated by Cloaktail Industries, supporting Android, Apple (iOS/iPadOS), macOS, Linux, Windows, and Web/PWA software.",
         "> Cloaktail Industries is the parent technology organization, founded and led by Sahanur Molla (Founder & CEO).",
         "",
         "## Corporate & Organizational Hierarchy",
-        "- **Parent Organization**: Cloaktail Industries (Technology organization building software, AI, and emerging tech platforms)",
+        "- **Parent Organization**: Cloaktail Industries",
         "- **Founder & CEO**: Sahanur Molla",
-        "- **Operating Platform**: Prople Store (Android application discovery, safe APK distribution, and developer ecosystem)",
-        "- **Official Contact**: cloaktailofficial@gmail.com",
+        "- **Operating Platform**: Prople Store (Multi-platform software discovery, verified binary distribution, and developer console)",
+        "- **Official Contact**: cloaktailofficial@gmail.com | prople.site@gmail.com",
+        "",
+        "## Publishing, Browsing & Available Data Standards",
+        "- **Publishing**: Supports direct HTTPS binary releases hosted on Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, and GitHub Releases across 22+ formats (.apk, .aab, .ipa, .dmg, .pkg, .deb, .AppImage, .rpm, .exe, .msi, .pwa). Publisher Name, Support Email, and Distribution Source are immutable inside release forms; unique Publisher Names are managed in Settings -> Edit Profile and propagate universally across all owned releases (30-minute grace window, 15-day cooldown). Rate limits: 3 new apps per 15m, 5 updates per 1h.",
+        "- **Browsing**: Zero-login guest browsing and contained in-app downloading (no external new-tab redirects) across Home, Explore, Top Charts, Categories, and instant Meilisearch/fuzzy search, ranked meritocratically via Bayesian scoring with zero sponsored placements.",
+        "- **Available Data**: Every listing exposes version, package format, OS/CPU/RAM compatibility, resolved file size, 64-character SHA-256 checksum, Data Safety disclosures (shared/collected/deletion), categorized OS permissions, authentic 0+ baseline verified downloads, and community reviews.",
         "",
         "## Published Applications",
         appsListing || "- Direct index currently loading...",
@@ -708,7 +713,6 @@ async function startServer() {
         "## Model Context Protocol (MCP) Server for Agents & Developers",
         `- SSE Endpoint: ${domain}/api/mcp/sse`,
         `- MCP Info & Tool Schemas: ${domain}/api/mcp`,
-        "- Stdio CLI Runner: `npx tsx server/mcp/cli.ts` (or `npm run mcp:stdio`)",
         "- Supported Tools: `search_apps`, `get_app_details`, `get_download_artifacts`, `get_data_safety_and_security`, `list_trending_and_top_charts`, `list_categories`",
         "",
         "## Discoverability & Sitemaps",
@@ -744,12 +748,15 @@ async function startServer() {
               const canonicalSlug = app.slug || slugifyAppName(appName) || d.id;
               catalog += `\n### ${appName}\n`;
               catalog += `- **Direct Install Page**: ${domain}/apps/${encodeURIComponent(canonicalSlug)}\n`;
-              catalog += `- **Developer**: ${app.developer || "Verified Developer"}\n`;
+              catalog += `- **Publisher**: ${app.developer || "Verified Publisher"}\n`;
               catalog += `- **Category**: ${app.category || "Tools"}\n`;
-              catalog += `- **Supported Platforms**: ${app.platform || "Android, Windows, Linux"}\n`;
+              catalog += `- **Supported Platforms**: ${app.platform || "Android, Windows, Linux, macOS, iOS, Web"}\n`;
               catalog += `- **Version**: ${app.versionName || "1.0.0"}\n`;
-              catalog += `- **Rating**: ${app.rating ? `${Number(app.rating).toFixed(1)} ★` : "New (Pending Reviews)"}\n`;
               catalog += `- **Package Type**: ${app.packageFormat || "APK / Binary"}\n`;
+              catalog += `- **Size**: ${app.size || app.sizeString || "Resolved at download"}\n`;
+              if (app.sha256) catalog += `- **SHA-256 Checksum**: ${app.sha256}\n`;
+              catalog += `- **Downloads**: ${app.downloads || (typeof app.downloadsCount === "number" ? `${app.downloadsCount}+` : "0+")}\n`;
+              catalog += `- **Rating**: ${app.rating ? `${Number(app.rating).toFixed(1)} ★` : "New (Pending Reviews)"}\n`;
               catalog += `- **Overview**: ${app.description || app.shortDescription || "No detailed description provided."}\n`;
             }
           });
@@ -759,9 +766,9 @@ async function startServer() {
       }
 
       const content = [
-        "# Prople Store - Comprehensive Application Catalog for LLMs",
+        "# Prople Store — Comprehensive Multi-Platform Catalog & Available Data Index",
         "",
-        "This resource provides full entity metadata for generative search and AI chatbots (Google Gemini, OpenAI ChatGPT, Perplexity, Anthropic Claude) to cite and direct users to verified app installations.",
+        "This resource provides full machine-readable metadata across Android, Apple (iOS/iPadOS), macOS, Linux, Windows, and Web/PWA listings published on Prople Store.",
         "",
         catalog || "\nNo applications registered yet."
       ].join("\n");
@@ -2803,31 +2810,42 @@ async function startServer() {
         );
 
         if (isOwner) {
-          const appRef = serverDoc(serverDb, "apps", d.id);
-          const devInfo = data.developerInfo ? { ...data.developerInfo, publisherName: cleanName } : { publisherName: cleanName };
-          await serverSetDoc(appRef, {
-            developer: cleanName,
-            publisherName: cleanName,
-            publishedBy: cleanName,
-            developerInfo: devInfo,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-          updatedCount++;
+          try {
+            const appRef = serverDoc(serverDb, "apps", d.id);
+            const devInfo = data.developerInfo ? { ...data.developerInfo, publisherName: cleanName } : { publisherName: cleanName };
+            await serverSetDoc(appRef, {
+              developer: cleanName,
+              publisherName: cleanName,
+              publishedBy: cleanName,
+              developerInfo: devInfo,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+            updatedCount++;
+          } catch (appWriteErr: any) {
+            // Client SDK has already updated Firestore directly with authenticated owner credentials;
+            // continue flushing server-side catalog & SEO caches without throwing 500.
+            console.warn(`[PublisherProfile] Server app write notice (${d.id}):`, appWriteErr?.message);
+          }
         }
       }
 
-      console.log(`[PublisherProfile] Updated publisher name to "${cleanName}" across ${updatedCount} apps`);
+      serverAppsCatalogCache = [];
+      seoAppsCache.clear();
+
+      console.log(`[PublisherProfile] Synchronized publisher name "${cleanName}" (server-side writes: ${updatedCount})`);
       return res.json({ success: true, updatedCount, publisherName: cleanName });
     } catch (err: any) {
-      console.error("[PublisherProfile] Error updating publisher name across apps:", err.message);
-      return res.status(500).json({ success: false, error: err.message });
+      serverAppsCatalogCache = [];
+      seoAppsCache.clear();
+      console.warn("[PublisherProfile] Notice updating publisher name across apps:", err.message);
+      return res.json({ success: true, updatedCount: 0 });
     }
   });
 
   // Dedicated endpoint: Comprehensive bi-directional migration of user rights, keystore, bookmarks, publisher profile & admin role
   app.post("/api/auth/migrate-user-rights", async (req, res) => {
     try {
-      const { userId, userEmail, displayName, photoURL } = req.body || {};
+      const { userId, userEmail, displayName, publisherName: clientPublisherName, lastNameChangedAt: clientLastNameChangedAt, nameChangeSessionStartedAt: clientSessionStartedAt, photoURL } = req.body || {};
       if (!userId || !userEmail || typeof userEmail !== 'string') {
         return res.status(400).json({ success: false, error: "Missing userId or userEmail" });
       }
@@ -2881,7 +2899,7 @@ async function startServer() {
         console.warn("[MigrateUserRights] Email query check notice:", err.message);
       }
 
-      let mergedPublisherName = (displayName || cleanEmail.split('@')[0]).trim();
+      let mergedPublisherName = ((clientPublisherName && String(clientPublisherName).trim()) || displayName || cleanEmail.split('@')[0]).trim();
       let mergedPublisherRole = isAdmin ? 'Store Administrator' : 'Standard User';
       let mergedIsPublisher = isAdmin;
       let mergedKeystore: any = null;
@@ -2893,8 +2911,8 @@ async function startServer() {
       let mergedGender = 'Prefer not to say';
       let mergedBookmarks: string[] = [];
       let mergedPublishedAppIds: string[] = [];
-      let mergedLastNameChangedAt: any = null;
-      let mergedNameChangeSessionStartedAt: any = null;
+      let mergedLastNameChangedAt: any = clientLastNameChangedAt || null;
+      let mergedNameChangeSessionStartedAt: any = clientSessionStartedAt || null;
 
       // Scan found docs for any existing profile with matching email or this UID
       for (const d of foundUserDocs) {

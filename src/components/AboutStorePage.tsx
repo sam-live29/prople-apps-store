@@ -86,39 +86,45 @@ export default function AboutStorePage({
           </p>
         </section>
 
-        {/* Section 3: Purpose & Multi-Platform App Store Concept */}
+        {/* Section 3: Multi-Source Publishing & Global Publisher Identity */}
         <section className="space-y-3">
           <h2 className="text-[17px] sm:text-[18px] font-medium font-google-sans text-theme-text">
-            3. Purpose &amp; Multi-Platform App Store Concept
+            3. Multi-Source Publishing &amp; Global Publisher Identity
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Traditional app distribution platforms have become heavily gated monopolies defined by high fees, mandatory proprietary billing, algorithmic ad auctions, and intrusive telemetry wrappers.
+            Traditional app distribution platforms have become heavily gated monopolies defined by high commission cuts, mandatory proprietary billing, algorithmic ad auctions, and intrusive telemetry wrappers.
           </p>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Prople Store was founded to deliver an authentic, bloat-free alternative: a modern distribution engine that connects independent software developers directly to users. We eliminate middlemen hurdles by supporting native GitHub Releases ingestion, letting creators publish signed Android APKs, Apple iOS applications (.ipa), Mac packages (.dmg, .pkg, app bundles), Linux packages (Debian .deb, AppImage, RPM, Flatpak, Tarball), Windows executables (.exe, .msi, .msix), and Web/PWA applications directly from their source repositories with zero repackaging or commission penalties.
+            Prople Store delivers an open, bloat-free distribution engine for both open-source maintainers and private-repository teams. Developers can publish signed Android packages (.apk, .aab), Apple iOS packages (.ipa), Mac installers (.dmg, .pkg), Linux packages (.deb, .AppImage, .rpm, .flatpak, .tar.gz), Windows executables (.exe, .msi, .msix), and Web/PWA applications via direct HTTPS links from Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, or public GitHub Releases—with zero binary repackaging or commission fees.
+          </p>
+          <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
+            To guarantee consistent attribution and prevent impersonation, each developer claims a globally unique Publisher Name managed exclusively in Settings &rarr; Edit Profile. Publisher Name, Support Email, and Distribution Source remain locked inside individual release forms, while profile-level name updates universally propagate across every published app and historical release owned by that account (subject to a 30-minute adjustment grace window and a 15-day cooldown).
           </p>
         </section>
 
-        {/* Section 4: Cryptographic Integrity & Security */}
+        {/* Section 4: Available Data, Cryptographic Integrity & Security */}
         <section className="space-y-3">
           <h2 className="text-[17px] sm:text-[18px] font-medium font-google-sans text-theme-text">
-            4. Cryptographic Integrity &amp; Multi-Platform Security Standards
+            4. Available Data, Cryptographic Integrity &amp; Security Standards
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Trust is the foundation of digital distribution. Every application package hosted or linked through Prople Store—whether an Android APK, Apple iOS package, Mac bundle, Linux package, Windows executable, or Web/PWA application—is distributed in its authentic, developer-signed binary format. Cloaktail Industries never injects proprietary tracking SDKs, modifies app manifests, or alters source binaries.
+            Trust requires verifiable data transparency. Every application package listed on Prople Store is distributed in its untouched, developer-signed binary format—Cloaktail Industries never injects tracking SDKs, modifies app manifests, or alters source binaries.
           </p>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Each release listing features transparent SHA-256 cryptographic checksums, verified keystore and developer certificate fingerprints, and operating system compatibility signals, allowing security researchers and end users to independently verify the origin and provenance of every release.
+            Every store listing openly exposes complete package metadata: copyable 64-character SHA-256 cryptographic checksums, version tags, resolved binary sizes, required OS and CPU architectures, categorized system permissions, mandatory Data Safety disclosures (data collected, data shared, and deletion policies), and authentic 0+ baseline verified download metrics.
           </p>
         </section>
 
-        {/* Section 5: Meritocratic Discovery & Zero-Ad Experience */}
+        {/* Section 5: Frictionless Browsing, Contained Downloads & Zero-Ad Commitment */}
         <section className="space-y-3">
           <h2 className="text-[17px] sm:text-[18px] font-medium font-google-sans text-theme-text">
-            5. Meritocratic Discovery &amp; Zero-Ad Commitment
+            5. Frictionless Browsing, Contained Downloads &amp; Zero-Ad Commitment
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Our recommendation algorithms and top charts are governed entirely by Bayesian weighted ratings, real install velocity, and authentic community feedback. We strictly reject sponsored app placements, paid search bidding, and keyword manipulation. On Prople Store, software quality and developer craftsmanship determine visibility.
+            Users can explore Home shelves, Categories, Top Charts, and instant hybrid search—and trigger contained, in-app direct binary downloads without login walls or external new-tab redirects. Optional authenticated accounts unlock cloud-synced Wishlists, community Ratings &amp; Reviews, Notifications, and Developer Console publishing.
+          </p>
+          <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
+            Our recommendation algorithms and top charts are governed strictly by Bayesian weighted ratings, verified download velocity, and authentic community feedback. We reject sponsored placements, paid search bidding, and behavioral ad tracking.
           </p>
         </section>
 

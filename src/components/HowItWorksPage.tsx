@@ -35,26 +35,32 @@ interface WorkflowThreadBranch {
 const WORKFLOW_BRANCHES: WorkflowThreadBranch[] = [
   {
     branchNumber: '01',
-    title: 'User Discovery & Hardware Compatibility Thread',
-    summary: 'How user requests are resolved, matched against client hardware, and ranked algorithmically with zero telemetry.',
+    title: 'Zero-Barrier Browsing, Search & Hardware Compatibility',
+    summary: 'How guests and signed-in users discover software across Home, Explore, Top Charts, Categories, and hybrid search with zero telemetry.',
     steps: [
       {
         number: '1',
-        title: 'Client Environment Detection',
-        description: 'The store client extracts navigator platform, user agent architecture hints, and display profile directly in the browser to accurately distinguish Android (ARM64), Apple iOS (iPhone / iPad), Windows (x64), Linux (amd64), macOS (Apple Silicon / Intel), or modern Web browsers.',
-        protocol: 'osDetectionService'
+        title: 'Anonymous Discovery & Optional Account Sync',
+        description: 'Users can browse every storefront surface, inspect checksums and permissions, save local wishlists, and download binaries without creating an account. Signing in (Google OAuth or 2FA Email + 6-digit OTP) unlocks cloud-synced Wishlists, Ratings & Reviews, Notifications, and Developer Console access.',
+        protocol: 'Guest-First Access + 2FA Session Sync'
       },
       {
         number: '2',
-        title: 'Non-Linear Algorithmic Ranking',
-        description: 'Apps are weighted based on authentic download milestones, verified rating ratios, and publication recency using an exponential time-decay model without tracking cookies or behavioral profiles.',
-        protocol: 'appMetricsAlgorithm (Wilson-Score)'
+        title: 'Client Environment & Architecture Detection',
+        description: 'The store client inspects navigator platform and CPU architecture hints strictly in browser memory to distinguish Android (ARM64), Apple iOS/iPadOS, Windows (x64/ARM64), Linux (amd64/arm64), macOS (Apple Silicon / Intel), and modern Web browsers.',
+        protocol: 'osDetectionService'
       },
       {
         number: '3',
-        title: 'Binary Package Filtering',
-        description: 'Incompatible platform executables are flagged or filtered out, ensuring users only download binaries that execute cleanly on their system architecture.',
-        protocol: 'Compatibility Filter Engine'
+        title: 'Meritocratic Bayesian Ranking & Hybrid Search',
+        description: 'Home shelves, Top Charts, and instant search (Meilisearch + sub-5ms client-side fuzzy BM25 fallback) rank software purely by Bayesian weighted ratings, authentic download milestones, and release freshness—with zero sponsored placements.',
+        protocol: 'appMetricsAlgorithm + Hybrid Search'
+      },
+      {
+        number: '4',
+        title: 'Canonical Deep-Link & Refresh Resilience',
+        description: 'Every app (/apps/:slug), category, developer profile, and platform collection resolves cleanly on both client navigation and full page refreshes with pre-rendered OpenGraph and Schema.org metadata.',
+        protocol: 'SSR + SPA Route Hydration'
       }
     ],
     actionLink: {
@@ -64,32 +70,26 @@ const WORKFLOW_BRANCHES: WorkflowThreadBranch[] = [
   },
   {
     branchNumber: '02',
-    title: '1-Click Zero-Reload Direct Download Engine',
-    summary: 'How package binaries stream straight from upstream developer release CDNs without middleman proxies or browser page reload lines.',
+    title: 'Contained 1-Click Direct Download Engine',
+    summary: 'How binaries stream directly within the store session from verified cloud object storage or release CDNs without opening external browser tabs.',
     steps: [
       {
         number: '1',
-        title: 'Synchronous User Gesture Capture',
-        description: 'When the user taps Install or Download, the browser click gesture is synchronously preserved in memory, preventing popup blockers and security interruptions.',
-        protocol: 'DOM Event Dispatch (startInstall)'
+        title: 'Contained In-App Gesture Dispatch',
+        description: 'When a user taps Install or Download, the stream initiates directly inside the active store experience—eliminating blank new-tab popups (target="_blank" redirects) and preserving scroll and navigation state.',
+        protocol: 'Contained Stream Dispatch (startInstall)'
       },
       {
         number: '2',
-        title: 'Direct Browser Stream Dispatch',
-        description: 'The download anchor triggers authentic direct browser stream capture without nested iframe sandboxing, ensuring zero CSP or X-Frame-Options blocking across Android Chrome, desktop browsers, and PWAs.',
-        protocol: 'Direct Anchor Stream Dispatch (triggerDirectDownloadLink)'
+        title: 'Multi-Host HTTPS Binary Streaming',
+        description: 'The browser connects over encrypted TLS directly to the publisher’s verified release host—Cloudflare R2, AWS S3, self-hosted VPS, enterprise CDN, or GitHub Releases—delivering untouched binaries at unthrottled bandwidth.',
+        protocol: 'Direct HTTPS Binary Delivery'
       },
       {
         number: '3',
-        title: 'Direct CDN Binary Streaming',
-        description: 'The browser establishes a direct HTTPS connection to the official upstream host (GitHub Releases CDN, AWS S3, Cloudflare) at full unthrottled bandwidth without passing through proxy bottlenecks.',
-        protocol: 'HTTP 302 Direct Stream Redirection'
-      },
-      {
-        number: '4',
-        title: '5-Minute Verified Download Increments',
-        description: 'Downloads are scheduled and registered to the publisher after an authentic verification interval to eliminate synthetic spamming.',
-        protocol: 'Cryptographic Milestone Scheduler'
+        title: 'Authentic 0+ Baseline & Verified Download Counting',
+        description: 'Every new listing starts strictly at 0+ downloads with zero synthetic inflation. Download milestones increment only after a scheduled verification interval to block automated bot gaming.',
+        protocol: 'scheduledDownloadService'
       }
     ],
     actionLink: {
@@ -99,32 +99,32 @@ const WORKFLOW_BRANCHES: WorkflowThreadBranch[] = [
   },
   {
     branchNumber: '03',
-    title: 'Developer Ingestion & GitHub Release Sync Pipeline',
-    summary: 'How developers publish and maintain releases in 30 seconds via automated GitHub release asset parsing.',
+    title: 'Multi-Source Publishing & Global Publisher Identity',
+    summary: 'How developers publish from private or public codebases via a 6-step release wizard with immutable per-release attribution and universal profile sync.',
     steps: [
       {
         number: '1',
-        title: 'Release URL Ingestion',
-        description: 'The developer inputs an open-source GitHub release, tag, or repository URL directly into the Developer Console.',
-        protocol: 'Server-Side Ingestion (/api/github-release-meta)'
+        title: 'Cloud Storage, VPS & GitHub Release Ingestion',
+        description: 'Developers paste either a direct HTTPS binary URL hosted on Cloudflare R2, AWS S3, VPS, or custom CDN (ideal for private repositories) or a public GitHub Release URL into Step 1 of the 6-step wizard (Release → App Info → Package → Media → Safety & Legal → Review).',
+        protocol: '/api/resolve-apk + /api/github-release-meta'
       },
       {
         number: '2',
-        title: 'Automated Binary Asset Separation',
-        description: 'The system scans all assets in the release, filtering out raw source code archives (.zip of repos, tarballs of git trees) and isolating compiled executable binaries.',
-        protocol: 'Executable Asset Filter'
+        title: 'Immutable Release Attribution & Global Publisher Sync',
+        description: 'Inside publishing and update forms, Publisher Name, Support Email, and Distribution Source are locked and read-only to prevent per-release spoofing. Developers manage their globally unique Publisher Name exclusively in Settings → Edit Profile, which universally updates every app and release they own (with a 30-minute adjustment grace window followed by a 15-day cooldown).',
+        protocol: 'publisherNameService + publisher_registry'
       },
       {
         number: '3',
-        title: 'Format & OS Heuristic Recognition',
-        description: 'The algorithm analyzes file extensions (.apk, .deb, .exe, .dmg, .AppImage) and automatically derives minimum operating system requirements, package size, and architecture tags.',
-        protocol: 'inferPlatformAndFormat'
+        title: 'Isolated Drafts, Ownership Lock & Quotas',
+        description: 'New app drafts and per-app update drafts persist in isolated local storage slots. Server endpoints enforce strict UID/email ownership isolation alongside anti-abuse rate limits (3 new apps per 15 minutes; 5 version updates per hour).',
+        protocol: 'publishQuotaService + Ownership Guard'
       },
       {
         number: '4',
-        title: 'Instant Distributed Publication',
-        description: 'Application metadata is committed to Google Cloud Firestore and broadcast in real time to thousands of active store clients simultaneously.',
-        protocol: 'Firestore Distributed Document Sync'
+        title: 'Instant Catalog & Search Broadcast',
+        description: 'Approved submissions commit to Cloud Firestore and synchronize immediately with Meilisearch and active store clients worldwide.',
+        protocol: 'Firestore + Meilisearch Sync'
       }
     ],
     actionLink: {
@@ -134,67 +134,61 @@ const WORKFLOW_BRANCHES: WorkflowThreadBranch[] = [
   },
   {
     branchNumber: '04',
-    title: 'Multi-Platform Binary & Web Store Matrix (22 Formats)',
-    summary: 'The comprehensive catalog architecture supporting native execution across Android, Apple (iOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.',
+    title: 'Available Data, Package Specs & Safety Transparency',
+    summary: 'What technical, cryptographic, and privacy data is openly available to inspect on every application listing before installation.',
     steps: [
       {
         number: '1',
-        title: 'Android Ecosystem Distribution',
-        description: 'Natively serves .apk (Standard Package), .aab (Google App Bundle), and .aar (Android Library Archive) with verified package names and target SDK levels.',
-        protocol: 'Android Runtime (ART) Packaging'
+        title: 'Technical Package & Compatibility Metadata',
+        description: 'Every listing openly surfaces version tag, package format (.apk, .aab, .ipa, .dmg, .pkg, .deb, .AppImage, .rpm, .exe, .msi, .pwa), resolved binary size, required OS version, supported CPU architectures, minimum RAM, release dates, and full release notes.',
+        protocol: 'AboutAppPage Specifications'
       },
       {
         number: '2',
-        title: 'Apple & macOS Ecosystem Distribution',
-        description: 'Distributes Apple iOS (.ipa) mobile packages, macOS mountable disk images (.dmg), and native installer packages (.pkg) for Apple Silicon and Intel systems.',
-        protocol: 'Apple iOS & Mach-O macOS Pipeline'
+        title: 'Copyable 64-Character SHA-256 Checksums',
+        description: 'Each release displays its 64-character SHA-256 cryptographic digest so users and security researchers can verify byte-for-byte authenticity against the downloaded file.',
+        protocol: 'NIST FIPS 180-4 SHA-256'
       },
       {
         number: '3',
-        title: 'Windows Desktop Distribution',
-        description: 'Distributes .exe (Win32/x64 PE Executable), .msi (Windows Installer), .msix (Modern App Container), .appx (UWP), and high-compression archives (.zip, .7z, .rar).',
-        protocol: 'Microsoft Windows Desktop Pipeline'
+        title: 'Data Safety & Categorized OS Permissions',
+        description: 'Developers declare third-party data sharing, collected data categories, data deletion policies, categorized hardware/OS permissions (Camera, Microphone, Storage, Network, Location), and authorized HTTPS Privacy Policy & Terms links.',
+        protocol: 'DataSafetyPage + AppPermissionsPage'
       },
       {
         number: '4',
-        title: 'Linux Universal & Web Store Distribution',
-        description: 'Handles .deb (Debian/Ubuntu), .AppImage (Universal Portable), .rpm (Fedora/RHEL), .snap (Canonical), .flatpak (Flatpak Desktop), .tar.gz, and installable Progressive Web Apps (.pwa / Web Store).',
-        protocol: 'FreeDesktop / Universal Web PWA Standards'
+        title: 'Open Machine-Readable Catalog Endpoints',
+        description: 'Public catalog metadata is structured cleanly across XML sitemaps (/sitemap.xml), Schema.org SoftwareApplication JSON-LD, /llms.txt, /llms-full.txt, and read-only Model Context Protocol (MCP) discovery tools.',
+        protocol: 'SEO / GEO / MCP Transparency Layer'
       }
     ],
     actionLink: {
-      label: 'Submit a new application package →',
-      target: 'console'
+      label: 'Explore catalog metadata →',
+      target: 'catalog'
     }
   },
   {
     branchNumber: '05',
-    title: 'Cryptographic Integrity & Device Safety Workflow',
-    summary: 'How user devices are safeguarded from malicious tampering, unsigned scripts, and malware injections.',
+    title: 'Platform Defense, SSRF Guardrails & Moderation',
+    summary: 'How user devices and publisher accounts are safeguarded from tampering, private-network probing, and malicious uploads.',
     steps: [
       {
         number: '1',
-        title: 'SSRF & Domain Whitelist Filtering',
-        description: 'Before any binary is indexed, URLs are sanitized against private loopback ranges (127.0.0.1, 10.0.0.0/8, 192.168.0.0/16, link-local, and cloud metadata addresses).',
-        protocol: 'Private IP Sanitization & SSRF Firewall'
+        title: 'SSRF & Private Network Firewall',
+        description: 'All external binary and media URLs are validated against loopback, link-local, carrier-grade NAT, and cloud metadata IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254) prior to resolution.',
+        protocol: 'securityDefense SSRF Guard'
       },
       {
         number: '2',
-        title: 'SHA-256 Cryptographic Checksum Pinning',
-        description: 'Every verified application listing pins the exact 64-character SHA-256 release digest to guarantee the binary on your device is byte-for-byte identical to the developer release.',
-        protocol: 'NIST FIPS 180-4 SHA-256 Standard'
+        title: 'Media Magic-Byte & Format Sanitization',
+        description: 'Icons, screenshots, and feature banners uploaded to S3 storage are validated for authentic image structures (PNG, JPEG, WebP, GIF, AVIF), blocking disguised executables or active scripts.',
+        protocol: 's3Storage + Media Validator'
       },
       {
         number: '3',
-        title: 'Play Protect Safety Emulation',
-        description: 'Automated scanning validates package declarations, permission scopes, and verified publisher account credentials before execution.',
-        protocol: 'Safety Verification Protocol'
-      },
-      {
-        number: '4',
-        title: 'Community Moderation & Admin Quarantine',
-        description: 'Any flagged app is immediately placed in quarantine, inspected by administrators, and removed from discovery within seconds if non-compliant.',
-        protocol: 'Real-time Safety Triage Engine'
+        title: 'Community Reporting & Rapid Admin Quarantine',
+        description: 'Flagged listings and reviews enter real-time administrative moderation queues, allowing non-compliant or infringing packages to be quarantined and delisted immediately.',
+        protocol: 'AdminModerationService'
       }
     ],
     actionLink: {
@@ -215,7 +209,7 @@ export default function HowItWorksPage({
   onOpenAntiPiracy,
   onOpenUserConsent
 }: HowItWorksPageProps) {
-  const lastUpdated = 'September 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('how-it-works', scrollRef);
 

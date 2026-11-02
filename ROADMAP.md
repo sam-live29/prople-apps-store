@@ -6,10 +6,10 @@ This document outlines the strategic product vision, current engineering priorit
 
 ## 🎯 Strategic Mission
 
-Prople Store aims to be the open, meritocratic multi-platform app store for indie developers and users across **Android, Windows, Linux, macOS, and Web/PWAs**. We prioritize:
-- **Zero Sponsored Auctions**: Ranking purely on Bayesian rating, recency, and performance metrics.
-- **Direct Independent Publishing**: Zero developer registration fees and direct binary/GitHub release ingestion.
-- **Privacy & Safety First**: Explicit permission breakdowns, binary hash verification, and zero third-party telemetry.
+Prople Store aims to be the open, meritocratic multi-platform app store for indie developers, organizations, and users across **Android, Apple (iOS/iPadOS), Windows, Linux, macOS, and Web/PWAs**. We prioritize:
+- **Zero Sponsored Auctions**: Ranking purely on Bayesian rating, recency, and verified download metrics.
+- **Multi-Source Independent Publishing**: Zero developer registration fees, supporting direct binary links from **Cloudflare R2, AWS S3, VPS, custom CDNs**, and **GitHub Releases** alongside globally unified publisher identities.
+- **Privacy & Available Data Transparency**: Explicit Data Safety declarations, categorized permission breakdowns, SHA-256 binary hash verification, and zero third-party telemetry.
 
 ---
 
@@ -19,7 +19,10 @@ These items are actively being worked on by core maintainers:
 
 - [x] **Local Zero-Config Development**: Seamless frontend and API development mode without requiring private cloud secrets.
 - [x] **Automated GitHub Actions CI**: Automated typechecking (`tsc --noEmit`) and production builds across Node.js 20 and 22.
-- [ ] **Automated Release Checksum Verification**: SHA-256 binary integrity validation for uploaded APK, EXE, and DEB binaries on direct download.
+- [x] **Cloud Storage & Self-Hosted Binary Ingestion**: Direct release publishing from Cloudflare R2, AWS S3, VPS, and custom CDNs for private-repository projects.
+- [x] **Global Publisher Identity & Universal Propagation**: Immutable per-release publisher fields backed by universal profile-level name propagation (`30m` grace window + `15d` cooldown).
+- [x] **Contained In-App Download Streaming**: Zero new-tab popups during binary downloads with resilient SSR/SPA route refresh hydration.
+- [ ] **Automated Sidecar Checksum Verification**: Real-time `.sha256` / `SHA256SUMS.txt` sidecar cross-checking on direct binary streams.
 - [ ] **Cross-Platform Deep Linking (`prople://`)**: Custom protocol handlers and Web Share Target registration for app sharing.
 - [ ] **Delta Update System**: Reducing bandwidth consumption on mobile networks by calculating byte diffs between APK versions.
 

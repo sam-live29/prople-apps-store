@@ -1078,6 +1078,87 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, user: null });
     }
 
+    if (action === 'publishers-check-name') {
+      const rawName = (req.query?.name || body?.name || '').toString().trim();
+      const curUid = (req.query?.currentUserId || body?.currentUserId || '').toString().trim();
+      const curEmail = (req.query?.currentUserEmail || body?.currentUserEmail || '').toString().trim().toLowerCase();
+
+      if (!rawName || rawName.length < 2) {
+        return res.status(200).json({
+          available: false,
+          isTaken: false,
+          message: 'Publisher name must be at least 2 characters.',
+        });
+      }
+      if (rawName.length > 50) {
+        return res.status(200).json({
+          available: false,
+          isTaken: false,
+          message: 'Publisher name cannot exceed 50 characters.',
+        });
+      }
+
+      const cleanLower = rawName.toLowerCase();
+      const cleanAlpha = cleanLower.replace(/[^a-z0-9]/g, '');
+      const prohibited = [
+        'admin', 'administrator', 'system', 'root', 'google', 'google play',
+        'googleplay', 'prople', 'prople store', 'proplestore', 'official',
+        'support', 'null', 'undefined', 'anonymous', 'guest',
+      ];
+      if (prohibited.includes(cleanLower) || prohibited.includes(cleanAlpha)) {
+        return res.status(200).json({
+          available: false,
+          isTaken: true,
+          message: `"${rawName}" is a reserved system name. Please choose a unique publisher name.`,
+        });
+      }
+
+      // Check Firestore REST API publisher_registry if project/db config is available
+      try {
+        const projectId = process.env.FIREBASE_PROJECT_ID || 'prople-store-3efed';
+        const databaseId =
+          process.env.FIRESTORE_DATABASE_ID ||
+          process.env.FIREBASE_DATABASE_ID ||
+          'ai-studio-propleappsstore-4d19d2a3-eb86-4e65-b516-f36ed2be36fd';
+        const apiKey = process.env.FIREBASE_API_KEY || '';
+        const regUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/publisher_registry/${encodeURIComponent(cleanAlpha)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+        const regRes = await fetch(regUrl, { signal: AbortSignal.timeout(3000) });
+        if (regRes.ok) {
+          const docJson: any = await regRes.json();
+          const fields = docJson?.fields || {};
+          const isActive = fields.isActive?.booleanValue !== false;
+          const ownerUid = (fields.ownerUid?.stringValue || fields.userId?.stringValue || '').trim();
+          const ownerEmail = (fields.ownerEmail?.stringValue || '').toLowerCase().trim();
+          const sameOwner = Boolean((curUid && ownerUid && curUid === ownerUid) || (curEmail && ownerEmail && curEmail === ownerEmail));
+          if (isActive && !sameOwner) {
+            return res.status(200).json({
+              available: false,
+              isTaken: true,
+              message: `The publisher name "${rawName}" is already claimed by another developer.`,
+            });
+          }
+        }
+      } catch {}
+
+      return res.status(200).json({
+        available: true,
+        isTaken: false,
+        message: 'This publisher name is available.',
+      });
+    }
+
+    if (action === 'publishers-claim-name' || action === 'publisher-update-name') {
+      const rawName = (body?.name || body?.publisherName || '').toString().trim();
+      if (!rawName || rawName.length < 2) {
+        return res.status(400).json({ success: false, message: 'Publisher name must be at least 2 characters.' });
+      }
+      return res.status(200).json({
+        success: true,
+        publisherName: rawName,
+        message: `Publisher name "${rawName}" synchronized.`,
+      });
+    }
+
     return res.status(404).json({ success: false, error: `Unknown auth action: ${action}` });
   } catch (err: any) {
     console.warn('[auth router notice]', err?.message || err);

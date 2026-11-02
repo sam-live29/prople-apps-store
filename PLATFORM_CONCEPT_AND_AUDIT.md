@@ -7,7 +7,7 @@
 > **Official Executive Contact**: `cloaktailsupport@gmail.com`  
 > **Developer Organization**: `cloaktailofficial@gmail.com`  
 > **Platform Support**: `prople.site@gmail.com`  
-> **Latest Architecture Audit**: October 30, 2026  
+> **Latest Architecture Audit**: November 2026  
 
 ---
 
@@ -21,15 +21,15 @@ Traditional application stores have evolved into congested, monopolistic gatekee
 4. **Sluggish, Bloated Client Interfaces**: Heavy web wrappers with multiple navigation spinners, layout shifts (CLS > 0.25), and aggressive user tracking.
 
 ### The Prople Store Solution
-**Prople Store** is engineered by **Cloaktail Industries** under the leadership of **Sahanur Molla** as an open, high-performance, developer-first multi-platform application store and web store supporting **Android, Apple (iOS/iPadOS), Mac, Linux, Windows, and Web/PWA applications**. It bridges the gap between raw open-source code repositories (such as GitHub Releases) and modern consumer-grade marketplace experiences.
+**Prople Store** is engineered by **Cloaktail Industries** under the leadership of **Sahanur Molla** as an open, high-performance, developer-first multi-platform application store and web store supporting **Android, Apple (iOS/iPadOS), Mac, Linux, Windows, and Web/PWA applications**. It connects both open-source repositories and proprietary cloud-hosted software releases directly to a modern consumer-grade marketplace experience.
 
 #### Core Pillars:
-1. **Multi-Platform Direct-to-Install Integrity**: Untouched, direct-from-source distribution across Android (APKs), Apple (iOS .ipa), Linux (Debian .deb, AppImage, RPM, Tarball), Mac (DMG, PKG, .app bundles), Windows (Executables & Installers), and Web/PWA applications. Every package retains its authentic developer cryptographic signature, with verifiable SHA-256 checksums matching upstream releases.
-2. **Zero-Friction GitHub Pipeline & Private Repo Support**: Developers publish directly from their public GitHub repositories or private repositories using direct package uploads, scoped token imports, or cloud storage mirrors without proprietary build repackaging.
-3. **Absolute Transparency & Data Safety**: Mandatory Data Safety declarations, clear permission auditing, zero hidden trackers, and no third-party data monetization.
-4. **Meritocratic Discovery (Zero Ad Injections)**: Discovery feeds and ranking matrices are governed strictly by Bayesian weighted ratings, real velocity, and genuine community feedback—never by paid search auctions or pay-to-play promotions.
-5. **Instantaneous Client Architecture**: Built with strict zero-CLS principles, persistent DOM retention, session-cached feeds, OS-aware detection algorithms, and Google Play / macOS Store-grade visual craftsmanship.
-6. **Resilient Publishing & Draft Lifecycle**: Safe, multi-step publishing wizard with robust local persistence, clear discard/save dialogs, and zero accidental data loss.
+1. **Multi-Platform Direct-to-Install Integrity**: Untouched, direct-from-source distribution across Android (APKs, AABs), Apple (iOS .ipa), Linux (Debian .deb, AppImage, RPM, Flatpak, Tarball), Mac (DMG, PKG, .app bundles), Windows (Executables & Installers), and Web/PWA applications. Every package retains its authentic developer cryptographic signature, with verifiable SHA-256 checksums and contained in-app downloading (zero new-tab redirects).
+2. **Multi-Source Cloud & GitHub Publishing**: Developers publish seamlessly from **Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs**, or **GitHub Releases**—allowing private-repository and proprietary software teams to distribute public binaries without exposing private codebases or tokens.
+3. **Global Publisher Identity & Immutability**: Each developer claims a globally unique Publisher Name in **Settings → Edit Profile** that universally propagates across every app and release they own (governed by a 30-minute grace window and 15-day cooldown), while remaining locked and immutable inside individual release forms to eliminate per-release name spoofing.
+4. **Absolute Transparency & Available Data**: Mandatory Data Safety declarations, granular categorized OS permissions, copyable SHA-256 digests, hardware/OS compatibility specs, authentic `0+`-baseline verified downloads, and zero third-party data monetization.
+5. **Meritocratic Discovery (Zero Ad Injections)**: Discovery feeds and ranking matrices across Home, Explore, Top Charts, Categories, and Meilisearch/fuzzy search are governed strictly by Bayesian weighted ratings, real velocity, and genuine community feedback—never by paid search auctions.
+6. **Instantaneous Client & Resilient Draft Lifecycle**: Built with strict zero-CLS principles, persistent DOM retention, session-cached feeds, OS-aware detection, and a stable 6-step publishing wizard with isolated local drafts for new apps vs. updates.
 
 ---
 
@@ -37,59 +37,61 @@ Traditional application stores have evolved into congested, monopolistic gatekee
 
 | Domain | Current Architecture | Audit Findings & Standard | Status |
 | :--- | :--- | :--- | :--- |
-| **Multi-Platform Binary Delivery** | Direct streaming via upstream GitHub release assets & mirrors (Android APK, Linux .deb/.AppImage/.rpm, Mac .dmg/.pkg/.zip, Windows .exe/.msi, iOS .ipa) | Binaries are served unaltered without injected middleware. Verified SHA-256 hashes are displayed and copyable for end-user auditing. Dynamic OS detection recommends the appropriate package format for the user's operating system (Android, Linux, macOS, or Windows). | Verified Pass |
-| **Developer Console** | Multi-Platform Repo Sync & Publishing Wizard (`AppConsole.tsx`) | Allows one-click release publishing, automated asset parsing, semantic changelog Markdown rendering, and instant catalog updates across Android, Linux, Mac, and Windows targets. | Verified Pass |
-| **Draft & Session Resilience** | Validated Draft Engine with explicit Discard/Save confirmation | Form state persists safely during active editing. Purges empty/stale drafts automatically, cleans all account/guest storage keys on discard, and prevents accidental modal hijacking. | Verified Pass |
-| **Security Auditing** | Google Play Protect verification flags, Keystore SHA-256 fingerprints, and Anti-Piracy Policy | App detail pages clearly delineate whether an app is verified, open-source, or independently signed. Built-in DMCA and anti-piracy submission pipelines. | Verified Pass |
-| **Ranking Engine** | Bayesian Weighted Algorithm ($\mu = 3.5, m = 5$) + Cold-Start Indie Boost | Eliminates review manipulation, prevents 1-review 5.0-star anomalies, and guarantees high visibility for verified newly published software. | Verified Pass |
-| **Feed Pacing** | 4-Stage Multi-Facet Slicing Engine with Strict Visual Rhythm | Alternates between 5 distinct UI archetypes (`column_stack`, `landscape_cards`, `squircle_row`, `video_cards`, `editorial_feature`) preventing visual fatigue. | Verified Pass |
-| **Client Performance** | Persistent DOM Shell + Memory-Cached Overlays (`z-[70]`) | Zero skeleton reloading on revisited tabs; instantaneous back-stack navigation without losing scroll offsets. Mobile gesture back navigation fully integrated. | Verified Pass |
-| **SEO & Entity Graph** | Schema.org `@graph` JSON-LD (`Organization` + `Person` + `WebApplication` + `WebSite`) | Directly ties Prople Store as a multi-platform app store to Cloaktail Industries and Founder Sahanur Molla across search engines and AI crawlers. | Verified Pass |
-| **Legal & Privacy** | GDPR, CCPA, and Google API Services Compliant Declarations | Clear user data deletion flows, zero third-party data broker sales, and transparent publisher responsibilities across all operating systems. | Verified Pass |
+| **Multi-Platform Binary Delivery** | Contained in-app direct streaming from Cloudflare R2, AWS S3, VPS, CDNs, and GitHub Releases (`.apk`, `.aab`, `.deb`, `.AppImage`, `.rpm`, `.dmg`, `.pkg`, `.exe`, `.msi`, `.ipa`, `.pwa`) | Binaries stream unaltered within the store session without opening external browser tabs (`target="_blank"` eliminated). Copyable SHA-256 hashes and dynamic client OS detection highlight compatible formats automatically. | Verified Pass |
+| **Developer Console & Identity** | 6-Step Publishing Wizard (`AppConsole.tsx`) + Global Publisher Registry (`publisherNameService.ts`) | Enforces immutable Publisher Name, Support Email, and Distribution Source per release. Profile name edits in Settings propagate universally across all owned apps/releases with 30m grace + 15d cooldown, plus quota limits (3 new apps/15m, 5 updates/1h). | Verified Pass |
+| **Draft & Session Resilience** | Isolated Draft Engine (New App vs. Per-App Update) with Save/Discard confirmation | Form state persists safely per account during active editing. Purges empty/stale drafts automatically, cleans guest/account storage keys on discard, and maintains zero layout shift across step transitions. | Verified Pass |
+| **Available Data & Transparency** | `AboutAppPage.tsx` + `DataSafetyPage.tsx` + `AppPermissionsPage.tsx` | Surfaces version, resolved binary size, required OS, CPU architectures, min RAM, SHA-256 checksum, Data Shared/Collected disclosures, deletion policy, categorized permissions, and authentic `0+` starting download counts. | Verified Pass |
+| **Security Auditing** | SSRF IP guardrails, SHA-256 checksum pinning, ownership isolation, and Anti-Piracy Policy | Blocks private/loopback URLs, enforces strict per-UID/email release ownership, validates S3 media magic bytes, and provides 24-hour DMCA quarantine pipelines. | Verified Pass |
+| **Ranking Engine** | Bayesian Weighted Algorithm ($\mu = 3.5, m = 5$) + Cold-Start Indie Boost | Eliminates review manipulation, prevents 1-review 5.0-star anomalies, and guarantees fair visibility for verified newly published software. | Verified Pass |
+| **Feed Pacing & Browsing** | 4-Stage Multi-Facet Slicing Engine + Guest-Accessible Discovery | Alternates between 5 distinct UI archetypes (`column_stack`, `landscape_cards`, `squircle_row`, `video_cards`, `editorial_feature`) across Home, Explore, Top Charts, Categories, and hybrid Meilisearch/client search with zero login walls. | Verified Pass |
+| **Client Performance & Routing** | Persistent DOM Shell + SSR/SPA Canonical Route Hydration (`/apps/:slug`) | Zero skeleton reloading on revisited tabs; clean 200 OK refreshes on deep-linked app detail, category, developer, and platform URLs across Express and serverless deployments. | Verified Pass |
+| **SEO & Entity Graph** | Schema.org JSON-LD (`SoftwareApplication` + `ItemList` + `BreadcrumbList`) + `/llms.txt` + MCP | Directly ties Prople Store as a multi-platform app store to Cloaktail Industries and Founder Sahanur Molla across search engines and AI crawlers. | Verified Pass |
+| **Legal & Privacy** | GDPR, CCPA/CPRA, ePrivacy, and Zero-Surveillance Governance | Exhaustive local storage & Firestore data inventory, 2FA (PBKDF2 + 6-digit Email OTP), 30-day data deletion SLA, and zero third-party data broker sales. | Verified Pass |
 
 ---
 
-## 3. Private Repository & Proprietary Build Architecture
+## 3. Private Repository & Cloud Storage Distribution Architecture
 
-To support proprietary and closed-source applications alongside open-source software, the platform supports a four-tier distribution architecture:
+Because private GitHub release asset URLs reject unauthenticated public downloads, Prople Store provides first-class support for **public cloud object storage and self-hosted binary delivery** alongside public GitHub repositories:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                      Binary Ingestion Strategies                       │
 ├───────────────────────┬─────────────────────────┬──────────────────────┤
-│ 1. Direct Upload      │ 2. Scoped Token Proxy   │ 3. Cloud Mirroring   │
-│ Drag-and-drop binary  │ Publisher provides PAT  │ Server imports once  │
-│ package (.apk/.exe)   │ with Releases:Read      │ to Store CDN storage │
-│ directly into Console │ Server streams via API  │ Bypasses rate limits │
+│ 1. Cloud Storage/CDN  │ 2. Self-Hosted VPS      │ 3. GitHub Releases   │
+│ Cloudflare R2, AWS S3 │ Direct HTTPS binary URL │ Public repo or split │
+│ GCS, Spaces, Backblaze│ from publisher server   │ public releases repo │
 └───────────────────────┴─────────────────────────┴──────────────────────┘
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Prople Store CDN / Proxy                        │
-│                 - High-speed global edge distribution                  │
-│                 - Verifiable SHA-256 cryptographic check               │
-│                 - Zero telemetry injection                             │
+│               Prople Store Resolution & Direct Delivery                │
+│        - Contained in-app download stream (no new-tab popups)          │
+│        - SSRF-validated HTTPS transport & format verification          │
+│        - Verifiable 64-char SHA-256 cryptographic checksum             │
+│        - Zero binary repackaging & zero telemetry injection            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Direct Package Upload (GFI-06)**: Developers upload binaries directly from their computer, hosted on Prople Store's private storage bucket. Source code remains completely private.
-2. **Authenticated Private Release Proxy (GFI-07)**: Developers provide a fine-grained token with `Releases: Read` scope. The backend securely authenticates with GitHub API without exposing credentials to client browsers.
-3. **One-Time Cloud Mirroring (GFI-09)**: Releases are mirrored once into CDN storage at publish time, ensuring user downloads are never throttled by GitHub rate limits (5,000 req/hr) or broken by token expiration.
-4. **Self-Hosted Storage / Custom CDN**: Developers can link direct binary URLs hosted on Cloudflare R2, AWS S3, Firebase Storage, or their own servers.
+1. **Public Cloud Object Storage (Recommended for Private Repos)**: Developers keep their source code in private repositories and upload compiled release binaries (`.apk`, `.exe`, `.dmg`, `.deb`, `.AppImage`, `.ipa`) to Cloudflare R2, AWS S3, or equivalent object storage, pasting the public HTTPS binary link into Step 1 of the Developer Console.
+2. **Self-Hosted VPS / Custom CDN**: Organizations distribute binaries directly from their own HTTPS release servers (`https://releases.example.com/app-v1.2.0.apk`) with full bandwidth control.
+3. **Split-Repository Release Pattern**: Teams with private source code publish compiled release artifacts to a dedicated public `releases` repository on GitHub for automated tag and asset resolution.
+4. **Public Open-Source GitHub Sync**: Open-source projects paste their GitHub repository or release tag URL to automatically extract release notes, version tags, and compiled platform binaries.
 
 ---
 
 ## 4. Platform Governance & Policy Matrix
 
 ### A. Developer Publishing Commitments
-- **Authentic Ownership**: Publishers must possess legitimate copyright, open-source license rights, or distribution authority for submitted applications.
+- **Authentic Ownership & Account Isolation**: Publishers must possess legitimate copyright, open-source license rights, or distribution authority. Only the verified owner account (`uid` / email) that registered an app can publish updates to it.
+- **Global Publisher Identity**: Publishers maintain one globally unique Publisher Name in **Edit Profile** (propagated universally across all releases, with a 30-minute adjustment window and 15-day cooldown). Publisher identity fields cannot be overridden per release.
 - **No Malicious Payloads**: Zero tolerance for hidden miners, adware backdoors, spyware, unauthorized access, or unverified permission escalations.
-- **Privacy Policy Mandate**: Every listed application must provide an authorized, reachable privacy policy URL or inherit the open-source repository's declared privacy disclosure.
-- **Transparency on Monetization**: Any in-app purchases, advertisements, or subscription tiers must be explicitly declared in metadata for consumer warning.
+- **Data Safety & Privacy Policy Mandate**: Every listed application must declare its Data Safety practices, disclose categorized OS permissions, and link an authorized HTTPS Privacy Policy and Terms (or adopt Prople Store's Zero-Surveillance policy for telemetry-free software).
 
-### B. User Protections & Privacy Rights
+### B. User Protections, Browsing & Privacy Rights
+- **Zero-Barrier Anonymous Browsing**: Users can browse, search, inspect package checksums/permissions, and download software with zero account registration.
 - **Zero Surveillance**: Prople Store does not sell, trade, or monetize personal user behavior, browsing histories, or query patterns to advertising networks.
-- **Instant Data Deletion**: Users can revoke Google OAuth permissions, clear local storage, or request full account and review deletion within 30 days via direct administrative channels.
+- **Instant Data Deletion**: Authenticated users can revoke Google OAuth permissions, clear local storage, or request full account, publisher profile, and review deletion within 30 days via direct administrative channels.
 - **Clean Device Removal**: All downloaded applications adhere to standard operating system package management (Android package manager, Linux dpkg/rpm/AppImage, macOS .app/.dmg, Windows uninstaller), enabling clean device-level removal with no residual platform locks.
 
 ---

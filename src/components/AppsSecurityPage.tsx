@@ -15,7 +15,7 @@ export default function AppsSecurityPage({
   onOpenTerms,
   onOpenDataSafety,
 }: AppsSecurityPageProps) {
-  const lastUpdated = 'September 23, 2026';
+  const lastUpdated = 'November 2026';
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   usePreserveScroll('apps-security', scrollRef);
 
@@ -91,16 +91,16 @@ export default function AppsSecurityPage({
             </p>
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
               <li>
-                <strong className="text-theme-text font-medium">Cryptographic Checksums:</strong> Release binaries are cross-referenced with upstream cryptographic digests (SHA-256) to ensure files have not been corrupted or modified in transit.
+                <strong className="text-theme-text font-medium">Cryptographic Checksums:</strong> Release binaries are pinned with 64-character SHA-256 digests so users can verify files have not been corrupted or modified in transit.
               </li>
               <li>
-                <strong className="text-theme-text font-medium">Source &amp; Release Attestation:</strong> Packages originate directly from authenticated publisher repositories and tagged releases (e.g. verified GitHub Releases, official developer builds), eliminating third-party repackaging risks.
+                <strong className="text-theme-text font-medium">Multi-Source Provenance Attestation:</strong> Packages originate directly from verified publisher cloud storage (Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs) or tagged public GitHub Releases, allowing private-repository developers to publish compiled binaries safely without exposing source code or third-party repackaging risks.
               </li>
               <li>
-                <strong className="text-theme-text font-medium">Package Format Validation:</strong> Only authentic executable binaries (.apk, .deb, .AppImage, .rpm, .tar.gz, .exe, .msi, .dmg, .pkg) matching strict format standards are accepted. HTML files, source-only archives, or non-executable web pages are rejected by our binary streaming engine.
+                <strong className="text-theme-text font-medium">Package Format Validation:</strong> Only authentic executable binaries (.apk, .aab, .ipa, .deb, .AppImage, .rpm, .flatpak, .tar.gz, .exe, .msi, .msix, .dmg, .pkg, .pwa) matching strict format standards are accepted. HTML error pages, source-only archives, or non-executable web wrappers are rejected by our resolution engine.
               </li>
               <li>
-                <strong className="text-theme-text font-medium">Package Signing Standards:</strong> Android APK releases must be signed with valid developer release keystores. Unsigned development debug packages or mismatched signature updates are blocked.
+                <strong className="text-theme-text font-medium">Package Signing Standards:</strong> Android APK/AAB and desktop releases retain their original developer cryptographic signatures without store wrapper modifications.
               </li>
             </ul>
           </section>
@@ -181,13 +181,16 @@ export default function AppsSecurityPage({
             </p>
             <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
               <li>
-                <strong className="text-theme-text font-medium">Publisher Authentication:</strong> While downloading is anonymous, publishing or updating applications requires an authenticated developer account with verified credentials.
+                <strong className="text-theme-text font-medium">Publisher Authentication:</strong> While browsing and downloading require zero login, publishing or updating applications requires an authenticated developer account (Google OAuth or 2FA Password + 6-digit Email OTP).
               </li>
               <li>
-                <strong className="text-theme-text font-medium">Strict Ownership Boundaries:</strong> Only the original author who registered an application repository can publish updates. Cross-developer hijacking is programmatically blocked at the database and API levels.
+                <strong className="text-theme-text font-medium">Immutable Release Attribution &amp; Global Publisher Sync:</strong> Inside the Developer Console release and update forms, Publisher Name, Support Email, and Distribution Source are strictly locked and immutable to prevent per-release spoofing. Globally unique Publisher Names are managed exclusively in Settings &rarr; Edit Profile and propagate universally across every app and release owned by that account (with a 30-minute adjustment grace window followed by a 15-day cooldown).
               </li>
               <li>
-                <strong className="text-theme-text font-medium">Burst &amp; Quota Safeguards:</strong> Anti-flood rate limiting is enforced on all release endpoints to mitigate automated submission attacks and denial-of-service attempts.
+                <strong className="text-theme-text font-medium">Strict Ownership Boundaries:</strong> Only the verified account (UID and email) that registered an application can publish updates to it. Cross-developer hijacking is programmatically blocked at both API and database levels.
+              </li>
+              <li>
+                <strong className="text-theme-text font-medium">Burst &amp; Quota Safeguards:</strong> Server-enforced submission quotas (maximum 3 new apps per 15 minutes and 5 release updates per hour) protect catalog integrity against automated flood attacks.
               </li>
             </ul>
           </section>

@@ -15,6 +15,7 @@ import { UserProfile, DeveloperKeystore } from '../types';
 import { generateDeveloperKeystore } from '../services/keystoreService';
 import { safeFetchJson } from '../utils/safeFetch';
 import { sanitizeErrorMessage } from '../utils/errorUtils';
+import { propagatePublisherNameToAllReleases } from '../services/publisherNameService';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -34,7 +35,7 @@ interface AuthContextType {
   resetPasswordWithCode: (email: string, code: string, newPassword: string) => Promise<void>;
   completeExternalAuth: (userData: any) => void;
   logout: () => Promise<void>;
-  updateUserProfile: (data: Partial<UserProfile>) => void;
+  updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   togglePublisherStatus: (status?: boolean) => void;
   isPublisherOfApp: (appDeveloper?: string, appId?: string, appDeveloperId?: string, appDeveloperEmail?: string) => boolean;
 }
@@ -88,97 +89,82 @@ export async function unifyUserProfileAcrossAccounts(
   const isAdminHardcoded = isAdminEmail(cleanEmail);
   const isDevHardcoded = isDeveloperEmail(cleanEmail);
 
-  let mergedIsPublisher = isDevHardcoded ? true : Boolean(initialData.isPublisher);
-  let mergedPublisherName = initialData.publisherName || initialData.displayName || cleanEmail.split('@')[0] || 'User';
-  let mergedPublisherRole = isAdminHardcoded ? 'Store Administrator' : (isDevHardcoded ? 'Verified Developer' : (mergedIsPublisher ? (initialData.publisherRole || 'Verified Developer') : 'Standard User'));
-  let mergedPublishedAppIds: string[] = Array.isArray(initialData.publishedAppIds) ? [...initialData.publishedAppIds] : [];
-  let mergedKeystore: DeveloperKeystore | undefined = initialData.developerKeystore;
-  let mergedBio = initialData.bio || '';
-  let mergedPhotoURL = initialData.photoURL;
-  let mergedLocation = initialData.location || 'Global';
-  let mergedAge = initialData.age || '25';
-  let mergedGender = initialData.gender || 'Prefer not to say';
-  let mergedPublisherBio = initialData.publisherBio || '';
-  let mergedPublisherWebsite = initialData.publisherWebsite || '';
-  let mergedPublisherGithub = initialData.publisherGithub || '';
-  let mergedPublisherLocation = initialData.publisherLocation || '';
-  let mergedLastNameChangedAt = initialData.lastNameChangedAt;
-  let mergedNameChangeSessionStartedAt = initialData.nameChangeSessionStartedAt;
-  let isVerifiedAdmin = isAdminHardcoded;
-
-  // 1. Authoritative server migration and rights transfer with 3.5s timeout protection
-  if (currentUid && cleanEmail) {
-    try {
-      const migratePromise = safeFetchJson<{
-        success: boolean;
-        user?: any;
-        totalAppsClaimed?: number;
-        isAdmin?: boolean;
-      }>('/api/auth/migrate-user-rights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUid,
-          userEmail: cleanEmail,
-          displayName: mergedPublisherName || initialData.displayName,
-          photoURL: mergedPhotoURL
-        })
-      });
-
-      const timeoutPromise = new Promise<{ ok: false; status: 0; data: null; error: string }>((resolve) => 
-        setTimeout(() => resolve({ ok: false, status: 0, data: null, error: 'timeout' }), 3500)
-      );
-
-      const res = await Promise.race([migratePromise, timeoutPromise]);
-
-      if (res.ok && res.data?.success && res.data.user) {
-        const u = res.data.user;
-        if (u.isPublisher) mergedIsPublisher = true;
-        if (u.publisherName && u.publisherName !== 'User' && u.publisherName !== 'Developer') {
-          mergedPublisherName = u.publisherName;
-        }
-        if (u.publisherRole) {
-          if (u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
-            mergedPublisherRole = 'Store Administrator';
-            isVerifiedAdmin = true;
-          } else if (u.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
-            mergedPublisherRole = 'Verified Developer';
-          }
-        }
-        if (u.developerKeystore && !mergedKeystore) {
-          mergedKeystore = u.developerKeystore;
-        }
-        if (Array.isArray(u.publishedAppIds)) {
-          mergedPublishedAppIds = Array.from(new Set([...mergedPublishedAppIds, ...u.publishedAppIds]));
-        }
-        if (u.publisherBio && !mergedPublisherBio) mergedPublisherBio = u.publisherBio;
-        if (u.publisherWebsite && !mergedPublisherWebsite) mergedPublisherWebsite = u.publisherWebsite;
-        if (u.publisherGithub && !mergedPublisherGithub) mergedPublisherGithub = u.publisherGithub;
-        if (u.publisherLocation && !mergedPublisherLocation) mergedPublisherLocation = u.publisherLocation;
-        if (u.bio && !mergedBio) mergedBio = u.bio;
-        if (u.photoURL && !mergedPhotoURL) mergedPhotoURL = u.photoURL;
-        if (u.lastNameChangedAt) mergedLastNameChangedAt = u.lastNameChangedAt;
-        if (u.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = u.nameChangeSessionStartedAt;
-        if (res.data.isAdmin) {
-          isVerifiedAdmin = true;
-          mergedPublisherRole = 'Store Administrator';
+  // Check local saved profile for the exact same account first so recent Settings edits are never lost
+  let localAccountData: Partial<UserProfile> | null = null;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const savedRaw = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+      if (savedRaw) {
+        const parsed = JSON.parse(savedRaw);
+        if (
+          parsed &&
+          ((currentUid && parsed.uid === currentUid) ||
+            (cleanEmail && (parsed.email || '').toLowerCase().trim() === cleanEmail))
+        ) {
+          localAccountData = parsed;
         }
       }
-    } catch (apiErr) {
-      console.warn('[AuthContext] Authoritative server rights transfer notice:', apiErr);
     }
-  }
+  } catch {}
 
-  // 2. Client-side Firestore check: directly read user's doc (fast, indexed, allowed by isOwner rule)
-  if (currentUid && db) {
+  let mergedIsPublisher = isDevHardcoded ? true : Boolean(initialData.isPublisher || localAccountData?.isPublisher);
+  let mergedPublisherName =
+    initialData.publisherName ||
+    localAccountData?.publisherName ||
+    initialData.displayName ||
+    localAccountData?.displayName ||
+    cleanEmail.split('@')[0] ||
+    'User';
+  let mergedPublisherRole = isAdminHardcoded
+    ? 'Store Administrator'
+    : isDevHardcoded
+    ? 'Verified Developer'
+    : mergedIsPublisher
+    ? initialData.publisherRole || localAccountData?.publisherRole || 'Verified Developer'
+    : 'Standard User';
+  let mergedPublishedAppIds: string[] = Array.from(
+    new Set([
+      ...(Array.isArray(localAccountData?.publishedAppIds) ? localAccountData!.publishedAppIds! : []),
+      ...(Array.isArray(initialData.publishedAppIds) ? initialData.publishedAppIds : []),
+    ])
+  );
+  let mergedKeystore: DeveloperKeystore | undefined = initialData.developerKeystore || localAccountData?.developerKeystore;
+  let mergedBio = initialData.bio || localAccountData?.bio || '';
+  let mergedPhotoURL = initialData.photoURL || localAccountData?.photoURL;
+  let mergedLocation = initialData.location || localAccountData?.location || 'Global';
+  let mergedAge = initialData.age || localAccountData?.age || '25';
+  let mergedGender = initialData.gender || localAccountData?.gender || 'Prefer not to say';
+  let mergedPublisherBio = initialData.publisherBio || localAccountData?.publisherBio || '';
+  let mergedPublisherWebsite = initialData.publisherWebsite || localAccountData?.publisherWebsite || '';
+  let mergedPublisherGithub = initialData.publisherGithub || localAccountData?.publisherGithub || '';
+  let mergedPublisherLocation = initialData.publisherLocation || localAccountData?.publisherLocation || '';
+  let mergedLastNameChangedAt = initialData.lastNameChangedAt || localAccountData?.lastNameChangedAt;
+  let mergedNameChangeSessionStartedAt = initialData.nameChangeSessionStartedAt || localAccountData?.nameChangeSessionStartedAt;
+  let isVerifiedAdmin = isAdminHardcoded;
+  let hasAuthoritativeClientName = Boolean(
+    (initialData.publisherName && initialData.lastNameChangedAt) ||
+    (localAccountData?.publisherName && localAccountData?.lastNameChangedAt)
+  );
+
+  // 1. Client-side Firestore check FIRST: directly read user's doc (fast, indexed, authorized by isOwner rule)
+  if (currentUid && db && auth.currentUser?.uid === currentUid) {
     try {
       const directDocSnap = await getDoc(doc(db, 'users', currentUid));
       if (directDocSnap && directDocSnap.exists()) {
         const data = directDocSnap.data();
         if (data) {
           if (data.isPublisher) mergedIsPublisher = true;
+          const docChangedAt = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
+          const localChangedAt = localAccountData?.lastNameChangedAt ? new Date(localAccountData.lastNameChangedAt).getTime() : 0;
+
           if (data.publisherName && data.publisherName !== 'User' && data.publisherName !== 'Developer') {
-            mergedPublisherName = data.publisherName;
+            // Only let remote doc override local name if remote doc is at least as recent as local edit
+            if (!localChangedAt || docChangedAt >= localChangedAt) {
+              mergedPublisherName = data.publisherName;
+              if (data.lastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
+              if (data.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
+            }
+            hasAuthoritativeClientName = true;
           }
           if (data.publisherRole) {
             if (data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
@@ -203,12 +189,87 @@ export async function unifyUserProfileAcrossAccounts(
           if (data.publisherWebsite && !mergedPublisherWebsite) mergedPublisherWebsite = data.publisherWebsite;
           if (data.publisherGithub && !mergedPublisherGithub) mergedPublisherGithub = data.publisherGithub;
           if (data.publisherLocation && !mergedPublisherLocation) mergedPublisherLocation = data.publisherLocation;
-          if (data.bio && !mergedBio) mergedBio = data.bio;
+          if (data.bio !== undefined && !initialData.bio) mergedBio = data.bio;
+          if (data.age && !initialData.age) mergedAge = data.age;
+          if (data.gender && !initialData.gender) mergedGender = data.gender;
+          if (data.location && !initialData.location) mergedLocation = data.location;
           if (data.photoURL && !mergedPhotoURL) mergedPhotoURL = data.photoURL;
         }
       }
     } catch (e) {
       console.warn('[AuthContext] Direct user doc check notice:', e);
+    }
+  }
+
+  // 2. Server migration and rights transfer with 3.5s timeout protection (never allowed to overwrite an authoritative client publisherName)
+  if (currentUid && cleanEmail) {
+    try {
+      const migratePromise = safeFetchJson<{
+        success: boolean;
+        user?: any;
+        totalAppsClaimed?: number;
+        isAdmin?: boolean;
+      }>('/api/auth/migrate-user-rights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUid,
+          userEmail: cleanEmail,
+          displayName: mergedPublisherName || initialData.displayName,
+          publisherName: mergedPublisherName,
+          lastNameChangedAt: mergedLastNameChangedAt,
+          nameChangeSessionStartedAt: mergedNameChangeSessionStartedAt,
+          photoURL: mergedPhotoURL
+        })
+      });
+
+      const timeoutPromise = new Promise<{ ok: false; status: 0; data: null; error: string }>((resolve) => 
+        setTimeout(() => resolve({ ok: false, status: 0, data: null, error: 'timeout' }), 3500)
+      );
+
+      const res = await Promise.race([migratePromise, timeoutPromise]);
+
+      if (res.ok && res.data?.success && res.data.user) {
+        const u = res.data.user;
+        if (u.isPublisher) mergedIsPublisher = true;
+        if (
+          !hasAuthoritativeClientName &&
+          u.publisherName &&
+          u.publisherName !== 'User' &&
+          u.publisherName !== 'Developer' &&
+          u.publisherName !== cleanEmail.split('@')[0]
+        ) {
+          mergedPublisherName = u.publisherName;
+        }
+        if (u.publisherRole) {
+          if (u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
+            mergedPublisherRole = 'Store Administrator';
+            isVerifiedAdmin = true;
+          } else if (u.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
+            mergedPublisherRole = 'Verified Developer';
+          }
+        }
+        if (u.developerKeystore && !mergedKeystore) {
+          mergedKeystore = u.developerKeystore;
+        }
+        if (Array.isArray(u.publishedAppIds)) {
+          mergedPublishedAppIds = Array.from(new Set([...mergedPublishedAppIds, ...u.publishedAppIds]));
+        }
+        if (u.publisherBio && !mergedPublisherBio) mergedPublisherBio = u.publisherBio;
+        if (u.publisherWebsite && !mergedPublisherWebsite) mergedPublisherWebsite = u.publisherWebsite;
+        if (u.publisherGithub && !mergedPublisherGithub) mergedPublisherGithub = u.publisherGithub;
+        if (u.publisherLocation && !mergedPublisherLocation) mergedPublisherLocation = u.publisherLocation;
+        if (u.bio && !mergedBio) mergedBio = u.bio;
+        if (u.photoURL && !mergedPhotoURL) mergedPhotoURL = u.photoURL;
+        if (!mergedLastNameChangedAt && u.lastNameChangedAt) mergedLastNameChangedAt = u.lastNameChangedAt;
+        if (!mergedNameChangeSessionStartedAt && u.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = u.nameChangeSessionStartedAt;
+        if (res.data.isAdmin) {
+          isVerifiedAdmin = true;
+          mergedPublisherRole = 'Store Administrator';
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[AuthContext] Authoritative server rights transfer notice:', apiErr);
     }
   }
 
@@ -306,7 +367,10 @@ async function syncUserProfileToFirestore(profile: UserProfile): Promise<void> {
         body: JSON.stringify({ 
           userId: profile.uid, 
           userEmail: profile.email,
-          displayName: profile.displayName,
+          displayName: profile.publisherName || profile.displayName,
+          publisherName: profile.publisherName || profile.displayName,
+          lastNameChangedAt: profile.lastNameChangedAt,
+          nameChangeSessionStartedAt: profile.nameChangeSessionStartedAt,
           photoURL: profile.photoURL
         })
       }).catch(() => {});
@@ -405,11 +469,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (email) {
           try {
             const unified = await unifyUserProfileAcrossAccounts(email, fbUser.uid, {
+              ...remoteData,
               email,
-              displayName: fbUser.displayName || remoteData.displayName,
-              photoURL: fbUser.photoURL || remoteData.photoURL,
+              displayName: remoteData.publisherName || remoteData.displayName || fbUser.displayName || undefined,
+              publisherName: remoteData.publisherName || undefined,
+              photoURL: remoteData.photoURL || fbUser.photoURL || undefined,
               isEmailVerified: fbUser.emailVerified || remoteData.isEmailVerified,
-              ...remoteData
             });
             setUser(unified);
             try {
@@ -486,7 +551,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           userId: user.uid,
           userEmail: user.email,
-          displayName: user.displayName,
+          displayName: user.publisherName || user.displayName,
+          publisherName: user.publisherName,
+          lastNameChangedAt: user.lastNameChangedAt,
+          nameChangeSessionStartedAt: user.nameChangeSessionStartedAt,
           photoURL: user.photoURL
         })
       }).then(res => {
@@ -494,17 +562,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const u = res.data.user;
           setUser(prev => {
             if (!prev || prev.uid !== user.uid) return prev;
+            const keepExistingName = Boolean(
+              prev.publisherName &&
+              prev.publisherName !== 'User' &&
+              prev.publisherName !== 'Developer'
+            );
             const updated: UserProfile = {
               ...prev,
-              isPublisher: Boolean(u.isPublisher),
-              publisherName: u.publisherName || prev.publisherName,
-              publisherRole: u.publisherRole || prev.publisherRole,
-              publishedAppIds: Array.isArray(u.publishedAppIds) ? u.publishedAppIds : prev.publishedAppIds,
-              developerKeystore: u.developerKeystore || prev.developerKeystore,
-              publisherBio: u.publisherBio || prev.publisherBio,
-              publisherWebsite: u.publisherWebsite || prev.publisherWebsite,
-              publisherGithub: u.publisherGithub || prev.publisherGithub,
-              publisherLocation: u.publisherLocation || prev.publisherLocation,
+              isPublisher: Boolean(prev.isPublisher || u.isPublisher),
+              publisherName: keepExistingName ? prev.publisherName : (u.publisherName || prev.publisherName),
+              displayName: keepExistingName ? (prev.publisherName || prev.displayName) : (u.publisherName || prev.displayName),
+              publisherRole: u.publisherRole === 'Store Administrator' ? 'Store Administrator' : (prev.publisherRole || u.publisherRole),
+              publishedAppIds: Array.isArray(u.publishedAppIds)
+                ? Array.from(new Set([...(prev.publishedAppIds || []), ...u.publishedAppIds]))
+                : prev.publishedAppIds,
+              developerKeystore: prev.developerKeystore || u.developerKeystore,
+              publisherBio: prev.publisherBio || u.publisherBio,
+              publisherWebsite: prev.publisherWebsite || u.publisherWebsite,
+              publisherGithub: prev.publisherGithub || u.publisherGithub,
+              publisherLocation: prev.publisherLocation || u.publisherLocation,
             };
             try {
               localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
@@ -1244,22 +1320,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateUserProfile = (data: Partial<UserProfile>) => {
+  const updateUserProfile = async (data: Partial<UserProfile>): Promise<void> => {
     const newName = (data.publisherName || data.displayName || '').trim();
 
     if (auth.currentUser && newName) {
       updateProfile(auth.currentUser, { displayName: newName }).catch(() => {});
     }
 
+    let resolvedUpdatedProfile: UserProfile | null = null;
+    let previousPublisherName = '';
+
     setUser((prev) => {
-      if (!prev) return null;
+      const baseProfile = prev || (() => {
+        try {
+          const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+          return saved ? JSON.parse(saved) : null;
+        } catch {
+          return null;
+        }
+      })();
+
+      if (!baseProfile) return null;
+
+      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || '').trim();
+
       const updated: UserProfile = { 
-        ...prev, 
+        ...baseProfile, 
         ...data,
-        displayName: newName || prev.publisherName || prev.displayName,
-        publisherName: newName || prev.publisherName || prev.displayName,
-        lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : prev.lastNameChangedAt,
-        nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : prev.nameChangeSessionStartedAt
+        displayName: newName || baseProfile.publisherName || baseProfile.displayName,
+        publisherName: newName || baseProfile.publisherName || baseProfile.displayName,
+        lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : baseProfile.lastNameChangedAt,
+        nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : baseProfile.nameChangeSessionStartedAt
       };
       if (!updated.developerKeystore && updated.uid) {
         updated.developerKeystore = generateDeveloperKeystore(updated.uid, updated.email, updated.displayName);
@@ -1267,25 +1358,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
       } catch {}
-      syncUserProfileToFirestore(updated);
 
-      // Systematically propagate the updated publisher name across all apps owned by this user
-      if (newName && (updated.uid || updated.email)) {
-        safeFetchJson('/api/publisher/update-name', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: updated.uid,
-            userEmail: updated.email,
-            publisherName: newName,
-            lastNameChangedAt: updated.lastNameChangedAt,
-            nameChangeSessionStartedAt: updated.nameChangeSessionStartedAt
-          })
-        }).catch(() => {});
-      }
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('prople_auth_sync');
+          bc.postMessage({ type: 'AUTH_SUCCESS', user: updated });
+          bc.close();
+        }
+      } catch {}
 
+      resolvedUpdatedProfile = updated;
       return updated;
     });
+
+    const targetProfile = resolvedUpdatedProfile as UserProfile | null;
+    if (targetProfile) {
+      await syncUserProfileToFirestore(targetProfile);
+
+      // Universally propagate the updated publisher name across all releases owned by this user
+      if (newName && (targetProfile.uid || targetProfile.email)) {
+        await propagatePublisherNameToAllReleases(
+          newName,
+          targetProfile.uid,
+          targetProfile.email,
+          previousPublisherName
+        );
+      }
+    }
   };
 
   const togglePublisherStatus = (status?: boolean) => {
