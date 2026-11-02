@@ -30,6 +30,7 @@ export const DEFAULT_ADMIN_EMAILS = [
   'sahanurmolla7076@gmail.com',
   'sahanurmolla2886@gmail.com',
   'sahanurmolla190@gmail.com',
+  'sahanurmolla1290@gmail.com',
   'prople.site@gmail.com',
   'prople.org@gmail.com',
   'cloaktailofficial@gmail.com',

@@ -178,12 +178,13 @@ export default function WriteReviewPage({
       addReview(targetApp.id, {
         userId: user?.uid || 'u-me',
         userName: user?.displayName || 'User',
+        userEmail: user?.email || undefined,
         userAvatar: user?.photoURL || undefined,
         rating,
         text: reviewText.trim() || 'Great app!',
         media: media.length > 0 ? media : undefined,
         helpfulCount: 0
-      });
+      } as any);
       showToast('Thank you! Your review has been posted.');
     }
 

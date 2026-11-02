@@ -3,7 +3,10 @@ import {
   doc as serverDoc, 
   getDoc as serverGetDoc, 
   getDocs as serverGetDocs, 
-  setDoc as serverSetDoc 
+  setDoc as serverSetDoc,
+  query as serverQuery,
+  where as serverWhere,
+  limit as serverLimit
 } from "firebase/firestore";
 
 export type AdminAction =
@@ -45,6 +48,7 @@ export const DEFAULT_ADMIN_EMAILS = [
   "sahanurmolla7076@gmail.com",
   "sahanurmolla2886@gmail.com",
   "sahanurmolla190@gmail.com",
+  "sahanurmolla1290@gmail.com",
   "prople.site@gmail.com",
   "cloaktailsupport@gmail.com",
   "cloaktailofficial@gmail.com",
@@ -196,7 +200,7 @@ export async function isAuthorizedAdmin(serverDb: any, email?: string | null, ui
       if (cleanUid) {
         const userDoc = await serverGetDoc(serverDoc(serverDb, "users", cleanUid));
         if (userDoc.exists()) {
-          const u = userDoc.data();
+          const u: any = userDoc.data();
           if (u.role === 'admin' || u.isAdmin === true || u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
             return true;
           }
@@ -210,7 +214,7 @@ export async function isAuthorizedAdmin(serverDb: any, email?: string | null, ui
         );
         const uSnap = await serverGetDocs(qUser);
         if (!uSnap.empty) {
-          const u = uSnap.docs[0].data();
+          const u: any = uSnap.docs[0].data();
           if (u.role === 'admin' || u.isAdmin === true || u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
             return true;
           }

@@ -825,6 +825,15 @@ export async function deleteAppFromFirestore(
  * Realtime listener for reviews of an app from Firestore subcollection
  */
 export function listenToAppReviews(appId: string, callback: (reviews: Review[]) => void): () => void {
+  // First, fetch from backend API to ensure reviews are immediately available even before snapshot attaches
+  safeFetchJson<{ success: boolean; reviews?: Review[] }>(`/api/apps/${encodeURIComponent(appId)}/reviews`)
+    .then(res => {
+      if (res.ok && res.data?.success && Array.isArray(res.data.reviews) && res.data.reviews.length > 0) {
+        callback(res.data.reviews);
+      }
+    })
+    .catch(() => {});
+
   const reviewsCol = collection(db, 'apps', appId, 'reviews');
   return onSnapshot(reviewsCol, (snap) => {
     const list: Review[] = [];
@@ -847,16 +856,35 @@ export function listenToAppReviews(appId: string, callback: (reviews: Review[]) 
       });
     });
 
-    // Sort by timestamp or date descending
-    list.sort((a, b) => {
-      const dateA = new Date(a.date).getTime() || 0;
-      const dateB = new Date(b.date).getTime() || 0;
-      return dateB - dateA;
-    });
-
-    callback(list);
+    if (list.length > 0) {
+      // Sort by timestamp or date descending
+      list.sort((a, b) => {
+        const dateA = new Date(a.date).getTime() || 0;
+        const dateB = new Date(b.date).getTime() || 0;
+        return dateB - dateA;
+      });
+      callback(list);
+    } else {
+      // If client snapshot returned 0 docs, re-check backend API in case client lacked token
+      safeFetchJson<{ success: boolean; reviews?: Review[] }>(`/api/apps/${encodeURIComponent(appId)}/reviews`)
+        .then(res => {
+          if (res.ok && res.data?.success && Array.isArray(res.data.reviews) && res.data.reviews.length > 0) {
+            callback(res.data.reviews);
+          } else {
+            callback([]);
+          }
+        })
+        .catch(() => callback([]));
+    }
   }, (err) => {
-    console.warn(`Snapshot listener error on reviews for ${appId}:`, err);
+    console.warn(`Snapshot listener notice on reviews for ${appId}:`, err?.message);
+    safeFetchJson<{ success: boolean; reviews?: Review[] }>(`/api/apps/${encodeURIComponent(appId)}/reviews`)
+      .then(res => {
+        if (res.ok && res.data?.success && Array.isArray(res.data.reviews)) {
+          callback(res.data.reviews);
+        }
+      })
+      .catch(() => {});
   });
 }
 
@@ -865,28 +893,54 @@ export function listenToAppReviews(appId: string, callback: (reviews: Review[]) 
  */
 export async function addAppReviewToFirestore(appId: string, review: Omit<Review, 'id'> & { id?: string }): Promise<string> {
   const reviewId = review.id || `rev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
+  const currentAuth = getCurrentAuthInfo();
 
-  await setDoc(revRef, {
-    id: reviewId,
-    appId,
-    appName: review.appName || appDetailsMock[appId]?.name || 'App',
-    appIcon: review.appIcon || appDetailsMock[appId]?.iconUrl || '',
-    userId: review.userId,
-    userName: review.userName,
-    userAvatar: review.userAvatar || '',
-    rating: review.rating,
-    date: review.date,
-    text: review.text,
-    helpfulCount: review.helpfulCount || 0,
-    notHelpfulCount: 0,
-    media: review.media || [],
-    reply: review.reply || null,
-    createdAt: serverTimestamp()
-  });
+  // 1. Primary: Server-authoritative review API
+  try {
+    const res = await safeFetchJson<{ success: boolean; reviewId?: string }>(`/api/apps/${encodeURIComponent(appId)}/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        review: { ...review, id: reviewId },
+        userId: review.userId || currentAuth.uid,
+        userEmail: (review as any).userEmail || currentAuth.email
+      })
+    });
+    if (res.ok && res.data?.success) {
+      syncAppRatingsAndReviews(appId).catch(() => {});
+      return res.data.reviewId || reviewId;
+    }
+  } catch (backendErr: any) {
+    console.warn('[StoreService] Backend review submit notice:', backendErr.message);
+  }
+
+  // 2. Client Firestore fallback
+  try {
+    const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
+    await setDoc(revRef, {
+      id: reviewId,
+      appId,
+      appName: review.appName || appDetailsMock[appId]?.name || 'App',
+      appIcon: review.appIcon || appDetailsMock[appId]?.iconUrl || '',
+      userId: review.userId || currentAuth.uid,
+      userName: review.userName,
+      userEmail: (review as any).userEmail || currentAuth.email || '',
+      userAvatar: review.userAvatar || '',
+      rating: review.rating,
+      date: review.date,
+      text: review.text,
+      helpfulCount: review.helpfulCount || 0,
+      notHelpfulCount: 0,
+      media: review.media || [],
+      reply: review.reply || null,
+      createdAt: serverTimestamp()
+    });
+  } catch (clientErr: any) {
+    console.warn('[StoreService] Client review write notice:', clientErr.message);
+  }
 
   // Recalculate app aggregates
-  await syncAppRatingsAndReviews(appId);
+  await syncAppRatingsAndReviews(appId).catch(() => {});
   return reviewId;
 }
 
@@ -894,13 +948,30 @@ export async function addAppReviewToFirestore(appId: string, review: Omit<Review
  * Update an existing review in Firestore
  */
 export async function updateAppReviewInFirestore(appId: string, reviewId: string, partial: Partial<Review>): Promise<void> {
-  const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
-  await updateDoc(revRef, {
-    ...partial,
-    updatedAt: serverTimestamp()
-  });
+  const currentAuth = getCurrentAuthInfo();
+
+  try {
+    await safeFetchJson(`/api/apps/${encodeURIComponent(appId)}/reviews/${encodeURIComponent(reviewId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        review: partial,
+        userId: currentAuth.uid,
+        userEmail: currentAuth.email
+      })
+    });
+  } catch {}
+
+  try {
+    const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
+    await updateDoc(revRef, {
+      ...partial,
+      updatedAt: serverTimestamp()
+    });
+  } catch {}
+
   if (partial.rating !== undefined) {
-    await syncAppRatingsAndReviews(appId);
+    await syncAppRatingsAndReviews(appId).catch(() => {});
   }
 }
 
@@ -908,24 +979,27 @@ export async function updateAppReviewInFirestore(appId: string, reviewId: string
  * Delete a review from Firestore
  */
 export async function deleteAppReviewFromFirestore(appId: string, reviewId: string): Promise<void> {
-  const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
+  const currentAuth = getCurrentAuthInfo();
+
+  // 1. Backend delete endpoint
   try {
+    await safeFetchJson(`/api/apps/${encodeURIComponent(appId)}/reviews/${encodeURIComponent(reviewId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentAuth.uid,
+        userEmail: currentAuth.email
+      })
+    });
+  } catch {}
+
+  // 2. Client delete fallback
+  try {
+    const revRef = doc(db, 'apps', appId, 'reviews', reviewId);
     await deleteDoc(revRef);
-  } catch (err) {
-    // Fallback to server-authoritative admin delete review endpoint
-    try {
-      const raw = localStorage.getItem('appmarket_user_profile');
-      const email = raw ? JSON.parse(raw)?.email : '';
-      if (email) {
-        await fetch('/api/admin/delete-review', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userEmail: email, appId, reviewId })
-        });
-      }
-    } catch {}
-  }
-  await syncAppRatingsAndReviews(appId);
+  } catch {}
+
+  await syncAppRatingsAndReviews(appId).catch(() => {});
 }
 
 /**

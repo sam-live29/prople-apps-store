@@ -1540,7 +1540,7 @@ export default function AdminControlPanel({
         // Process deletion in background and report status via toast
         (async () => {
           try {
-            await removeApp(app.id);
+            await removeApp(app.id, user?.uid, user?.email);
             AdminModerationService.deleteAppReport(app.id);
             refreshData();
             await refreshCatalogue();

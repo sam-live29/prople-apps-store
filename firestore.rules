@@ -21,6 +21,7 @@ service cloud.firestore {
           request.auth.token.email == 'sahanurmolla7076@gmail.com' ||
           request.auth.token.email == 'sahanurmolla2886@gmail.com' ||
           request.auth.token.email == 'sahanurmolla190@gmail.com' ||
+          request.auth.token.email == 'sahanurmolla1290@gmail.com' ||
           request.auth.token.email == 'prople.site@gmail.com' ||
           request.auth.token.email == 'prople.org@gmail.com' ||
           request.auth.token.email == 'cloaktailofficial@gmail.com' ||

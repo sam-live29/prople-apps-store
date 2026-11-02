@@ -1477,8 +1477,15 @@ async function startServer() {
             const docSnap = snap.docs[0];
             userUid = docSnap.id;
             const data = docSnap.data();
-            displayName = data.displayName || displayName;
+            displayName = data.publisherName || data.displayName || displayName;
             userAttributes = { ...data };
+          } else {
+            const directDoc = await serverGetDoc(serverDoc(serverDb, "users", userUid)).catch(() => null);
+            if (directDoc && directDoc.exists()) {
+              const data = directDoc.data();
+              displayName = data.publisherName || data.displayName || displayName;
+              userAttributes = { ...data };
+            }
           }
         } catch (dbErr: any) {
           console.warn("[Auth API] Firestore user query warning:", dbErr.message);
@@ -1488,7 +1495,8 @@ async function startServer() {
       const verifiedUser = {
         uid: userUid,
         email: cleanEmail,
-        displayName: displayName,
+        displayName: userAttributes.publisherName || userAttributes.displayName || displayName,
+        publisherName: userAttributes.publisherName || displayName,
         isEmailVerified: true,
         ...userAttributes,
       };
@@ -2847,6 +2855,345 @@ async function startServer() {
       seoAppsCache.clear();
       console.warn("[PublisherProfile] Notice updating publisher name across apps:", err.message);
       return res.json({ success: true, updatedCount: 0 });
+    }
+  });
+
+  // Authoritative user profile update endpoint (preserves name, bio, and settings across logouts)
+  app.post("/api/user/profile", async (req, res) => {
+    try {
+      const { 
+        userId, 
+        userEmail, 
+        displayName, 
+        publisherName, 
+        bio, 
+        age, 
+        gender, 
+        location, 
+        photoURL, 
+        lastNameChangedAt, 
+        nameChangeSessionStartedAt 
+      } = req.body || {};
+
+      if (!serverDb) {
+        return res.status(503).json({ success: false, error: "Database service unavailable" });
+      }
+
+      const cleanEmail = (userEmail || '').toLowerCase().trim();
+      const cleanUid = String(userId || '').trim();
+      if (!cleanEmail && !cleanUid) {
+        return res.status(400).json({ success: false, error: "Missing userId or userEmail" });
+      }
+
+      const finalName = (publisherName || displayName || '').trim();
+      const nowIso = new Date().toISOString();
+
+      const profilePayload: Record<string, any> = {
+        updatedAt: nowIso
+      };
+      if (cleanEmail) profilePayload.email = cleanEmail;
+      if (cleanUid) profilePayload.uid = cleanUid;
+      if (finalName) {
+        profilePayload.displayName = finalName;
+        profilePayload.publisherName = finalName;
+      }
+      if (bio !== undefined) profilePayload.bio = String(bio).trim();
+      if (age !== undefined) profilePayload.age = String(age);
+      if (gender !== undefined) profilePayload.gender = String(gender);
+      if (location !== undefined) profilePayload.location = String(location).trim();
+      if (photoURL !== undefined) profilePayload.photoURL = photoURL;
+      if (lastNameChangedAt !== undefined) profilePayload.lastNameChangedAt = lastNameChangedAt;
+      if (nameChangeSessionStartedAt !== undefined) profilePayload.nameChangeSessionStartedAt = nameChangeSessionStartedAt;
+
+      // 1. Write to users/{userId}
+      if (cleanUid) {
+        const userRef = serverDoc(serverDb, "users", cleanUid);
+        await serverSetDoc(userRef, profilePayload, { merge: true });
+      }
+
+      // 2. Also update any user docs matching this email
+      if (cleanEmail) {
+        try {
+          const q = serverQuery(
+            serverCollection(serverDb, "users"),
+            serverWhere("email", "==", cleanEmail),
+            serverLimit(5)
+          );
+          const snap = await serverGetDocs(q);
+          for (const d of snap.docs) {
+            if (d.id !== cleanUid) {
+              await serverSetDoc(serverDoc(serverDb, "users", d.id), profilePayload, { merge: true });
+            }
+          }
+        } catch (e: any) {
+          console.warn("[UserProfileAPI] Email query update notice:", e.message);
+        }
+      }
+
+      // 3. Propagate updated publisherName to apps published by this user
+      if (finalName && (cleanUid || cleanEmail)) {
+        try {
+          const appsCol = serverCollection(serverDb, "apps");
+          const snap = await serverGetDocs(appsCol);
+          for (const d of snap.docs) {
+            const data = d.data();
+            const devEmail = (data.developerEmail || '').toLowerCase().trim();
+            const pubEmail = (data.publisherEmail || '').toLowerCase().trim();
+            const ownerEmail = (data.ownerEmail || '').toLowerCase().trim();
+            const devInfoEmail = (data.developerInfo?.email || '').toLowerCase().trim();
+
+            const isOwner = Boolean(
+              (cleanUid && (data.owner === cleanUid || data.developerId === cleanUid || data.creatorUid === cleanUid)) ||
+              (cleanEmail && (devEmail === cleanEmail || pubEmail === cleanEmail || ownerEmail === cleanEmail || devInfoEmail === cleanEmail))
+            );
+
+            if (isOwner) {
+              const devInfo = data.developerInfo ? { ...data.developerInfo, publisherName: finalName } : { publisherName: finalName };
+              await serverSetDoc(serverDoc(serverDb, "apps", d.id), {
+                developer: finalName,
+                publisherName: finalName,
+                publishedBy: finalName,
+                developerInfo: devInfo,
+                updatedAt: nowIso
+              }, { merge: true });
+            }
+          }
+          serverAppsCatalogCache = [];
+          seoAppsCache.clear();
+        } catch (appErr: any) {
+          console.warn("[UserProfileAPI] App publisher update notice:", appErr.message);
+        }
+      }
+
+      return res.json({ success: true, profile: profilePayload });
+    } catch (err: any) {
+      console.error("[UserProfileAPI] Error saving profile:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Authoritative username uniqueness checker across users and registered apps/publishers
+  app.all("/api/auth/check-username", async (req, res) => {
+    try {
+      const name = (req.query?.name || req.body?.name || '').toString().trim();
+      const currentUserId = (req.query?.currentUserId || req.body?.currentUserId || '').toString().trim();
+      const currentUserEmail = (req.query?.currentUserEmail || req.body?.currentUserEmail || '').toString().toLowerCase().trim();
+
+      if (!name) {
+        return res.json({ available: false, isTaken: false, message: "Username is required." });
+      }
+
+      if (name.length < 2) {
+        return res.json({ available: false, isTaken: false, message: "Username must be at least 2 characters." });
+      }
+
+      const cleanLower = name.toLowerCase();
+      const reserved = ['admin', 'administrator', 'system', 'root', 'prople', 'prople store', 'official', 'support', 'null', 'undefined', 'anonymous', 'guest'];
+      if (reserved.includes(cleanLower)) {
+        return res.json({ available: false, isTaken: true, message: `"${name}" is a reserved system name.` });
+      }
+
+      if (!serverDb) {
+        return res.json({ available: true, isTaken: false, message: "Username is available." });
+      }
+
+      // Check users collection for matching displayName or publisherName
+      const usersCol = serverCollection(serverDb, "users");
+      const userSnap = await serverGetDocs(usersCol);
+      for (const d of userSnap.docs) {
+        if (currentUserId && d.id === currentUserId) continue;
+        const data = d.data();
+        const dEmail = (data.email || '').toLowerCase().trim();
+        if (currentUserEmail && dEmail === currentUserEmail) continue;
+
+        const dName = (data.displayName || '').toLowerCase().trim();
+        const dPub = (data.publisherName || '').toLowerCase().trim();
+        if (dName === cleanLower || dPub === cleanLower) {
+          return res.json({
+            available: false,
+            isTaken: true,
+            message: `"${name}" is already registered by another user. Please choose a unique name.`
+          });
+        }
+      }
+
+      // Check apps collection for conflicting publisher or developer name
+      const allApps = await getAllAppsServer(500);
+      for (const a of allApps) {
+        const devE = (a.developerEmail || a.ownerEmail || a.publisherEmail || '').toLowerCase().trim();
+        const ownerU = (a.owner || a.developerId || a.creatorUid || '').trim();
+        if ((currentUserEmail && devE === currentUserEmail) || (currentUserId && ownerU === currentUserId)) {
+          continue;
+        }
+
+        const aDev = (a.developer || '').toLowerCase().trim();
+        const aPub = (a.publisherName || '').toLowerCase().trim();
+        const aPubBy = (a.publishedBy || '').toLowerCase().trim();
+        if (aDev === cleanLower || aPub === cleanLower || aPubBy === cleanLower) {
+          return res.json({
+            available: false,
+            isTaken: true,
+            message: `"${name}" is already registered by an existing publisher. Please choose a unique name.`
+          });
+        }
+      }
+
+      return res.json({ available: true, isTaken: false, message: "Username is available." });
+    } catch (err: any) {
+      console.warn("[CheckUsername] Notice:", err.message);
+      return res.json({ available: true, isTaken: false, message: "Username is available." });
+    }
+  });
+
+  // Production-grade backend API: Fetch reviews for an app
+  app.get("/api/apps/:appId/reviews", async (req, res) => {
+    try {
+      const { appId } = req.params;
+      if (!serverDb) {
+        return res.json({ success: true, reviews: [] });
+      }
+      const reviewsCol = serverCollection(serverDb, "apps", appId, "reviews");
+      const snap = await serverGetDocs(reviewsCol);
+      const reviews: any[] = [];
+      snap.forEach(d => {
+        reviews.push({ id: d.id, ...d.data() });
+      });
+      reviews.sort((a, b) => {
+        const dateA = new Date(a.date || a.createdAt).getTime() || 0;
+        const dateB = new Date(b.date || b.createdAt).getTime() || 0;
+        return dateB - dateA;
+      });
+      return res.json({ success: true, count: reviews.length, reviews });
+    } catch (err: any) {
+      console.warn("[Backend Reviews] Error fetching reviews:", err.message);
+      return res.json({ success: true, reviews: [] });
+    }
+  });
+
+  // Production-grade backend API: Submit a new review
+  app.post("/api/apps/:appId/reviews", async (req, res) => {
+    try {
+      const { appId } = req.params;
+      const { review, userId, userEmail } = req.body || {};
+      if (!review) {
+        return res.status(400).json({ success: false, error: "Missing review data." });
+      }
+      if (!serverDb) {
+        return res.status(503).json({ success: false, error: "Database service unavailable." });
+      }
+
+      const reviewId = review.id || `rev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const revRef = serverDoc(serverDb, "apps", appId, "reviews", reviewId);
+      const nowIso = new Date().toISOString();
+
+      const cleanReview = sanitizeObject({
+        id: reviewId,
+        appId,
+        appName: review.appName || 'App',
+        appIcon: review.appIcon || '',
+        userId: userId || review.userId || 'u-user',
+        userName: review.userName || 'Marketplace User',
+        userEmail: userEmail || review.userEmail || '',
+        userAvatar: review.userAvatar || '',
+        rating: typeof review.rating === 'number' ? review.rating : 5,
+        date: review.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        text: (review.text || '').trim().slice(0, 1000),
+        helpfulCount: typeof review.helpfulCount === 'number' ? review.helpfulCount : 0,
+        media: Array.isArray(review.media) ? review.media : [],
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+
+      await serverSetDoc(revRef, cleanReview, { merge: true });
+
+      // Recalculate app ratings aggregate
+      try {
+        const allRevsSnap = await serverGetDocs(serverCollection(serverDb, "apps", appId, "reviews"));
+        let totalRating = 0;
+        let count = 0;
+        const breakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        allRevsSnap.forEach(d => {
+          const r = d.data();
+          const rate = Math.round(Number(r.rating) || 5);
+          const clamped = Math.max(1, Math.min(5, rate));
+          breakdown[clamped] = (breakdown[clamped] || 0) + 1;
+          totalRating += (Number(r.rating) || 5);
+          count++;
+        });
+        const average = count > 0 ? Number((totalRating / count).toFixed(1)) : 5.0;
+        const appRef = serverDoc(serverDb, "apps", appId);
+        await serverSetDoc(appRef, {
+          rating: average,
+          ratingsCount: count,
+          reviewsCount: `${count} review${count === 1 ? '' : 's'}`,
+          ratingBreakdown: breakdown,
+          updatedAt: nowIso
+        }, { merge: true });
+        serverAppsCatalogCache = [];
+      } catch (aggErr: any) {
+        console.warn("[Backend Reviews] Rating aggregate recalculation notice:", aggErr.message);
+      }
+
+      return res.json({ success: true, reviewId, review: cleanReview });
+    } catch (err: any) {
+      console.error("[Backend Reviews] Error creating review:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Production-grade backend API: Delete review
+  app.delete("/api/apps/:appId/reviews/:reviewId", async (req, res) => {
+    try {
+      const { appId, reviewId } = req.params;
+      const userId = (req.body?.userId || req.query?.userId || req.headers['x-user-id'] || '').toString().trim();
+      const userEmail = (req.body?.userEmail || req.query?.userEmail || req.headers['x-user-email'] || '').toString().trim();
+
+      if (!serverDb) {
+        return res.status(503).json({ success: false, error: "Database service unavailable." });
+      }
+
+      const revRef = serverDoc(serverDb, "apps", appId, "reviews", reviewId);
+      const snap = await serverGetDoc(revRef);
+      if (snap.exists()) {
+        const revData = snap.data();
+        const isAdmin = await isAuthorizedAdmin(serverDb, userEmail, userId);
+        const isAuthor = (userId && revData.userId === userId) || (userEmail && revData.userEmail === userEmail);
+        if (!isAdmin && !isAuthor) {
+          return res.status(403).json({ success: false, error: "Forbidden: You are not authorized to delete this review." });
+        }
+        await serverDeleteDoc(revRef);
+      }
+
+      // Recalculate aggregates
+      try {
+        const allRevsSnap = await serverGetDocs(serverCollection(serverDb, "apps", appId, "reviews"));
+        let totalRating = 0;
+        let count = 0;
+        const breakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        allRevsSnap.forEach(d => {
+          const r = d.data();
+          const rate = Math.round(Number(r.rating) || 5);
+          const clamped = Math.max(1, Math.min(5, rate));
+          breakdown[clamped] = (breakdown[clamped] || 0) + 1;
+          totalRating += (Number(r.rating) || 5);
+          count++;
+        });
+        const average = count > 0 ? Number((totalRating / count).toFixed(1)) : 5.0;
+        const appRef = serverDoc(serverDb, "apps", appId);
+        await serverSetDoc(appRef, {
+          rating: average,
+          ratingsCount: count,
+          reviewsCount: `${count} review${count === 1 ? '' : 's'}`,
+          ratingBreakdown: breakdown,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        serverAppsCatalogCache = [];
+      } catch {}
+
+      return res.json({ success: true, deletedReviewId: reviewId });
+    } catch (err: any) {
+      console.error("[Backend Reviews] Error deleting review:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 

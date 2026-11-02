@@ -52,10 +52,12 @@ export const isDeveloperEmail = (email?: string): boolean => {
   if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
   return (
     norm === 'ventureforge.corp@gmail.com' ||
+    norm === 'sahanurmolla077@gmail.com' ||
     norm === 'sahanurmolla1777@gmail.com' ||
     norm === 'sahanurmolla7076@gmail.com' ||
     norm === 'sahanurmolla2886@gmail.com' ||
     norm === 'sahanurmolla190@gmail.com' ||
+    norm === 'sahanurmolla1290@gmail.com' ||
     norm === 'prople.site@gmail.com' ||
     norm.endsWith('@prople.co.in') ||
     norm === 'prople.org@gmail.com' ||
@@ -71,10 +73,12 @@ export const isAdminEmail = (email?: string): boolean => {
   if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
   if (
     norm === 'ventureforge.corp@gmail.com' ||
+    norm === 'sahanurmolla077@gmail.com' ||
     norm === 'sahanurmolla1777@gmail.com' ||
     norm === 'sahanurmolla7076@gmail.com' ||
     norm === 'sahanurmolla2886@gmail.com' ||
     norm === 'sahanurmolla190@gmail.com' ||
+    norm === 'sahanurmolla1290@gmail.com' ||
     norm === 'prople.site@gmail.com' ||
     norm === 'prople.org@gmail.com' ||
     norm === 'cloaktailofficial@gmail.com' ||
