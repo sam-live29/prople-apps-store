@@ -16,6 +16,7 @@ const TRUSTED_ORIGIN_PATTERNS = [
 
 const DEFAULT_ADMIN_EMAILS = [
   'ventureforge.corp@gmail.com',
+  'sahanurmolla077@gmail.com',
   'sahanurmolla7076@gmail.com',
   'sahanurmolla2886@gmail.com',
   'sahanurmolla190@gmail.com',

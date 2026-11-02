@@ -40,6 +40,7 @@ export const ALL_ADMIN_ACTIONS: AdminAction[] = [
 
 export const DEFAULT_ADMIN_EMAILS = [
   "ventureforge.corp@gmail.com",
+  "sahanurmolla077@gmail.com",
   "sahanurmolla1777@gmail.com",
   "sahanurmolla7076@gmail.com",
   "sahanurmolla2886@gmail.com",
@@ -80,24 +81,29 @@ export async function syncAdminCacheFromFirestore(serverDb: any): Promise<void> 
 
     snap.forEach(d => {
       const data = d.data();
-      const email = (data.email || (d.id.includes('@') ? d.id : '')).toLowerCase().trim();
+      const idKey = d.id.toLowerCase().trim();
+      const extractedEmail = (
+        data.email || 
+        data.accountEmail || 
+        data.userEmail || 
+        (d.id.includes('@') ? d.id : '')
+      ).toLowerCase().trim();
       const uid = (data.uid || (!d.id.includes('@') ? d.id : '')).trim();
-      const role = data.role || 'Store Administrator';
-      const permissions = Array.isArray(data.permissions) && data.permissions.length > 0
-        ? data.permissions
-        : ALL_ADMIN_ACTIONS;
 
       const rec: ServerAdminRecord = {
         uid: uid || undefined,
-        email,
-        role: role === 'Super Admin' ? 'Super Admin' : (role === 'Platform Moderator' ? 'Platform Moderator' : 'Store Administrator'),
-        permissions,
-        grantedAt: data.grantedAt,
+        email: extractedEmail || idKey,
+        role: 'Store Administrator',
+        permissions: ALL_ADMIN_ACTIONS,
+        grantedAt: data.grantedAt || new Date().toISOString(),
         isActive: data.isActive !== false
       };
 
-      if (email) newMap.set(email, rec);
+      if (extractedEmail) newMap.set(extractedEmail, rec);
       if (uid) newMap.set(uid, rec);
+      newMap.set(idKey, rec);
+      const sanitizedEmail = extractedEmail ? extractedEmail.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+      if (sanitizedEmail) newMap.set(sanitizedEmail, rec);
     });
 
     cachedAdmins = newMap;
@@ -138,6 +144,7 @@ export async function bootstrapDefaultAdmins(serverDb: any): Promise<void> {
 export async function isAuthorizedAdmin(serverDb: any, email?: string | null, uid?: string | null): Promise<boolean> {
   const normEmail = (email || '').toLowerCase().trim();
   const cleanUid = (uid || '').trim();
+  const sanitizedEmailKey = normEmail ? normEmail.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
 
   if (normEmail && DEFAULT_ADMIN_EMAILS.includes(normEmail)) return true;
 
@@ -157,18 +164,36 @@ export async function isAuthorizedAdmin(serverDb: any, email?: string | null, ui
   if (normEmail && envAdmins.includes(normEmail)) return true;
 
   // Check cached Firestore admins
-  if (normEmail && cachedAdmins.has(normEmail) && cachedAdmins.get(normEmail)?.isActive) return true;
+  if (normEmail && (cachedAdmins.has(normEmail) || (sanitizedEmailKey && cachedAdmins.has(sanitizedEmailKey)))) {
+    const r = cachedAdmins.get(normEmail) || cachedAdmins.get(sanitizedEmailKey);
+    if (r?.isActive) return true;
+  }
   if (cleanUid && cachedAdmins.has(cleanUid) && cachedAdmins.get(cleanUid)?.isActive) return true;
 
   // Query Firestore if not found in memory
   if (serverDb) {
     await syncAdminCacheFromFirestore(serverDb);
-    if (normEmail && cachedAdmins.has(normEmail) && cachedAdmins.get(normEmail)?.isActive) return true;
+    if (normEmail && (cachedAdmins.has(normEmail) || (sanitizedEmailKey && cachedAdmins.has(sanitizedEmailKey)))) {
+      const r = cachedAdmins.get(normEmail) || cachedAdmins.get(sanitizedEmailKey);
+      if (r?.isActive) return true;
+    }
     if (cleanUid && cachedAdmins.has(cleanUid) && cachedAdmins.get(cleanUid)?.isActive) return true;
 
+    // Check direct doc in admins collection by UID or email
+    try {
+      if (cleanUid) {
+        const directAdminUid = await serverGetDoc(serverDoc(serverDb, "admins", cleanUid));
+        if (directAdminUid.exists() && directAdminUid.data()?.isActive !== false) return true;
+      }
+      if (normEmail) {
+        const directAdminEmail = await serverGetDoc(serverDoc(serverDb, "admins", sanitizedEmailKey || normEmail));
+        if (directAdminEmail.exists() && directAdminEmail.data()?.isActive !== false) return true;
+      }
+    } catch {}
+
     // Check user document for role == 'admin' or publisherRole == 'Store Administrator'
-    if (cleanUid) {
-      try {
+    try {
+      if (cleanUid) {
         const userDoc = await serverGetDoc(serverDoc(serverDb, "users", cleanUid));
         if (userDoc.exists()) {
           const u = userDoc.data();
@@ -176,8 +201,22 @@ export async function isAuthorizedAdmin(serverDb: any, email?: string | null, ui
             return true;
           }
         }
-      } catch {}
-    }
+      }
+      if (normEmail) {
+        const qUser = serverQuery(
+          serverCollection(serverDb, "users"),
+          serverWhere("email", "==", normEmail),
+          serverLimit(1)
+        );
+        const uSnap = await serverGetDocs(qUser);
+        if (!uSnap.empty) {
+          const u = uSnap.docs[0].data();
+          if (u.role === 'admin' || u.isAdmin === true || u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
+            return true;
+          }
+        }
+      }
+    } catch {}
   }
 
   return false;
@@ -185,7 +224,7 @@ export async function isAuthorizedAdmin(serverDb: any, email?: string | null, ui
 
 /**
  * Validates if an administrator has permission to perform an action under the shared RBAC model.
- * All verified store administrators have equal permissions.
+ * Complete equality across all verified store administrators.
  */
 export async function hasAdminPermission(
   serverDb: any,
@@ -194,16 +233,6 @@ export async function hasAdminPermission(
   uid?: string | null
 ): Promise<boolean> {
   const isAdmin = await isAuthorizedAdmin(serverDb, email, uid);
-  if (!isAdmin) return false;
-
-  const normEmail = (email || '').toLowerCase().trim();
-  const cleanUid = (uid || '').trim();
-
-  const record = (normEmail ? cachedAdmins.get(normEmail) : null) || (cleanUid ? cachedAdmins.get(cleanUid) : null);
-  if (record && Array.isArray(record.permissions)) {
-    return record.permissions.includes(action);
-  }
-
-  // Default equality: All administrators have equal access across administrative actions
-  return true;
+  // Complete equality: all authorized administrators have permission for all administrative actions
+  return isAdmin;
 }

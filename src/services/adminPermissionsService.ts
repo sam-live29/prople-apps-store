@@ -25,6 +25,7 @@ export interface AdminAccountRecord {
 // Built-in verified administrator emails (equality across all admins)
 export const DEFAULT_ADMIN_EMAILS = [
   'ventureforge.corp@gmail.com',
+  'sahanurmolla077@gmail.com',
   'sahanurmolla1777@gmail.com',
   'sahanurmolla7076@gmail.com',
   'sahanurmolla2886@gmail.com',
@@ -94,26 +95,29 @@ export function initAdminPermissionsSync() {
     onSnapshot(collection(db, 'admins'), (snapshot) => {
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
-        if (data && (data.email || docSnap.id.includes('@'))) {
-          const email = (data.email || (docSnap.id.includes('@') ? docSnap.id : '')).toLowerCase().trim();
-          const uid = (data.uid || (!docSnap.id.includes('@') ? docSnap.id : '')).trim();
-          const role = (data.role || 'Store Administrator') as AdminAccountRecord['role'];
-          const permissions = Array.isArray(data.permissions) && data.permissions.length > 0
-            ? data.permissions
-            : (ROLE_PERMISSIONS[role] || ALL_ADMIN_ACTIONS);
+        const idKey = docSnap.id.toLowerCase().trim();
+        const extractedEmail = (
+          data.email || 
+          data.accountEmail || 
+          data.userEmail || 
+          (docSnap.id.includes('@') ? docSnap.id : '')
+        ).toLowerCase().trim();
+        const uid = (data.uid || (!docSnap.id.includes('@') ? docSnap.id : '')).trim();
 
-          const record: AdminAccountRecord = {
-            uid: uid || undefined,
-            email,
-            role: role === 'Super Admin' ? 'Super Admin' : (role === 'Platform Moderator' ? 'Platform Moderator' : 'Store Administrator'),
-            permissions,
-            grantedAt: data.grantedAt || data.createdAt,
-            isActive: data.isActive !== false
-          };
+        const record: AdminAccountRecord = {
+          uid: uid || undefined,
+          email: extractedEmail || idKey,
+          role: 'Store Administrator',
+          permissions: ALL_ADMIN_ACTIONS,
+          grantedAt: data.grantedAt || data.createdAt || new Date().toISOString(),
+          isActive: data.isActive !== false
+        };
 
-          if (email) dynamicAdminsByEmail.set(email, record);
-          if (uid) dynamicAdminsByUid.set(uid, record);
-        }
+        if (extractedEmail) dynamicAdminsByEmail.set(extractedEmail, record);
+        if (uid) dynamicAdminsByUid.set(uid, record);
+        dynamicAdminsByEmail.set(idKey, record);
+        const sanitizedKey = extractedEmail ? extractedEmail.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+        if (sanitizedKey) dynamicAdminsByEmail.set(sanitizedKey, record);
       });
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('admin:permissions:updated'));
@@ -185,18 +189,8 @@ export const AdminPermissionsService = {
     action: AdminAction,
     user?: { email?: string; uid?: string; role?: string; isAdmin?: boolean; publisherRole?: string } | null
   ): boolean {
-    if (!this.isAdmin(user)) return false;
-
-    const email = (user?.email || '').toLowerCase().trim();
-    const uid = (user?.uid || '').trim();
-
-    const record = (email ? dynamicAdminsByEmail.get(email) : null) || (uid ? dynamicAdminsByUid.get(uid) : null);
-    if (record) {
-      return record.permissions.includes(action);
-    }
-
-    // Default: All verified admins have full equality across all admin actions
-    return true;
+    // Complete equality: all authorized administrators have permission for all actions
+    return this.isAdmin(user);
   },
 
   /**
