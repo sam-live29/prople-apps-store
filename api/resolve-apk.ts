@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
   /^https:\/\/([a-z0-9-]+\.)?prople\.(co\.in|store)$/i,
@@ -315,6 +317,7 @@ async function probeDirectBinaryUrl(initialUrl: string): Promise<{
   size: number;
   dispositionFileName: string;
   contentType: string;
+  headers?: any;
 }> {
   let currentUrl = initialUrl;
   const fetchHeaders: Record<string, string> = {
@@ -387,6 +390,7 @@ async function probeDirectBinaryUrl(initialUrl: string): Promise<{
       size: totalSize,
       dispositionFileName,
       contentType,
+      headers: resp.headers,
     };
   } catch {
     return {
@@ -395,8 +399,119 @@ async function probeDirectBinaryUrl(initialUrl: string): Promise<{
       size: 0,
       dispositionFileName: '',
       contentType: '',
+      headers: undefined,
     };
   }
+}
+
+async function computeCloudSha256(
+  binaryUrl: string,
+  headers?: any,
+  binaryName?: string,
+  releaseNotes?: string
+): Promise<string> {
+  if (!binaryUrl) return '';
+  // 1. Cloud storage checksum headers (AWS S3, Cloudflare R2, Digest RFC 3230)
+  if (headers && typeof headers.get === 'function') {
+    const amzSha = headers.get('x-amz-checksum-sha256');
+    if (amzSha) {
+      try {
+        const buf = Buffer.from(amzSha.trim(), 'base64');
+        if (buf.length === 32) return buf.toString('hex').toLowerCase();
+      } catch {}
+    }
+    const metaSha = headers.get('x-amz-meta-sha256') || headers.get('x-checksum-sha256');
+    if (metaSha && /^[a-fA-F0-9]{64}$/.test(metaSha.trim())) {
+      return metaSha.trim().toLowerCase();
+    }
+    const digest = headers.get('digest');
+    if (digest) {
+      const match = digest.match(/sha-256=([^,;\s]+)/i);
+      if (match?.[1]) {
+        try {
+          const buf = Buffer.from(match[1].trim(), 'base64');
+          if (buf.length === 32) return buf.toString('hex').toLowerCase();
+        } catch {}
+        if (/^[a-fA-F0-9]{64}$/.test(match[1].trim())) {
+          return match[1].trim().toLowerCase();
+        }
+      }
+    }
+  }
+
+  // 2. Release notes match if provided
+  if (releaseNotes) {
+    if (binaryName) {
+      const cleanName = binaryName.trim().toLowerCase();
+      for (const line of releaseNotes.split(/\r?\n/)) {
+        if (line.toLowerCase().includes(cleanName)) {
+          const m = line.match(/\b([a-fA-F0-9]{64})\b/);
+          if (m) return m[1].toLowerCase();
+        }
+      }
+    }
+    const labeled = releaseNotes.match(/(?:sha[-_]?256|checksum|sha2)\s*[:=]\s*[`"']?([a-fA-F0-9]{64})[`"']?/i);
+    if (labeled) return labeled[1].toLowerCase();
+  }
+
+  // 3. Sidecar file probe (${binaryUrl}.sha256)
+  try {
+    const sidecarCandidate = `${binaryUrl.split('?')[0]}.sha256`;
+    const scRes = await fetch(sidecarCandidate, {
+      signal: AbortSignal.timeout(2500),
+      headers: { 'User-Agent': 'PropleStore-SHA-Verifier/1.0' },
+    });
+    if (scRes.ok) {
+      const scText = await scRes.text();
+      const match = scText.match(/\b([a-fA-F0-9]{64})\b/);
+      if (match) return match[1].toLowerCase();
+    }
+  } catch {}
+
+  // 4. Ephemeral In-Memory Streaming Hash (discards chunks immediately, 0 disk storage)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const streamRes = await fetch(binaryUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PropleStore-SHA-Verifier/1.0',
+        Accept: '*/*',
+      },
+    });
+    if (streamRes.ok && streamRes.body) {
+      const len = streamRes.headers.get('content-length');
+      const parsedLen = len ? parseInt(len, 10) : 0;
+      if (!len || parsedLen <= 150 * 1024 * 1024) {
+        const hash = crypto.createHash('sha256');
+        const reader = (streamRes.body as ReadableStream<Uint8Array>).getReader();
+        let total = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            total += value.length;
+            if (total > 150 * 1024 * 1024) {
+              try {
+                await reader.cancel();
+              } catch {}
+              break;
+            }
+            hash.update(Buffer.from(value));
+          }
+        }
+        clearTimeout(timeout);
+        return hash.digest('hex').toLowerCase();
+      } else {
+        try {
+          await streamRes.body.cancel();
+        } catch {}
+      }
+    }
+    clearTimeout(timeout);
+  } catch {}
+
+  return '';
 }
 
 export default async function handler(req: any, res: any) {
@@ -450,6 +565,7 @@ export default async function handler(req: any, res: any) {
 
       if ((finalDetails.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
         const storageProvider = detectStorageProvider(cleanUrl);
+        const sha256 = await computeCloudSha256(cleanUrl, probed.headers, bestCandidateName);
         return res.status(200).json({
           success: true,
           isBinary: true,
@@ -464,6 +580,7 @@ export default async function handler(req: any, res: any) {
           assetName: bestCandidateName,
           size: probed.size || undefined,
           sizeFormatted: formatBytes(probed.size) || undefined,
+          sha256: sha256 || undefined,
           storageProvider,
           source: cleanUrl.includes('github.com') ? 'direct_binary' : 'direct_storage',
         });
@@ -512,6 +629,13 @@ export default async function handler(req: any, res: any) {
         const best = pickMainAsset(release.assets, platform);
         if (best?.browser_download_url) {
           const details = inferBinaryDetails(best.name || '', platform);
+          let sha256 = '';
+          if (typeof best.digest === 'string' && best.digest.toLowerCase().startsWith('sha256:')) {
+            sha256 = best.digest.slice(7).toLowerCase();
+          }
+          if (!sha256) {
+            sha256 = await computeCloudSha256(best.browser_download_url, undefined, best.name, release.body);
+          }
           return res.status(200).json({
             success: true,
             isBinary: true,
@@ -526,6 +650,7 @@ export default async function handler(req: any, res: any) {
             assetName: best.name,
             size: best.size,
             sizeFormatted: formatBytes(best.size) || undefined,
+            sha256: sha256 || undefined,
             tagName: release.tag_name,
             storageProvider: 'GitHub Release',
             source: 'github_release_asset',
@@ -547,6 +672,13 @@ export default async function handler(req: any, res: any) {
             const best = pickMainAsset(rel.assets, platform);
             if (best?.browser_download_url) {
               const details = inferBinaryDetails(best.name || '', platform);
+              let sha256 = '';
+              if (typeof best.digest === 'string' && best.digest.toLowerCase().startsWith('sha256:')) {
+                sha256 = best.digest.slice(7).toLowerCase();
+              }
+              if (!sha256) {
+                sha256 = await computeCloudSha256(best.browser_download_url, undefined, best.name, rel.body);
+              }
               return res.status(200).json({
                 success: true,
                 isBinary: true,
@@ -561,6 +693,7 @@ export default async function handler(req: any, res: any) {
                 assetName: best.name,
                 size: best.size,
                 sizeFormatted: formatBytes(best.size) || undefined,
+                sha256: sha256 || undefined,
                 tagName: rel.tag_name,
                 storageProvider: 'GitHub Release',
                 source: 'github_release_asset',

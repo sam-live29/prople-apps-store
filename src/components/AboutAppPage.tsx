@@ -494,12 +494,22 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
 
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-[14px] sm:text-[15px] text-theme-text shrink-0">SHA-256 Checksum</span>
-                    <span 
-                      className="text-[12px] sm:text-[13px] font-mono text-theme-text-muted truncate select-all max-w-[65%]"
-                      title={effectiveSha256}
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        if (effectiveSha256) {
+                          navigator.clipboard.writeText(effectiveSha256).then(() => {
+                            setCopiedSha(true);
+                            setTimeout(() => setCopiedSha(false), 2000);
+                          }).catch(() => {});
+                        }
+                      }}
+                      className="text-[12px] sm:text-[13px] font-mono text-theme-text-muted hover:text-theme-text truncate text-right max-w-[65%] cursor-pointer transition-colors inline-flex items-center gap-1.5 justify-end"
+                      title="Click to copy full SHA-256 checksum"
                     >
-                      {effectiveSha256.substring(0, 8)}...{effectiveSha256.substring(effectiveSha256.length - 8)}
-                    </span>
+                      <span className="truncate">{effectiveSha256.substring(0, 8)}...{effectiveSha256.substring(effectiveSha256.length - 8)}</span>
+                      {copiedSha && <span className="text-[10px] text-emerald-400 font-sans shrink-0 font-medium">Copied</span>}
+                    </button>
                   </div>
                 </div>
               </div>

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Prople Store",
   "short_name": "Prople Store",
-  "description": "An independent multi-platform application store, web store, and developer console for verified Android, Apple (iOS), Mac, Linux, Windows, and Web applications.",
+  "description": "An independent multi-platform application store and developer console for verified Android, Apple (iOS), Mac, Linux, Windows, and Web applications.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

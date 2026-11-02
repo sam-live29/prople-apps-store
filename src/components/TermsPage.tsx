@@ -105,20 +105,28 @@ export default function TermsPage({
           </ul>
         </section>
 
-        {/* Section 3: Intermediary Hosting Safe Harbor (Section 230 CDA & EU DSA) */}
+        {/* Section 3: Intermediary Status, Zero Binary Hosting & Statutory Safe Harbors */}
         <section className="space-y-3">
           <h2 className="text-[17px] sm:text-[18px] font-medium font-google-sans text-theme-text flex items-center gap-2">
             <Shield className="w-5 h-5 text-theme-text shrink-0" />
-            3. Intermediary Hosting Safe Harbor &amp; Third-Party Code Disclaimers
+            3. Intermediary Status, Zero-Byte Pointer Architecture &amp; Statutory Safe Harbors
           </h2>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Prople Store acts strictly as an intermediary digital marketplace and hosting platform under 47 U.S.C. § 230 (Communications Decency Act Safe Harbor) and Articles 6 through 8 of Regulation (EU) 2022/2065 (Digital Services Act, &quot;DSA&quot;).
+            Prople Store (operated by Cloaktail Industries) functions strictly as an independent intermediary directory and catalog index pointer under:
+          </p>
+          <ul className="list-disc list-inside space-y-1.5 pl-1 text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
+            <li><strong className="text-theme-text font-medium">Section 79 of the Information Technology Act, 2000 (India)</strong> and the Information Technology (Intermediary Guidelines and Digital Media Ethics Code) Rules, operating as an intermediary with zero editorial initiation or transmission of third-party compiled binaries;</li>
+            <li><strong className="text-theme-text font-medium">Articles 6 through 8 of Regulation (EU) 2022/2065 (Digital Services Act, &quot;DSA&quot;)</strong>;</li>
+            <li><strong className="text-theme-text font-medium">Section 230 of Title 47 of the United States Code (47 U.S.C. § 230)</strong>.</li>
+          </ul>
+          <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
+            <strong className="text-theme-text font-medium">Zero Binary Storage &amp; Pointer Architecture:</strong> Prople Store does not host, compile, mirror, or repackage executable binary files (including .apk, .aab, .exe, .msi, .dmg, .pkg, .deb, .rpm, .AppImage, or .ipa files) on its servers. When a user initiates a package download, the platform runs SSRF and integrity validations and issues a zero-byte 302 Found pointer redirection pointing directly to the developer&apos;s verified upstream source (such as public GitHub Releases, Cloudflare R2, AWS S3, or developer CDNs).
           </p>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            Third-party software applications listed in the catalog are developed, compiled, and provided by independent third-party developers, organizations, and open-source contributors. Cloaktail Industries is not the author, publisher, speaker, or legal manufacturer of third-party software packages and does not assume editorial responsibility or liability for code authored by third parties.
+            Third-party software applications listed in the catalog are developed, compiled, and provided exclusively by independent publishers. Cloaktail Industries is not the author, publisher, speaker, or legal manufacturer of third-party software packages and does not assume editorial responsibility or liability for code authored by third parties.
           </p>
           <p className="text-[14px] sm:text-[15px] leading-relaxed text-theme-text-muted">
-            While we calculate cryptographic SHA-256 release digests and perform automated security manifest checks, you acknowledge that downloading and installing software from third-party developers is performed at your sole discretion and risk.
+            <strong className="text-theme-text font-medium">Compliance with Local Law &amp; User Responsibility:</strong> The availability of directory listings, cryptographic SHA-256 release digests, and upstream links within Prople Store does not constitute an invitation, inducement, or operational bridge to circumvent local telecommunications regulations, national security directives, or statutory application bans in any specific jurisdiction. Downloading, possessing, or executing software from upstream publishers is done entirely at the user&apos;s own risk and legal responsibility under their local laws.
           </p>
         </section>
 

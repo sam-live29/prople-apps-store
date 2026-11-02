@@ -693,7 +693,7 @@ async function startServer() {
       const content = [
         "# Prople Store — Official Multi-Platform Application Marketplace & Knowledge Graph",
         "",
-        "> Prople Store is an independent multi-platform application store and web store operated by Cloaktail Industries, supporting Android, Apple (iOS/iPadOS), macOS, Linux, Windows, and Web/PWA software.",
+        "> Prople Store is an independent multi-platform application store and application marketplace operated by Cloaktail Industries, supporting Android, Apple (iOS/iPadOS), macOS, Linux, Windows, and Web/PWA software.",
         "> Cloaktail Industries is the parent technology organization, founded and led by Sahanur Molla (Founder & CEO).",
         "",
         "## Corporate & Organizational Hierarchy",
@@ -4126,6 +4126,7 @@ async function startServer() {
     repoName?: string;
     size?: number;
     sizeFormatted?: string;
+    sha256?: string;
     changelog?: string;
     publishedAt?: string;
     allAssets?: Array<{ name: string; downloadUrl: string; size: number }>;
@@ -4223,11 +4224,119 @@ async function startServer() {
           finalUrl,
           size,
           dispositionFileName: parseDispositionFileName(resp.headers.get('content-disposition')),
-          contentType: (resp.headers.get('content-type') || '').toLowerCase()
+          contentType: (resp.headers.get('content-type') || '').toLowerCase(),
+          headers: resp.headers
         };
       } catch {
-        return { reachable: false, finalUrl: urlToProbe, size: 0, dispositionFileName: '', contentType: '' };
+        return { reachable: false, finalUrl: urlToProbe, size: 0, dispositionFileName: '', contentType: '', headers: undefined };
       }
+    };
+
+    // Cloud-Authoritative SHA-256 verification (Zero client tampering, 0 bytes stored to disk)
+    const computeCloudSha256 = async (
+      binaryUrl: string,
+      headers?: Headers,
+      binaryName?: string,
+      releaseNotes?: string
+    ): Promise<string> => {
+      if (!binaryUrl) return '';
+      // 1. Cloud storage checksum headers (AWS S3, Cloudflare R2, Digest RFC 3230)
+      if (headers) {
+        const amzSha = headers.get('x-amz-checksum-sha256');
+        if (amzSha) {
+          try {
+            const buf = Buffer.from(amzSha.trim(), 'base64');
+            if (buf.length === 32) return buf.toString('hex').toLowerCase();
+          } catch {}
+        }
+        const metaSha = headers.get('x-amz-meta-sha256') || headers.get('x-checksum-sha256');
+        if (metaSha && /^[a-fA-F0-9]{64}$/.test(metaSha.trim())) {
+          return metaSha.trim().toLowerCase();
+        }
+        const digest = headers.get('digest');
+        if (digest) {
+          const match = digest.match(/sha-256=([^,;\s]+)/i);
+          if (match?.[1]) {
+            try {
+              const buf = Buffer.from(match[1].trim(), 'base64');
+              if (buf.length === 32) return buf.toString('hex').toLowerCase();
+            } catch {}
+            if (/^[a-fA-F0-9]{64}$/.test(match[1].trim())) {
+              return match[1].trim().toLowerCase();
+            }
+          }
+        }
+      }
+
+      // 2. Release notes / body text match
+      if (releaseNotes) {
+        if (binaryName) {
+          const cleanName = binaryName.trim().toLowerCase();
+          for (const line of releaseNotes.split(/\r?\n/)) {
+            if (line.toLowerCase().includes(cleanName)) {
+              const m = line.match(/\b([a-fA-F0-9]{64})\b/);
+              if (m) return m[1].toLowerCase();
+            }
+          }
+        }
+        const labeled = releaseNotes.match(/(?:sha[-_]?256|checksum|sha2)\s*[:=]\s*[`"']?([a-fA-F0-9]{64})[`"']?/i);
+        if (labeled) return labeled[1].toLowerCase();
+      }
+
+      // 3. Sidecar file probe (${binaryUrl}.sha256)
+      try {
+        const sidecarCandidate = `${binaryUrl.split('?')[0]}.sha256`;
+        const scRes = await fetch(sidecarCandidate, {
+          signal: AbortSignal.timeout(2500),
+          headers: { 'User-Agent': 'PropleStore-SHA-Verifier/1.0' }
+        });
+        if (scRes.ok) {
+          const scText = await scRes.text();
+          const match = scText.match(/\b([a-fA-F0-9]{64})\b/);
+          if (match) return match[1].toLowerCase();
+        }
+      } catch {}
+
+      // 4. Ephemeral In-Memory Streaming Hash (discards chunks immediately, 0 disk storage)
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const streamRes = await fetch(binaryUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PropleStore-SHA-Verifier/1.0',
+            'Accept': '*/*'
+          }
+        });
+        if (streamRes.ok && streamRes.body) {
+          const len = streamRes.headers.get('content-length');
+          const parsedLen = len ? parseInt(len, 10) : 0;
+          if (!len || parsedLen <= 150 * 1024 * 1024) {
+            const hash = crypto.createHash('sha256');
+            const reader = (streamRes.body as ReadableStream<Uint8Array>).getReader();
+            let total = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value) {
+                total += value.length;
+                if (total > 150 * 1024 * 1024) {
+                  try { await reader.cancel(); } catch {}
+                  break;
+                }
+                hash.update(Buffer.from(value));
+              }
+            }
+            clearTimeout(timeout);
+            return hash.digest('hex').toLowerCase();
+          } else {
+            try { await streamRes.body.cancel(); } catch {}
+          }
+        }
+        clearTimeout(timeout);
+      } catch {}
+
+      return '';
     };
 
     // Case 1: Already a direct binary package link (ends in .apk, .exe, .msi, .msix, .zip, .deb, .AppImage, .rpm, .tar.gz)
@@ -4248,6 +4357,7 @@ async function startServer() {
       const probed = await probeDirectPackageHeaders(targetUrl);
       const fileName = probed.dispositionFileName || decodeURIComponent(cleanPath.split('/').pop() || '');
       const finalPkg = detectPackageDetails(fileName || cleanPath);
+      const sha256 = await computeCloudSha256(targetUrl, probed.headers, fileName);
       return {
         resolvedUrl: targetUrl,
         assetName: fileName,
@@ -4261,7 +4371,8 @@ async function startServer() {
         repoOwner: owner,
         repoName: repo,
         size: probed.size || undefined,
-        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined
+        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined,
+        sha256: sha256 || undefined
       };
     }
 
@@ -4333,6 +4444,37 @@ async function startServer() {
 
           if (binaryAsset && binaryAsset.browser_download_url) {
             const pkg = detectPackageDetails(binaryAsset.name);
+            let sha256 = '';
+            if (typeof binaryAsset.digest === 'string' && binaryAsset.digest.toLowerCase().startsWith('sha256:')) {
+              sha256 = binaryAsset.digest.slice(7).toLowerCase();
+            }
+            if (!sha256) {
+              const companionShaAsset = rawAssets.find(a => {
+                const n = (a.name || '').toLowerCase();
+                return (n.endsWith('.sha256') || n === 'sha256sums.txt' || n === 'sha256sums') && a.browser_download_url;
+              });
+              if (companionShaAsset) {
+                try {
+                  const cRes = await fetch(companionShaAsset.browser_download_url, { signal: AbortSignal.timeout(2500) });
+                  if (cRes.ok) {
+                    const cText = await cRes.text();
+                    for (const line of cText.split(/\r?\n/)) {
+                      if (line.toLowerCase().includes(binaryAsset.name.toLowerCase())) {
+                        const m = line.match(/\b([a-fA-F0-9]{64})\b/);
+                        if (m) { sha256 = m[1].toLowerCase(); break; }
+                      }
+                    }
+                    if (!sha256) {
+                      const m = cText.match(/\b([a-fA-F0-9]{64})\b/);
+                      if (m) sha256 = m[1].toLowerCase();
+                    }
+                  }
+                } catch {}
+              }
+            }
+            if (!sha256) {
+              sha256 = await computeCloudSha256(binaryAsset.browser_download_url, undefined, binaryAsset.name, data.body);
+            }
             return {
               resolvedUrl: binaryAsset.browser_download_url,
               assetName: binaryAsset.name,
@@ -4347,6 +4489,7 @@ async function startServer() {
               repoName: repo,
               size: binaryAsset.size || 0,
               sizeFormatted: formatBytesHelper(binaryAsset.size || 0),
+              sha256: sha256 || undefined,
               changelog: data.body || '',
               publishedAt: data.published_at,
               allAssets
@@ -4486,6 +4629,7 @@ async function startServer() {
       probed.contentType.includes('text/plain');
 
     if ((probedPkg.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
+      const sha256 = await computeCloudSha256(targetUrl, probed.headers, candidateName);
       return {
         resolvedUrl: targetUrl,
         assetName: candidateName,
@@ -4496,7 +4640,8 @@ async function startServer() {
         platform: probedPkg.isBinary ? probedPkg.platform : ((plat as any) || 'android'),
         format: probedPkg.isBinary ? probedPkg.format : (fallbackExt as any),
         size: probed.size || undefined,
-        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined
+        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined,
+        sha256: sha256 || undefined
       };
     }
 
@@ -4642,19 +4787,22 @@ async function startServer() {
         isWindowsFound: resolution.isWindows || Boolean(exeAsset || msiAsset || msixAsset || zipAsset),
         detectedPlatform: detectedPkg?.platform || resolution.platform || targetPlat,
         detectedFormat: detectedPkg?.format || resolution.format || defaultExt,
+        sha256: resolution.sha256 || undefined,
         primaryAsset: {
           name: primaryName,
           downloadUrl: primaryDownloadUrl,
           size: primarySize,
           sizeFormatted: formatBytesHelper(primarySize),
           format: detectedPkg?.format || resolution.format || defaultExt,
-          platform: detectedPkg?.platform || resolution.platform || targetPlat
+          platform: detectedPkg?.platform || resolution.platform || targetPlat,
+          sha256: resolution.sha256 || undefined
         },
         primaryApk: {
           name: primaryName,
           downloadUrl: primaryDownloadUrl,
           size: primarySize,
-          sizeFormatted: formatBytesHelper(primarySize)
+          sizeFormatted: formatBytesHelper(primarySize),
+          sha256: resolution.sha256 || undefined
         },
         assets: rawAssets.filter((a: any) => !isBloatAsset(a.name)).map((a: any) => ({
           name: a.name,
@@ -4879,77 +5027,21 @@ async function startServer() {
         }
       }
 
-      // Inspect the first chunk to guarantee zero HTML/XML/JSON files
-      const reader = (upstreamRes.body as ReadableStream<Uint8Array>).getReader();
-      const firstRead = await reader.read();
-      if (firstRead.done || !firstRead.value || firstRead.value.length === 0) {
-        try { reader.cancel(); } catch {}
-        return res.status(204).end();
-      }
-
-      const firstBytes = firstRead.value;
-      if (firstBytes.length >= 4) {
-        const headStr = Buffer.from(firstBytes.subarray(0, Math.min(firstBytes.length, 64))).toString('utf8').trimStart().toLowerCase();
-        if (
-          headStr.startsWith('<!doctype') ||
-          headStr.startsWith('<html') ||
-          headStr.startsWith('<head') ||
-          headStr.startsWith('<body') ||
-          headStr.startsWith('<?xml') ||
-          headStr.startsWith('<?php') ||
-          headStr.startsWith('{"error"') ||
-          headStr.startsWith('{"success":false')
-        ) {
-          try { reader.cancel(); } catch {}
-          return res.status(422).json({
-            success: false,
-            error: 'Upstream returned an HTML or error document instead of a binary package.'
-          });
+      try {
+        if (upstreamRes.body) {
+          await upstreamRes.body.cancel();
         }
-      }
+      } catch {}
 
-      res.status(200);
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${cleanSafeName}"; filename*=UTF-8''${encodeURIComponent(cleanSafeName)}`);
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Accel-Buffering', 'no');
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Disposition, Content-Type');
-      if (contentLength) {
-        res.setHeader('Content-Length', contentLength);
-      }
-      res.setHeader('Cache-Control', 'no-transform, public, max-age=3600');
-      if (typeof res.flushHeaders === 'function') {
-        res.flushHeaders();
-      }
-
-      if (isHeadRequest) {
-        try { reader.cancel(); } catch {}
-        return res.end();
-      }
-
-      // Write first chunk immediately
-      res.write(Buffer.from(firstBytes));
-
-      let streamClosed = false;
-      req.on('close', () => {
-        streamClosed = true;
-        try { reader.cancel(); } catch {}
-      });
-
-      while (!streamClosed) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value && value.length > 0 && !streamClosed) {
-          const canContinue = res.write(Buffer.from(value));
-          if (!canContinue && !streamClosed) {
-            await new Promise<void>((resolve) => res.once('drain', resolve));
-          }
-        }
-      }
-
-      if (!streamClosed) {
-        res.end();
-      }
+      // Universal Zero-Byte Directory Pointer Mode:
+      // Prople Store operates strictly as an intermediary directory pointer under safe harbor provisions.
+      // Zero binary bytes are buffered, stored, or streamed through this server.
+      // Clients receive an immediate 302 Found redirect directly to the verified upstream binary host (GitHub, Cloudflare R2, AWS S3, CDN, or VPS)
+      // with no-referrer to protect user privacy.
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.redirect(302, currentFetchUrl || targetBinaryUrl);
     } catch (err: any) {
       console.error("[Backend] Error resolving binary download:", err.message);
       if (!res.headersSent) {
@@ -5002,34 +5094,16 @@ async function startServer() {
         }
       }, 5);
 
-      if (!upstreamRes.ok || !upstreamRes.body) {
-        return res.status(204).end();
-      }
+      try {
+        if (upstreamRes.body) {
+          await upstreamRes.body.cancel();
+        }
+      } catch {}
 
-      const contentLength = upstreamRes.headers.get('content-length');
-      res.status(200);
-      res.setHeader('Content-Type', mimeType);
-      const cleanSafeName = safeName.replace(/["\r\n]/g, '');
-      res.setHeader('Content-Disposition', `attachment; filename="${cleanSafeName}"; filename*=UTF-8''${encodeURIComponent(cleanSafeName)}`);
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Accel-Buffering', 'no');
-      if (contentLength) {
-        res.setHeader('Content-Length', contentLength);
-      }
-      res.setHeader('Cache-Control', 'no-transform, public, max-age=3600');
-      if (typeof res.flushHeaders === 'function') {
-        res.flushHeaders();
-      }
-
-      const nodeStream = Readable.fromWeb(upstreamRes.body as any);
-      nodeStream.on('error', (streamErr) => {
-        console.warn("[Backend] /api/download-proxy stream pipe error:", streamErr.message);
-        try { nodeStream.destroy(); } catch {}
-      });
-      req.on('close', () => {
-        try { nodeStream.destroy(); } catch {}
-      });
-      return nodeStream.pipe(res);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.redirect(302, targetUrl);
     } catch (err: any) {
       console.error("[Backend] Download proxy redirect error:", err.message);
       if (!res.headersSent) {

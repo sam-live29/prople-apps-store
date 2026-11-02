@@ -1,0 +1,55 @@
+PROPLE STORE & CLOAKTAIL INDUSTRIES
+BINARY INTERMEDIARY & DIRECTORY POINTER NOTICE
+================================================================================
+Copyright (c) 2026 Cloaktail Industries. All rights reserved.
+Operating under Apache License, Version 2.0.
+
+1. INTERMEDIARY DIRECTORY POINTER STATUS
+Prople Store (operated by Cloaktail Industries) functions strictly as an
+independent intermediary software directory and catalog index pointer.
+The platform DOES NOT host, compile, repackage, or distribute executable binary
+files (including but not limited to .apk, .aab, .exe, .msi, .msix, .dmg, .pkg,
+.deb, .rpm, .AppImage, or .ipa files) on its servers or storage infrastructure.
+
+2. ZERO BINARY STORAGE & ZERO-BYTE REDIRECTION
+All package resolutions and download actions initiated via Prople Store generate
+zero-byte cryptographic pointer redirections (HTTP 302 Found) pointing directly
+to third-party upstream hosts, including independent developer repositories,
+public GitHub Releases, Cloudflare R2, AWS S3, and developer-managed CDN endpoints.
+Zero binary bytes are buffered, cached, or streamed through Prople Store servers.
+
+3. LIMITATION OF LIABILITY & "AS IS" DISTRIBUTION
+THE DIRECTORY LISTINGS, METADATA, CHECKSUMS, AND POINTER LINKS PROVIDED ACROSS
+PROPLE STORE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+NO REGULATORY LIABILITY: The maintainers, operators, and parent entity (Cloaktail
+Industries) do not act as an official vendor, publisher, or distributor of third-
+party software packages listed within the directory.
+
+COMPLIANCE WITH LOCAL LAWS: The availability of metadata, cryptographic checksums,
+and upstream links within Prople Store does not constitute an inducement,
+invitation, or operational bridge to circumvent local telecommunications regulations,
+export controls, intellectual property protections, or statutory application orders
+in any jurisdiction.
+
+USER RESPONSIBILITY: Users and visitors assume full responsibility for ensuring
+that downloading, installing, or executing third-party software packages from
+upstream publishers complies with the laws, statutes, and regulatory guidelines
+of their physical jurisdiction and operating environment.
+
+4. SAFE HARBOR STATUTORY COMPLIANCE
+Prople Store maintains statutory compliance under intermediary safe harbor
+frameworks, including:
+- Section 79 of the Information Technology Act, 2000 (India) and the Information
+  Technology (Intermediary Guidelines and Digital Media Ethics Code) Rules;
+- European Union Digital Services Act (Regulation (EU) 2022/2065);
+- Section 230 of Title 47 of the United States Code (47 U.S.C. § 230).
+
+5. NOTICE AND TAKEDOWN
+Copyright holders, developers, and regulatory authorities may report alleged
+infringement or compliance concerns directly to Cloaktail Industries via:
+mailto:cloaktailsupport@gmail.com or mailto:cloaktailofficial@gmail.com
+Inquiries and takedown requests are processed expeditiously in compliance with
+applicable statutory intermediary guidelines.

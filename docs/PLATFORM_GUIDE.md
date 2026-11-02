@@ -26,7 +26,7 @@ Developers are **not** restricted to public GitHub repositories. Release package
 | **Mac (macOS)** | `.dmg`, `.pkg`, `.zip` |
 | **Linux** | `.deb`, `.AppImage`, `.rpm`, `.flatpak`, `.snap`, `.tar.gz` |
 | **Windows** | `.exe`, `.msi`, `.msix`, `.appx`, `.zip`, `.7z` |
-| **Web Store** | Installable Progressive Web Apps (`.pwa` / HTTPS web manifests) |
+| **Web (PWA / Web Apps)** | Installable Progressive Web Apps (`.pwa` / HTTPS web manifests) |
 
 ### C. The 6-Step Release Wizard
 Every new submission and version update passes through a structured 6-step validation pipeline in the Developer Console:
@@ -67,9 +67,11 @@ To prevent per-release impersonation, brand spoofing, or inconsistent attributio
 - **Instant Hybrid Search**: Combines server-side **Meilisearch** indexing with a sub-5ms client-side fuzzy/BM25 fallback engine for instant typo-tolerant suggestions.
 - **Hardware & OS Awareness**: Client-side environment detection (`osDetectionService`) identifies Android, iOS/iPadOS, macOS (Apple Silicon / Intel), Linux, Windows, and Web browsers in memory—highlighting compatible binary formats without transmitting device fingerprints to any server.
 
-### C. Contained In-App Direct Downloads
+### C. Contained In-App Direct Downloads & Zero-Byte Pointer Architecture
 - **No New-Tab Hijacking**: Download triggers execute synchronously within the current application context without opening blank tabs (`target="_blank"` is prohibited on download triggers), keeping the user's browsing state intact.
-- **Unaltered Direct Streaming**: Binaries stream over HTTPS directly from the verified upstream release host (Cloudflare R2, AWS S3, VPS, CDN, or GitHub Releases) with zero binary repackaging or adware wrappers.
+- **Zero-Byte Directory Pointer Architecture**: To insulate the platform from regulatory distribution liability and bandwidth degradation, Prople Store never hosts, caches, or proxy-streams compiled executable binaries (`.apk`, `.ipa`, `.exe`, `.dmg`, etc.) through its servers. When a user triggers an app download, `/api/download-apk` issues an immediate HTTP `302 Found` pointer redirect directly to the creator's verified upstream global host (Cloudflare R2, AWS S3, GitHub Releases, or developer VPS) with `Cache-Control: no-store, no-cache` and `Referrer-Policy: no-referrer`. Zero bytes of binary payloads pass through or reside on Prople Store infrastructure.
+- **Cloud-Authoritative SHA-256 Verification**: Cryptographic package hashes are verified under the hood via cloud storage checksum headers (`x-amz-checksum-sha256`, `Digest`), sidecar files (`.sha256`), or ephemeral streaming hash checks without storing bytes to disk. The 64-character SHA-256 field remains immutable and automatically copies to the clipboard when clicked.
+- **Statutory Intermediary Safe Harbor**: Full protection under Section 79 of the Indian IT Act 2000, EU Digital Services Act (DSA Art. 12), and US 47 U.S.C. § 230 as a technical search and discovery intermediary directory. See root `NOTICE` file.
 - **Canonical Routing & Deep Links**: First-class routes (`/apps/:slug`, `/categories/:slug`, `/developers/:slug`, `/platforms/:platform`) support clean browser refreshes, server-side SEO/OpenGraph pre-rendering, and instant SPA hydration.
 
 ---

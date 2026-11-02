@@ -536,7 +536,7 @@ export function injectPlatformSeoIntoHtml(
     : platform === 'apple' || platform === 'ios'
     ? 'Apple (iOS/iPadOS)'
     : platform === 'web'
-    ? 'Web Store (PWA)'
+    ? 'Web (PWA)'
     : 'Linux';
 
   const canonicalUrl = platform === 'all' ? `${baseUrl}/apps` : `${baseUrl}/platforms/${platform}`;
@@ -601,8 +601,8 @@ export function injectHomeSeoIntoHtml(
   allApps: SeoAppMetadata[] = [],
   allCategories: { id: string; name: string }[] = []
 ): string {
-  const title = "Prople Store – Multi-Platform App Store & Web Store (Android, Apple, Mac, Linux, Windows)";
-  const desc = "Discover apps and games on Prople Store, a multi-platform app store and web store supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows operated by Cloaktail Industries. Verified downloads, web apps, ratings, and developer publishing.";
+  const title = "Prople Store – Multi-Platform App Store & Application Marketplace (Android, Apple, Mac, Linux, Windows)";
+  const desc = "Discover apps and games on Prople Store, a multi-platform app store and application marketplace supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows operated by Cloaktail Industries. Verified downloads, web apps, ratings, and developer publishing.";
   const canonicalUrl = `${baseUrl}/`;
 
   const topApps = allApps.slice(0, 36);
@@ -684,7 +684,7 @@ export function injectHomeSeoIntoHtml(
         <!-- Hero Section -->
         <section style="text-align: center; padding: 24px 0 32px; border-bottom: 1px solid #27272a;">
           <h1 style="font-size: 32px; font-weight: 700; color: #f3f4f6; margin: 0 0 10px; letter-spacing: -0.02em;">
-            Prople Store – Multi-Platform App Store &amp; Web Store
+            Prople Store – Multi-Platform App Store &amp; Application Marketplace
           </h1>
           <p style="max-width: 680px; margin: 0 auto 20px; font-size: 15px; color: #9aa0a6; line-height: 1.6;">
             Discover, download, and publish verified applications for Android, Windows, Linux, Mac, Apple iOS, and Web.
@@ -696,7 +696,7 @@ export function injectHomeSeoIntoHtml(
             <a href="${baseUrl}/platforms/linux" style="padding: 6px 14px; background: #1e1f22; color: #a8c7fa; font-size: 13px; font-weight: 500; border-radius: 9999px; text-decoration: none; border: 1px solid #333538;">Linux (Deb/AppImage)</a>
             <a href="${baseUrl}/platforms/mac" style="padding: 6px 14px; background: #1e1f22; color: #a8c7fa; font-size: 13px; font-weight: 500; border-radius: 9999px; text-decoration: none; border: 1px solid #333538;">macOS (DMG/PKG)</a>
             <a href="${baseUrl}/platforms/apple" style="padding: 6px 14px; background: #1e1f22; color: #a8c7fa; font-size: 13px; font-weight: 500; border-radius: 9999px; text-decoration: none; border: 1px solid #333538;">Apple iOS</a>
-            <a href="${baseUrl}/platforms/web" style="padding: 6px 14px; background: #1e1f22; color: #a8c7fa; font-size: 13px; font-weight: 500; border-radius: 9999px; text-decoration: none; border: 1px solid #333538;">Web Store (PWA)</a>
+            <a href="${baseUrl}/platforms/web" style="padding: 6px 14px; background: #1e1f22; color: #a8c7fa; font-size: 13px; font-weight: 500; border-radius: 9999px; text-decoration: none; border: 1px solid #333538;">Web (PWA)</a>
           </div>
         </section>
 
@@ -770,7 +770,7 @@ export function injectHomeSeoIntoHtml(
               <p style="margin: 0; font-size: 12px; color: #9aa0a6;">iPhone &amp; iPad verified apps</p>
             </a>
             <a href="${baseUrl}/platforms/web" style="padding: 16px; background: #1e1f22; border-radius: 14px; text-decoration: none; color: #e3e3e3; border: 1px solid #27272a;">
-              <h3 style="margin: 0 0 4px; font-size: 16px; color: #a8c7fa;">Web Store (PWA)</h3>
+              <h3 style="margin: 0 0 4px; font-size: 16px; color: #a8c7fa;">Web Apps (PWA)</h3>
               <p style="margin: 0; font-size: 12px; color: #9aa0a6;">Installable progressive web apps</p>
             </a>
           </div>

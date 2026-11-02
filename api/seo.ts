@@ -585,8 +585,8 @@ export default async function handler(req: any, res: any) {
       if (!lookupSlug) {
         const html = injectCollectionSeoIntoHtml(
           templateHtml,
-          'Prople Store – Multi-Platform App Store & Web Store (Android, Apple, Mac, Linux, Windows)',
-          'Discover apps and games on Prople Store, a multi-platform app store and web store supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows.',
+          'Prople Store – Multi-Platform App Store & Application Marketplace (Android, Apple, Mac, Linux, Windows)',
+          'Discover apps and games on Prople Store, a multi-platform app store and application marketplace supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows.',
           `${baseUrl}/`,
           baseUrl
         );

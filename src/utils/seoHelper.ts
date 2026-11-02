@@ -7,8 +7,8 @@
 import { AppDetails } from '../types';
 import { getAppShareUrl } from './shareUtils';
 
-const DEFAULT_TITLE = 'Prople Store – Multi-Platform App Store & Web Store (Android, Apple, Mac, Linux, Windows)';
-const DEFAULT_DESCRIPTION = 'Prople Store is an independent multi-platform application store and web store operated by Cloaktail Industries. Discover, download, and install verified software across Android (APK), Apple (iOS), Mac (macOS), Linux (DEB, AppImage, RPM), Windows (EXE, MSI), and Web/PWA applications safely with real community reviews and developer publishing.';
+const DEFAULT_TITLE = 'Prople Store – Multi-Platform App Store & Application Marketplace (Android, Apple, Mac, Linux, Windows)';
+const DEFAULT_DESCRIPTION = 'Prople Store is an independent multi-platform application store and application marketplace operated by Cloaktail Industries. Discover, download, and install verified software across Android (APK), Apple (iOS), Mac (macOS), Linux (DEB, AppImage, RPM), Windows (EXE, MSI), and Web/PWA applications safely with real community reviews and developer publishing.';
 
 export function getInitialHydratedApp(): any | null {
   if (typeof window === 'undefined') return null;

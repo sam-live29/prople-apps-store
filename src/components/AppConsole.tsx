@@ -2638,6 +2638,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
           setVersionName(data.tagName.replace(/^v/i, ''));
         }
         if (data.sizeFormatted) applyNewAssetSize(data.sizeFormatted);
+        if (data.sha256 && typeof data.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(data.sha256.trim())) {
+          setSha256(data.sha256.trim().toLowerCase());
+        }
         const detected = inferPlatformAndFormat(resolvedName || data.resolvedUrl);
         setPlatform(detected.platform);
         setPackageFormat(detected.packageFormat as any);
@@ -2657,6 +2660,35 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       setIsResolvingApk(false);
     }
   };
+
+  // Direct-to-cloud SHA-256 and metadata verification under the hood when developer enters or pastes a direct binary URL
+  const lastProbedUrlRef = useRef<string>('');
+  useEffect(() => {
+    if (step !== 3) return;
+    const clean = (downloadUrl || '').trim();
+    if (!clean || clean.length < 12 || !clean.startsWith('http')) return;
+    if (clean === lastProbedUrlRef.current) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        lastProbedUrlRef.current = clean;
+        const { ok, data } = await safeFetchJson<any>(`/api/resolve-apk?url=${encodeURIComponent(clean)}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`);
+        if (ok && data && data.success) {
+          if (data.sha256 && typeof data.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(data.sha256.trim())) {
+            setSha256(data.sha256.trim().toLowerCase());
+          }
+          if (data.sizeFormatted && (!assetSize || assetSize === 'Direct Binary' || assetSize === 'Varies with device')) {
+            applyNewAssetSize(data.sizeFormatted);
+          }
+          if (data.assetName && !assetName) {
+            setAssetName(data.assetName);
+          }
+        }
+      } catch {}
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [step, downloadUrl, platform, assetSize, assetName, applyNewAssetSize]);
 
   const handleTestDownload = async () => {
     if (!downloadUrl.trim()) {
@@ -4343,7 +4375,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <option value="linux">Linux</option>
                       <option value="mac">Mac (macOS)</option>
                       <option value="ios">Apple (iOS / iPadOS)</option>
-                      <option value="web">Web Store (PWA / Web App)</option>
+                      <option value="web">Web (PWA / Web App)</option>
                       <option value="multiplatform">Multiplatform</option>
                     </select>
                   </div>
@@ -4560,14 +4592,20 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     type="text" 
                     required
                     readOnly
-                    disabled
                     maxLength={64}
                     value={sha256} 
-                    className="w-full bg-theme-hover/20 border border-theme-border/60 rounded-lg px-3 py-2 text-xs font-mono text-theme-text cursor-not-allowed select-none opacity-90"
-                    title="Package SHA-256 cryptographic checksum is fixed for release integrity and cannot be edited."
+                    onClick={() => {
+                      if (sha256 && sha256.trim()) {
+                        navigator.clipboard.writeText(sha256.trim()).then(() => {
+                          showToast('SHA-256 checksum copied to clipboard!');
+                        }).catch(() => {});
+                      }
+                    }}
+                    className="w-full bg-theme-hover/20 border border-theme-border/60 rounded-lg px-3 py-2 text-xs font-mono text-theme-text cursor-pointer select-all opacity-95 hover:border-theme-border transition-colors"
+                    title="Click to copy SHA-256 cryptographic digest"
                   />
                   <p className="text-[10px] text-theme-text-muted mt-1">
-                    Cryptographic 64-character SHA-256 release digest verifying binary package integrity (Uneditable).
+                    Cryptographic 64-character SHA-256 release digest verifying binary package integrity (Click to copy).
                   </p>
                 </div>
 

@@ -59,7 +59,7 @@ export default function AboutStorePage({
             About Prople Store
           </h1>
           <p className="text-xs sm:text-sm text-theme-text-muted leading-relaxed">
-            An open, high-performance multi-platform app store and web store for Android, Apple (iOS/iPadOS), Mac, Linux, and Windows applications, operated by Cloaktail Industries
+            An open, high-performance multi-platform app store and application marketplace for Android, Apple (iOS/iPadOS), Mac, Linux, and Windows applications, operated by Cloaktail Industries
           </p>
         </div>
 

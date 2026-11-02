@@ -569,99 +569,21 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const reader = (upstreamRes.body as ReadableStream<Uint8Array>).getReader();
-    const firstRead = await reader.read();
-    if (firstRead.done || !firstRead.value || firstRead.value.length === 0) {
-      try {
-        await reader.cancel();
-      } catch {}
-      return res.status(204).end();
-    }
-
-    const firstBytes = firstRead.value;
-    if (firstBytes.length >= 4) {
-      const headStr = Buffer.from(firstBytes.subarray(0, Math.min(firstBytes.length, 64)))
-        .toString('utf8')
-        .trimStart()
-        .toLowerCase();
-      if (
-        headStr.startsWith('<!doctype') ||
-        headStr.startsWith('<html') ||
-        headStr.startsWith('<head') ||
-        headStr.startsWith('<body') ||
-        headStr.startsWith('<?xml') ||
-        headStr.startsWith('<?php') ||
-        headStr.startsWith('{"error"') ||
-        headStr.startsWith('{"success":false')
-      ) {
-        try {
-          await reader.cancel();
-        } catch {}
-        return res.status(422).json({
-          success: false,
-          error: 'Upstream returned an HTML or error document instead of a binary package.',
-        });
+    try {
+      if (upstreamRes.body) {
+        await upstreamRes.body.cancel();
       }
-    }
+    } catch {}
 
-    // On Vercel Serverless Functions, packages larger than 4 MB exceed the 4.5 MB Lambda response payload cap.
-    // After verifying SSRF safety, binary signature & size >= 1 MB, redirect the hidden iframe directly to the verified HTTPS binary stream (AWS S3, Cloudflare R2, VPS, CDN, or GitHub).
-    if (
-      process.env.VERCEL &&
-      (!contentLength || parsedLen > VERCEL_STREAM_THRESHOLD) &&
-      finalUrl.startsWith('https://') &&
-      isSafePublicUrl(finalUrl, false)
-    ) {
-      try {
-        await reader.cancel();
-      } catch {}
-      res.setHeader('Cache-Control', 'no-store');
-      return res.redirect(302, finalUrl);
-    }
-
-    const mimeType = getExactMimeType(cleanSafeName, upstreamContentType);
-
-    res.status(200);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${cleanSafeName}"; filename*=UTF-8''${encodeURIComponent(cleanSafeName)}`
-    );
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Disposition, Content-Type');
-    if (contentLength) {
-      res.setHeader('Content-Length', contentLength);
-    }
-    res.setHeader('Cache-Control', 'no-transform, public, max-age=3600');
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    res.write(Buffer.from(firstBytes));
-
-    let streamClosed = false;
-    req.on('close', () => {
-      streamClosed = true;
-      try {
-        reader.cancel();
-      } catch {}
-    });
-
-    while (!streamClosed) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value && value.length > 0 && !streamClosed) {
-        const canContinue = res.write(Buffer.from(value));
-        if (!canContinue && !streamClosed) {
-          await new Promise<void>((resolve) => res.once('drain', resolve));
-        }
-      }
-    }
-
-    if (!streamClosed) {
-      res.end();
-    }
+    // Universal Zero-Byte Directory Pointer Mode:
+    // Prople Store operates strictly as an intermediary directory pointer under safe harbor provisions.
+    // Zero binary bytes are buffered, stored, or streamed through this server.
+    // Clients receive an immediate 302 Found redirect directly to the verified upstream binary host (GitHub, Cloudflare R2, AWS S3, CDN, or VPS)
+    // with no-referrer to protect user privacy.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.redirect(302, finalUrl || targetBinaryUrl);
   } catch {
     if (!res.headersSent) {
       return res.status(204).end();

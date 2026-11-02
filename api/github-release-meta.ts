@@ -173,9 +173,19 @@ export default async function handler(req: any, res: any) {
     });
 
     const activeBinaryName = binaryAsset?.name || '';
-    let resolvedSha256: string | null = extractSha256(releaseData.body || '', activeBinaryName);
+    let resolvedSha256: string | null = null;
 
-    // If not in body, check if a checksum text asset exists
+    // Check 1: GitHub native asset digest
+    if (typeof binaryAsset?.digest === 'string' && binaryAsset.digest.toLowerCase().startsWith('sha256:')) {
+      resolvedSha256 = binaryAsset.digest.slice(7).toLowerCase();
+    }
+
+    // Check 2: Release notes body text
+    if (!resolvedSha256) {
+      resolvedSha256 = extractSha256(releaseData.body || '', activeBinaryName);
+    }
+
+    // Check 3: Checksum text asset in release assets
     if (!resolvedSha256) {
       const checksumAsset = assets.find((a: any) => {
         const n = (a.name || '').toLowerCase();
@@ -192,7 +202,7 @@ export default async function handler(req: any, res: any) {
       if (checksumAsset && checksumAsset.browser_download_url && (checksumAsset.size || 0) < 150000) {
         try {
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 2000);
+          const timer = setTimeout(() => controller.abort(), 2500);
           const cResp = await fetch(checksumAsset.browser_download_url, { signal: controller.signal });
           clearTimeout(timer);
           if (cResp.ok) {
@@ -203,6 +213,21 @@ export default async function handler(req: any, res: any) {
           // Ignore network or timeout errors on checksum asset
         }
       }
+    }
+
+    // Check 4: Probe sidecar file ${binaryAsset.browser_download_url}.sha256
+    if (!resolvedSha256 && binaryAsset?.browser_download_url) {
+      try {
+        const sidecarResp = await fetch(`${binaryAsset.browser_download_url}.sha256`, {
+          signal: AbortSignal.timeout(2000),
+          headers: { 'User-Agent': 'PropleStore' }
+        });
+        if (sidecarResp.ok) {
+          const scText = await sidecarResp.text();
+          const match = scText.match(/\b([a-fA-F0-9]{64})\b/);
+          if (match) resolvedSha256 = match[1].toLowerCase();
+        }
+      } catch {}
     }
 
     // Final fallback: deterministic SHA-256 for release authenticity

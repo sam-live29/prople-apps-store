@@ -8,7 +8,13 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (request.auth.token.email_verified == true && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.publisherRole == 'Store Administrator'
+        )) ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'sahanurmolla1777@gmail.com' ||
           request.auth.token.email == 'sahanurmolla7076@gmail.com' ||
           request.auth.token.email == 'sahanurmolla2886@gmail.com' ||
           request.auth.token.email == 'sahanurmolla190@gmail.com' ||
@@ -196,6 +202,11 @@ service cloud.firestore {
 
     match /admins/{adminId} {
       allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /verified_accounts/{accountId} {
+      allow read: if true;
       allow write: if isAdmin();
     }
 

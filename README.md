@@ -1,4 +1,4 @@
-# Prople Store — Multi-Platform App Store & Web Store
+# Prople Store — Multi-Platform Application Marketplace
 
 [![CI](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -8,10 +8,11 @@
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38bdf8.svg)](https://tailwindcss.com/)
 [![PWA](https://img.shields.io/badge/PWA-Ready-orange.svg)](https://web.dev/progressive-web-apps/)
 
-**Prople Store** is an independent, consumer-grade multi-platform application store and web store operated by **Cloaktail Industries**. It provides verified software distribution across Android, Apple (iOS/iPadOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.
+**Prople Store** is an independent, consumer-grade multi-platform application store and application marketplace operated by **Cloaktail Industries**. It provides verified software distribution across Android, Apple (iOS/iPadOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.
 
 - **Official Marketplace**: [www.prople.co.in](https://www.prople.co.in)
 - **Publishing, Browsing & Data Guide**: [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
+- **Legal & Intermediary Safe Harbor Notice**: [NOTICE](NOTICE)
 - **Architecture & Concept Audit**: [PLATFORM_CONCEPT_AND_AUDIT.md](PLATFORM_CONCEPT_AND_AUDIT.md)
 - **Security Policy**: [SECURITY.md](SECURITY.md)
 - **Roadmap & Priorities**: [ROADMAP.md](ROADMAP.md)
@@ -29,15 +30,17 @@
 | **Mac (macOS)** | macOS 12.0 Monterey or later | `.dmg` (Apple Disk Image), `.pkg` (macOS Installer), `.zip` |
 | **Linux** | Universal Linux | `.deb` (Debian/Ubuntu), `.AppImage` (Universal Portable), `.rpm` (Fedora/RHEL), `.flatpak`, `.tar.gz` |
 | **Windows** | Windows 10, 11 (64-bit) | `.exe` (Win32/x64 Executable), `.msi` (Windows Installer), `.msix`, `.appx`, `.zip` |
-| **Web Store** | Modern Web Browsers | Installable Progressive Web Apps (`.pwa`), Web applications, and live interactive demos |
+| **Web Apps / PWA** | Modern Web Browsers | Installable Progressive Web Apps (`.pwa`), Web applications, and live interactive demos |
 
 ---
 
 ## Key Features
 
+- **Zero-Byte Directory Pointer & Intermediary Safe Harbor**: Prople Store operates purely as a discovery index and directory pointer. Downloads issue immediate HTTP `302 Found` pointer redirects (`Cache-Control: no-store`, `Referrer-Policy: no-referrer`) directly to creator upstream hosts (Cloudflare R2, AWS S3, GitHub Releases, or developer VPS). Zero bytes of compiled executable binaries are proxy-streamed or hosted on Prople Store servers, ensuring strict intermediary compliance under Section 79 of the Indian IT Act 2000, EU DSA, and US § 230.
+- **Cloud-Authoritative SHA-256 Verification**: Automatic cryptographic verification under the hood via cloud headers (`x-amz-checksum-sha256`, `Digest`), sidecar files (`.sha256`), or ephemeral streaming hash checks without storing bytes to disk. The 64-character SHA-256 checksum is immutable and auto-copies to the clipboard on click.
 - **Multi-Source Binary Publishing (Cloud & GitHub)**: Distribute untouched binaries via direct HTTPS links from **Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs**, or **GitHub Releases**—supporting both open-source projects and proprietary private-repository builds across 22+ package formats.
 - **Global Publisher Identity & Immutability**: Globally unique Publisher Names managed in **Settings → Edit Profile** universally propagate across all published apps and releases (with a 30-minute adjustment grace window and 15-day cooldown), while remaining locked and immutable inside individual release forms to prevent per-release spoofing.
-- **Zero-Barrier Browsing & Contained In-App Downloads**: Browse Home, Explore, Top Charts, Categories, and instant Meilisearch/fuzzy search with zero login walls. Direct binary downloads stream within the app session without jarring new-tab redirects.
+- **Zero-Barrier Browsing & Contained In-App Downloads**: Browse Home, Explore, Top Charts, Categories, and instant Meilisearch/fuzzy search with zero login walls. Direct binary downloads initiate within the app session without jarring new-tab redirects.
 - **Complete Package & Data Transparency**: Every listing surfaces verified SHA-256 checksums, CPU architectures, OS/RAM requirements, Data Safety disclosures, categorized permissions, and authentic `0+`-baseline verified download counts with Bayesian star ratings.
 - **Developer Publishing Console**: 6-step release wizard with isolated draft persistence, S3 media gallery uploads, rate-limited abuse protection (3 new apps / 15m, 5 updates / 1h), and strict per-account ownership isolation.
 - **Dual-Layer Authentication & 2FA**: Secure password hashing with PBKDF2-SHA512, 6-digit email OTP verification codes, and Google OAuth integration.
@@ -67,14 +70,15 @@
 ├── api/                       # Serverless API endpoints (Vercel & cloud functions)
 │   ├── apps.ts                # Catalog retrieval endpoint
 │   ├── auth/[action].ts       # 2FA OTP, profile sync, and authentication gateway
-│   ├── download-apk.ts        # Contained direct binary stream & redirect handler
-│   ├── github-release-meta.ts # GitHub release asset metadata resolver
-│   ├── resolve-apk.ts         # Multi-host binary URL & package format resolver
+│   ├── download-apk.ts        # Zero-byte 302 directory pointer redirect handler
+│   ├── github-release-meta.ts # GitHub release asset metadata & SHA-256 sidecar resolver
+│   ├── resolve-apk.ts         # Multi-host binary URL, format & cloud SHA-256 resolver
 │   └── seo.ts                 # Dynamic SSR metadata & SPA route handler
 ├── docs/                      # Platform specifications & contributor documentation
 │   ├── PLATFORM_GUIDE.md      # Authoritative Publishing, Browsing & Available Data guide
 │   ├── GOOD_FIRST_ISSUES.md   # Beginner-friendly starter tasks with acceptance criteria
 │   └── ADVANCED_CONTRIBUTOR_CHALLENGES.md # Systems, crypto & ranking challenges
+├── NOTICE                     # Intermediary Directory Pointer & Section 79 Safe Harbor Notice
 ├── public/                    # Static public assets, PWA manifests, icons
 │   ├── manifest.webmanifest   # Progressive Web App manifest
 │   ├── robots.txt             # Search crawler directives & GEO permissions
