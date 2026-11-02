@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -12,6 +13,81 @@ const TRUSTED_ORIGIN_PATTERNS = [
   /^https:\/\/prople-store(-[a-z0-9-]+)?\.web\.app$/i,
   /^https:\/\/prople-store(-[a-z0-9-]+)?\.firebaseapp\.com$/i,
 ];
+
+const DEFAULT_ADMIN_EMAILS = [
+  'sahanurmolla7076@gmail.com',
+  'sahanurmolla2886@gmail.com',
+  'sahanurmolla190@gmail.com',
+  'prople.site@gmail.com',
+  'cloaktailsupport@gmail.com',
+  'cloaktailofficial@gmail.com',
+  'prople.org@gmail.com',
+];
+
+const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
+
+function isStrictAdminEmail(email?: string | null): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const norm = email.toLowerCase().trim();
+  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
+
+  const envAdmins = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (envAdmins.includes(norm)) return true;
+  if (norm.endsWith(VERIFIED_ADMIN_DOMAIN)) {
+    const local = norm.slice(0, -VERIFIED_ADMIN_DOMAIN.length);
+    if (['admin', 'security', 'moderator', 'executive', 'root', 'dev'].includes(local)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getServerFirebaseConfig() {
+  let fileConfig: any = {};
+  const candidates: string[] = [path.join(process.cwd(), 'firebase-applet-config.json')];
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    candidates.push(path.join(currentDir, '..', '..', 'firebase-applet-config.json'));
+  } catch {}
+
+  for (const configPath of candidates) {
+    try {
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        break;
+      }
+    } catch {}
+  }
+
+  const isReal = (val?: string) =>
+    Boolean(
+      val &&
+      typeof val === 'string' &&
+      val.trim().length > 0 &&
+      !val.includes('example') &&
+      !val.includes('Placeholder') &&
+      !val.includes('0000000000')
+    );
+
+  const apiKey = process.env.FIREBASE_API_KEY || (isReal(fileConfig.apiKey) ? fileConfig.apiKey : '');
+  const projectId = process.env.FIREBASE_PROJECT_ID || (isReal(fileConfig.projectId) ? fileConfig.projectId : '');
+  const firestoreDatabaseId =
+    process.env.FIRESTORE_DATABASE_ID ||
+    process.env.FIREBASE_DATABASE_ID ||
+    (isReal(fileConfig.firestoreDatabaseId) ? fileConfig.firestoreDatabaseId : '(default)');
+
+  const isExampleConfig = !isReal(apiKey) || !isReal(projectId);
+
+  return {
+    projectId: projectId || 'example-prople-store',
+    firestoreDatabaseId: firestoreDatabaseId || '(default)',
+    isExampleConfig,
+  };
+}
 
 function isTrustedOrigin(origin?: string): boolean {
   if (!origin || typeof origin !== 'string') return false;
@@ -43,6 +119,27 @@ function sanitizeIdentifier(input: any, maxLength = 100): string {
   return input.replace(/[^a-zA-Z0-9_\-\.:]/g, '').slice(0, maxLength);
 }
 
+function parseFirestoreField(val: any): any {
+  if (!val || typeof val !== 'object') return undefined;
+  if (val.stringValue !== undefined) return val.stringValue;
+  if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+  if (val.doubleValue !== undefined) return parseFloat(val.doubleValue);
+  if (val.booleanValue !== undefined) return val.booleanValue;
+  if (val.timestampValue !== undefined) return val.timestampValue;
+  if (val.nullValue !== undefined) return null;
+  if (val.arrayValue !== undefined) {
+    return (val.arrayValue.values || []).map((v: any) => parseFirestoreField(v));
+  }
+  if (val.mapValue !== undefined) {
+    const obj: Record<string, any> = {};
+    for (const [k, v] of Object.entries<any>(val.mapValue.fields || {})) {
+      obj[k] = parseFirestoreField(v);
+    }
+    return obj;
+  }
+  return undefined;
+}
+
 export default async function handler(req: any, res: any) {
   const corsHeaders = getSecureCorsHeaders(req.headers?.origin);
   for (const [key, value] of Object.entries(corsHeaders)) {
@@ -65,7 +162,6 @@ export default async function handler(req: any, res: any) {
   const cleanSlug = cleanId.replace(/[^a-z0-9]/g, '');
 
   try {
-    const { getServerFirebaseConfig } = await import('../../server/firebaseConfig');
     const fbConfig = getServerFirebaseConfig();
     const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
     const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
@@ -76,20 +172,11 @@ export default async function handler(req: any, res: any) {
       const id = doc.name ? doc.name.split('/').pop() : appId;
       const fields = doc.fields || {};
       const parsed: any = { id };
+      if (doc.createTime) parsed.createdAt = doc.createTime;
+      if (doc.updateTime) parsed.updatedAt = doc.updateTime;
       for (const [key, val] of Object.entries<any>(fields)) {
-        if (val.stringValue !== undefined) parsed[key] = val.stringValue;
-        else if (val.integerValue !== undefined) parsed[key] = parseInt(val.integerValue, 10);
-        else if (val.doubleValue !== undefined) parsed[key] = parseFloat(val.doubleValue);
-        else if (val.booleanValue !== undefined) parsed[key] = val.booleanValue;
-        else if (val.arrayValue !== undefined) {
-          parsed[key] = (val.arrayValue.values || []).map((v: any) => v.stringValue || v);
-        } else if (val.mapValue !== undefined) {
-          const mapObj: any = {};
-          for (const [mk, mv] of Object.entries<any>(val.mapValue.fields || {})) {
-            mapObj[mk] = mv.stringValue ?? mv.integerValue ?? mv.booleanValue ?? mv;
-          }
-          parsed[key] = mapObj;
-        }
+        const fieldVal = parseFirestoreField(val);
+        if (fieldVal !== undefined) parsed[key] = fieldVal;
       }
       return parsed;
     };
@@ -128,7 +215,6 @@ export default async function handler(req: any, res: any) {
         devInfoEmail === userEmail
       );
 
-      const { isStrictAdminEmail } = await import('../../server/securityDefense');
       const isOwner =
         (userId && (
           existingData.owner === userId ||

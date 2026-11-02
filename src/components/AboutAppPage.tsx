@@ -294,7 +294,6 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                             openPrivacyPolicy();
                           }
                         }}
-                        target={isExternal && !privacyUrl.includes('prople.store/privacy') && !privacyUrl.includes('prople.co.in/privacy') ? '_blank' : undefined}
                         rel="noopener noreferrer"
                         className="text-[14px] sm:text-[15px] text-blue-500 dark:text-[#8ab4f8] hover:underline font-normal inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
                       >
@@ -521,7 +520,6 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                       <span className="text-[14px] sm:text-[15px] text-theme-text">Official Website</span>
                       <a 
                         href={formattedUrl}
-                        target="_blank" 
                         rel="noopener noreferrer"
                         className="text-[14px] sm:text-[15px] text-blue-500 dark:text-[#8ab4f8] hover:underline inline-flex items-center gap-1.5 truncate max-w-[60%]"
                       >
@@ -547,7 +545,6 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                             openTermsOfService();
                           }
                         }}
-                        target={isExternal && !termsUrl.includes('prople.store/terms') && !termsUrl.includes('prople.co.in/terms') ? '_blank' : undefined}
                         rel="noopener noreferrer"
                         className="text-[14px] sm:text-[15px] text-blue-500 dark:text-[#8ab4f8] hover:underline inline-flex items-center gap-1.5"
                       >
@@ -573,7 +570,6 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                             openPrivacyPolicy();
                           }
                         }}
-                        target={isExternal && !privacyUrl.includes('prople.store/privacy') && !privacyUrl.includes('prople.co.in/privacy') ? '_blank' : undefined}
                         rel="noopener noreferrer"
                         className="text-[14px] sm:text-[15px] text-blue-500 dark:text-[#8ab4f8] hover:underline inline-flex items-center gap-1.5"
                       >

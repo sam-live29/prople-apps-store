@@ -8,6 +8,7 @@ import React, {
   ReactNode 
 } from 'react';
 import { slugifyAppName } from '../utils/shareUtils';
+import { getInitialHydratedApp } from '../utils/seoHelper';
 import { RecommendationService } from '../services/recommendationService';
 
 export type MainTab = 'games' | 'apps' | 'search' | 'you' | 'books';
@@ -190,7 +191,7 @@ export function getInitialNavigationState(): NavigationState {
     if (appPathMatch && appPathMatch[1]) {
       const slugOrId = decodeURIComponent(appPathMatch[1]);
       if (!PLATFORM_KEYS.has(slugOrId.toLowerCase())) {
-        const initialHydratedApp = typeof window !== 'undefined' ? (window as any).__INITIAL_APP__ : null;
+        const initialHydratedApp = getInitialHydratedApp();
         const initialId = initialHydratedApp?.id || null;
         return {
           ...initialNavigationState,

@@ -1,4 +1,16 @@
 import React from 'react';
+import { dispatchInstantNativeDownload } from '../context/InstallContext';
+import { isBinaryPackage } from './packageResolution';
+
+function isDirectPackageLink(url: string): boolean {
+  const clean = (url || '').trim();
+  if (!clean) return false;
+  return (
+    clean.startsWith('/api/download-apk') ||
+    clean.includes('/releases/download/') ||
+    isBinaryPackage(clean)
+  );
+}
 
 /**
  * Converts rich HTML clipboard data (from Google Docs, Word, web pages) into clean Markdown pretext.
@@ -155,9 +167,14 @@ export function renderInlineFormattedTokens(text: string, keyPrefix = 'tok'): Re
           <a
             key={key}
             href={url}
-            target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isDirectPackageLink(url)) {
+                e.preventDefault();
+                dispatchInstantNativeDownload(url);
+              }
+            }}
             className="text-blue-500 dark:text-[#8ab4f8] hover:underline font-medium inline-flex items-center gap-0.5"
           >
             {label}
@@ -172,9 +189,14 @@ export function renderInlineFormattedTokens(text: string, keyPrefix = 'tok'): Re
         <a
           key={key}
           href={part}
-          target="_blank"
           rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isDirectPackageLink(part)) {
+              e.preventDefault();
+              dispatchInstantNativeDownload(part);
+            }
+          }}
           className="text-blue-500 dark:text-[#8ab4f8] hover:underline break-all inline"
         >
           {part}

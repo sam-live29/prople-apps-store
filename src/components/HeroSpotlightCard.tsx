@@ -48,6 +48,7 @@ export default function HeroSpotlightCard({
   const targetSize = getUnifiedAppSize(details) || item.appSize || '';
 
   const handleActionClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     startInstall(item.appId, {
       downloadUrl: targetDownloadUrl,
@@ -206,7 +207,13 @@ export default function HeroSpotlightCard({
         </div>
 
         {/* Right: Google Play Material 3 Action Button */}
-        <div className="flex flex-col items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex flex-col items-center shrink-0"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
           <button
             type="button"
             onClick={handleActionClick}

@@ -5329,16 +5329,21 @@ async function startServer() {
       if (appRouteMatch && appRouteMatch[1]) {
         const requestedSlug = decodeURIComponent(appRouteMatch[1]);
         if (!PLATFORM_KEYWORDS.has(requestedSlug.toLowerCase())) {
+          const userAgent = String(req.headers['user-agent'] || '');
+          const isCrawler = /bot|crawler|spider|slurp|facebookexternalhit|whatsapp|telegrambot|twitterbot|discordbot|linkedinbot|slackbot|embedly|quora|pinterest|redditbot|applebot|bingbot|googlebot|yandex|duckduckbot|baiduspider|ia_archiver|curl|wget|lighthouse|gtmetrix|headless/i.test(userAgent);
           const appData = await getAppForSeo(requestedSlug);
           const rawHtml = await getBaseTemplate();
           if (!rawHtml) return next();
 
-          // 404 Handling: App does not exist
+          // If app is not yet in server cache, serve SPA shell for interactive browsers so client SDK resolves it cleanly; return 404 only for crawlers
           if (!appData) {
-            const notFoundHtml = renderNotFoundHtml(rawHtml, requestedSlug, baseUrl);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            return res.status(404).send(notFoundHtml);
+            if (isCrawler) {
+              const notFoundHtml = renderNotFoundHtml(rawHtml, requestedSlug, baseUrl);
+              return res.status(404).send(notFoundHtml);
+            }
+            return res.status(200).send(rawHtml);
           }
 
           // Canonical Slug Redirect: If accessed by raw ID but clean name slug exists, 301 redirect
@@ -5347,9 +5352,13 @@ async function startServer() {
             return res.redirect(301, `/apps/${encodeURIComponent(canonicalSlug)}`);
           }
 
-          let transformedHtml = injectAppSeoIntoHtml(rawHtml, appData, baseUrl);
-          const hydrationJson = JSON.stringify(appData).replace(/</g, '\\u003c');
-          const hydrationScript = `<script id="prople-initial-app" type="application/json">${hydrationJson}</script><script>try{window.__INITIAL_APP__=JSON.parse(document.getElementById("prople-initial-app").textContent);}catch(e){}</script>`;
+          let transformedHtml = injectAppSeoIntoHtml(rawHtml, appData, baseUrl, { injectBodyShell: isCrawler });
+          const hydrationJson = JSON.stringify(appData)
+            .replace(/</g, '\\u003c')
+            .replace(/>/g, '\\u003e')
+            .replace(/&/g, '\\u0026');
+          // CSP-compliant passive JSON script block (parsed by getInitialHydratedApp on client without inline script execution)
+          const hydrationScript = `<script id="prople-initial-app" type="application/json">${hydrationJson}</script>`;
           if (transformedHtml.includes('</head>')) {
             transformedHtml = transformedHtml.replace('</head>', `${hydrationScript}</head>`);
           } else {

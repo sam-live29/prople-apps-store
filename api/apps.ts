@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -38,6 +39,49 @@ function getSecureCorsHeaders(origin?: string): Record<string, string> {
   return headers;
 }
 
+function getServerFirebaseConfig() {
+  let fileConfig: any = {};
+  const candidates: string[] = [path.join(process.cwd(), 'firebase-applet-config.json')];
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    candidates.push(path.join(currentDir, '..', 'firebase-applet-config.json'));
+  } catch {}
+
+  for (const configPath of candidates) {
+    try {
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        break;
+      }
+    } catch {}
+  }
+
+  const isReal = (val?: string) =>
+    Boolean(
+      val &&
+      typeof val === 'string' &&
+      val.trim().length > 0 &&
+      !val.includes('example') &&
+      !val.includes('Placeholder') &&
+      !val.includes('0000000000')
+    );
+
+  const apiKey = process.env.FIREBASE_API_KEY || (isReal(fileConfig.apiKey) ? fileConfig.apiKey : '');
+  const projectId = process.env.FIREBASE_PROJECT_ID || (isReal(fileConfig.projectId) ? fileConfig.projectId : '');
+  const firestoreDatabaseId =
+    process.env.FIRESTORE_DATABASE_ID ||
+    process.env.FIREBASE_DATABASE_ID ||
+    (isReal(fileConfig.firestoreDatabaseId) ? fileConfig.firestoreDatabaseId : '(default)');
+
+  const isExampleConfig = !isReal(apiKey) || !isReal(projectId);
+
+  return {
+    projectId: projectId || 'example-prople-store',
+    firestoreDatabaseId: firestoreDatabaseId || '(default)',
+    isExampleConfig,
+  };
+}
+
 export default async function handler(req: any, res: any) {
   const corsHeaders = getSecureCorsHeaders(req.headers?.origin);
   for (const [key, value] of Object.entries(corsHeaders)) {
@@ -53,7 +97,6 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   try {
-    const { getServerFirebaseConfig } = await import('../server/firebaseConfig');
     const fbConfig = getServerFirebaseConfig();
     const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
     const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';

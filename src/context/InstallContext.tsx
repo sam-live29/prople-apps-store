@@ -308,18 +308,21 @@ function triggerAnchorDownload(url: string, fileName?: string) {
     if (isSameOrigin) {
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.tabIndex = -1;
       iframe.src = url;
       document.body.appendChild(iframe);
       setTimeout(() => {
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
         }
-      }, 30000);
+      }, 60000);
       return;
     }
 
     const a = document.createElement('a');
     a.href = url;
+    a.removeAttribute('target');
     if (fileName) {
       a.download = fileName;
       a.setAttribute('download', fileName);

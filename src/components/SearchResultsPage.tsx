@@ -1011,7 +1011,9 @@ export default function SearchResultsPage({
         <div className="px-1 sm:px-3 py-2.5 flex items-center">
           <button 
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               const targetPlat = (app.platform === 'ios' || isIOSApp(app))
                 ? 'ios'
                 : (app.platform === 'linux' || isLinuxApp(app)) 
@@ -1188,6 +1190,7 @@ export default function SearchResultsPage({
   };
 
   const handleQuickInstall = (app: AppListing, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     const targetPlat = (app.platform === 'ios' || isIOSApp(app))
       ? 'ios'

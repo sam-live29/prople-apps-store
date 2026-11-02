@@ -60,6 +60,7 @@ import {
 import ConfirmationDialog from './ConfirmationDialog';
 import { useAutoResetVideoOnScrollAndPage } from '../hooks/useAutoResetVideoOnScrollAndPage';
 import VerifiedBadge from './VerifiedBadge';
+import { getInitialHydratedApp } from '../utils/seoHelper';
 
 function DetailPromoVideoCard({
   app,
@@ -498,8 +499,8 @@ export default function AppDetailPage({
 
   const [liveApp, setLiveApp] = useState<AppDetails | null>(null);
   const [fetchedApp, setFetchedApp] = useState<AppDetails | null>(() => {
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_APP__) {
-      const initApp = (window as any).__INITIAL_APP__;
+    const initApp = getInitialHydratedApp();
+    if (initApp) {
       const cleanTarget = (appId || '').toLowerCase().trim();
       const cleanSlug = cleanTarget.replace(/[^a-z0-9]/g, '');
       const initSlug = (initApp.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2206,7 +2207,6 @@ export default function AppDetailPage({
               {effectiveRepoOwner && (
                 <a 
                   href={`https://github.com/${effectiveRepoOwner}`} 
-                  target="_blank" 
                   rel="noopener noreferrer" 
                   className="flex items-center gap-3.5 text-theme-text hover:text-blue-400 transition-colors"
                   id="dev-info-repo-owner"
@@ -2244,7 +2244,6 @@ export default function AppDetailPage({
               {effectiveOfficialWebsiteUrl && (
                 <a 
                   href={effectiveOfficialWebsiteUrl} 
-                  target="_blank" 
                   rel="noopener noreferrer" 
                   className="flex items-center gap-3.5 text-theme-text hover:text-blue-400 transition-colors"
                   id="dev-info-website"
@@ -2279,7 +2278,6 @@ export default function AppDetailPage({
                     openPrivacyPolicy();
                   }
                 }}
-                target={isExternalPrivacyUrl ? '_blank' : undefined} 
                 rel="noopener noreferrer" 
                 className="flex items-center gap-3.5 text-theme-text hover:text-blue-400 transition-colors cursor-pointer group"
                 id="dev-info-privacy-policy"
@@ -2302,7 +2300,6 @@ export default function AppDetailPage({
                     openTermsOfService();
                   }
                 }}
-                target={isExternalTermsUrl ? '_blank' : undefined} 
                 rel="noopener noreferrer" 
                 className="flex items-center gap-3.5 text-theme-text hover:text-blue-400 transition-colors cursor-pointer group"
                 id="dev-info-terms-conditions"

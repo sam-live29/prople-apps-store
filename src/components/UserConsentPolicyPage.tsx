@@ -306,7 +306,7 @@ export default function UserConsentPolicyPage({
                 1. <strong>Direct Email Request:</strong> Send an email from your registered address to <a href="mailto:cloaktailsupport@gmail.com" className="text-blue-500 hover:underline">cloaktailsupport@gmail.com</a> with the subject <em>&quot;User Consent Revocation &amp; Data Deletion&quot;</em>.
               </p>
               <p>
-                2. <strong>Revoke OAuth Authorizations:</strong> Disconnect Prople Store from your Google Account at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">myaccount.google.com/permissions</a> to immediately invalidate session tokens.
+                2. <strong>Revoke OAuth Authorizations:</strong> Disconnect Prople Store from your Google Account at <a href="https://myaccount.google.com/permissions" rel="noreferrer" className="text-blue-500 hover:underline">myaccount.google.com/permissions</a> to immediately invalidate session tokens.
               </p>
               <p>
                 3. <strong>Clear Browser Storage:</strong> In your browser settings, navigate to Site Settings &rarr; Prople Store &rarr; Clear Data to instantaneously wipe all locally saved bookmarks, theme preferences, and cached entries.

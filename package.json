@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && node -e \"const fs=require('fs');if(fs.existsSync('dist/index.html'))fs.copyFileSync('dist/index.html','server/index.built.html')\" && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node server.ts",
     "start:bundle": "node dist/server.cjs",
     "preview": "vite preview",

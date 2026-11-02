@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ArrowLeft, Bell, ExternalLink, ArrowRight, ShieldCheck, MoreVertical, CheckCheck, Download, Star, MessageSquare, RefreshCw, Sparkles, Heart } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react';
-import { useInstall } from '../context/InstallContext';
+import { useInstall, dispatchInstantNativeDownload } from '../context/InstallContext';
 import { useStoreConfig } from '../context/StoreConfigContext';
 import { NotificationItem } from '../types';
 import { usePreserveScroll } from '../services/scrollManager';
 import { sanitizeExternalUrl } from '../utils/securityUtils';
+import { isBinaryPackage } from '../utils/packageResolution';
 import { requestPhoneNotificationPermission } from '../services/firestoreNotificationService';
 import GlobalNoticeDetailModal from './GlobalNoticeDetailModal';
 import StoreCircleLoader from './StoreCircleLoader';
@@ -316,26 +317,27 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
     }
 
     if (notif.actionUrl) {
-      const safeActionUrl = sanitizeExternalUrl(notif.actionUrl);
-      if (safeActionUrl) {
-        try {
-          const newWindow = window.open(safeActionUrl, '_blank', 'noopener,noreferrer');
-          if (!newWindow) {
-            const link = document.createElement('a');
-            link.href = safeActionUrl;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.click();
-          }
-        } catch {
-          const link = document.createElement('a');
-          link.href = safeActionUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.click();
-        }
+      const rawUrl = notif.actionUrl.trim();
+      const internalAppMatch = rawUrl.match(/(?:^|https?:\/\/[^/]+)\/(?:apps|app)\/([^/?#]+)/i);
+      if (internalAppMatch && internalAppMatch[1] && onAppClick) {
+        onAppClick(decodeURIComponent(internalAppMatch[1]));
+        return;
       }
-      return;
+
+      if (
+        rawUrl.startsWith('/api/download-apk') ||
+        rawUrl.includes('/releases/download/') ||
+        isBinaryPackage(rawUrl)
+      ) {
+        dispatchInstantNativeDownload(rawUrl);
+        return;
+      }
+
+      const safeActionUrl = sanitizeExternalUrl(rawUrl);
+      if (safeActionUrl) {
+        window.location.assign(safeActionUrl);
+        return;
+      }
     }
 
     // Notice/announcement with full details

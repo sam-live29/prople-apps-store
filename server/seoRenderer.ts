@@ -91,7 +91,12 @@ export function resolveSocialShareImageUrl(url: string | undefined, baseUrl: str
  * Injects app-specific SEO tags, Schema.org SoftwareApplication & BreadcrumbList,
  * and semantic pre-rendered HTML into the HTML template for /app/[slug]
  */
-export function injectAppSeoIntoHtml(html: string, app: SeoAppMetadata, baseUrl: string): string {
+export function injectAppSeoIntoHtml(
+  html: string,
+  app: SeoAppMetadata,
+  baseUrl: string,
+  options?: { injectBodyShell?: boolean }
+): string {
   const name = escapeHtml(app.name || 'Application');
   const canonicalSlug = app.slug || slugifyAppName(app.name) || app.id;
   const platform = escapeHtml((app.platform || 'Android').toUpperCase());
@@ -334,7 +339,8 @@ export function injectAppSeoIntoHtml(html: string, app: SeoAppMetadata, baseUrl:
     </div>
   `;
 
-  return cleanAndInjectHtml(html, headInject, preRenderedAppShell);
+  const shouldInjectBody = options?.injectBodyShell !== false;
+  return cleanAndInjectHtml(html, headInject, shouldInjectBody ? preRenderedAppShell : '');
 }
 
 /**
@@ -868,26 +874,28 @@ function cleanAndInjectHtml(html: string, headInject: string, bodyContent: strin
     result = `${headInject}\n${result}`;
   }
 
-  // Inject pre-rendered content inside <div id="root">, replacing any static loading skeleton
-  const rootStart = result.indexOf('<div id="root"');
-  if (rootStart !== -1) {
-    const bodyEnd = result.indexOf('</body>', rootStart);
-    const searchLimit = bodyEnd !== -1 ? bodyEnd : result.length;
+  // Inject pre-rendered content inside <div id="root"> when bodyContent is provided (for crawlers / 404s)
+  if (bodyContent) {
+    const rootStart = result.indexOf('<div id="root"');
+    if (rootStart !== -1) {
+      const bodyEnd = result.indexOf('</body>', rootStart);
+      const searchLimit = bodyEnd !== -1 ? bodyEnd : result.length;
 
-    // In Vite dev, there may be a <script> tag after <div id="root"> (e.g. /src/main.tsx)
-    const scriptStart = result.indexOf('<script', rootStart);
-    let lastDivClose = -1;
-    if (scriptStart !== -1 && scriptStart < searchLimit) {
-      lastDivClose = result.slice(0, scriptStart).lastIndexOf('</div>');
-    } else if (bodyEnd !== -1) {
-      // In Vite production, bundled scripts are inside <head>, so root skeleton extends until </body>
-      lastDivClose = result.slice(0, bodyEnd).lastIndexOf('</div>');
-    }
+      // In Vite dev, there may be a <script> tag after <div id="root"> (e.g. /src/main.tsx)
+      const scriptStart = result.indexOf('<script', rootStart);
+      let lastDivClose = -1;
+      if (scriptStart !== -1 && scriptStart < searchLimit) {
+        lastDivClose = result.slice(0, scriptStart).lastIndexOf('</div>');
+      } else if (bodyEnd !== -1) {
+        // In Vite production, bundled scripts are inside <head>, so root skeleton extends until </body>
+        lastDivClose = result.slice(0, bodyEnd).lastIndexOf('</div>');
+      }
 
-    if (lastDivClose > rootStart) {
-      result = result.slice(0, rootStart) + `<div id="root" style="background-color: inherit; min-height: 100%; width: 100%;">${bodyContent}</div>` + result.slice(lastDivClose + 6);
-    } else if (result.includes('<div id="root"></div>')) {
-      result = result.replace('<div id="root"></div>', `<div id="root" style="background-color: inherit; min-height: 100%; width: 100%;">${bodyContent}</div>`);
+      if (lastDivClose > rootStart) {
+        result = result.slice(0, rootStart) + `<div id="root" style="background-color: inherit; min-height: 100%; width: 100%;">${bodyContent}</div>` + result.slice(lastDivClose + 6);
+      } else if (result.includes('<div id="root"></div>')) {
+        result = result.replace('<div id="root"></div>', `<div id="root" style="background-color: inherit; min-height: 100%; width: 100%;">${bodyContent}</div>`);
+      }
     }
   }
 

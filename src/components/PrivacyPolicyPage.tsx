@@ -357,7 +357,7 @@ export default function PrivacyPolicyPage({
                 1. <strong>Direct Email Deletion Request:</strong> Send an email from your registered address to <a href="mailto:cloaktailsupport@gmail.com" className="text-blue-500 hover:underline">cloaktailsupport@gmail.com</a> with the subject <em>&quot;Data Deletion Request&quot;</em>. Requests are executed within thirty (30) calendar days.
               </p>
               <p>
-                2. <strong>Revoke OAuth Access:</strong> You can sever authentication tokens at any time via <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">myaccount.google.com/permissions</a>.
+                2. <strong>Revoke OAuth Access:</strong> You can sever authentication tokens at any time via <a href="https://myaccount.google.com/permissions" rel="noreferrer" className="text-blue-500 hover:underline">myaccount.google.com/permissions</a>.
               </p>
               <p>
                 3. <strong>Clear Local Device Data:</strong> Purge local search histories and cached listings directly via browser site data settings.

@@ -14,6 +14,7 @@ import { clearAllSectionScrolls } from '../services/sectionScrollMemoryService';
 import { AdminModerationService } from '../services/adminModerationService';
 import { RecommendationService } from '../services/recommendationService';
 import { safeFetchJson } from '../utils/safeFetch';
+import { getInitialHydratedApp } from '../utils/seoHelper';
 
 interface StoreConfigContextType {
   banners: HeroBannerConfig[];
@@ -66,12 +67,10 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
   // Instant cache hydration from window.__INITIAL_APP__ or sessionStorage/localStorage prevents any blank or empty flash
   const [apps, setApps] = useState<Record<string, AppDetails>>(() => {
     const seedApps: Record<string, AppDetails> = {};
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_APP__) {
-      const init = (window as any).__INITIAL_APP__;
-      if (init && init.id) {
-        seedApps[init.id] = init;
-        if (init.slug) seedApps[init.slug] = init;
-      }
+    const init = getInitialHydratedApp();
+    if (init && init.id) {
+      seedApps[init.id] = init;
+      if (init.slug) seedApps[init.slug] = init;
     }
     try {
       const cached = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(ACTIVE_CATALOG_STORAGE_KEY)) ||
@@ -86,7 +85,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
     return seedApps;
   });
   const [isLoadingApps, setIsLoadingApps] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_APP__) {
+    if (getInitialHydratedApp()) {
       return false;
     }
     try {
@@ -102,7 +101,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
     return true;
   });
   const [hasInitialSyncCompleted, setHasInitialSyncCompleted] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_APP__) {
+    if (getInitialHydratedApp()) {
       return true;
     }
     try {

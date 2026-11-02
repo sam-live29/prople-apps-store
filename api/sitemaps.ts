@@ -1,7 +1,74 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import { slugifyAppName } from '../server/seoRenderer';
-import { getServerFirebaseConfig } from '../server/firebaseConfig';
+
+function slugifyAppName(name: string): string {
+  return (name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getServerFirebaseConfig() {
+  let fileConfig: any = {};
+  const candidates: string[] = [path.join(process.cwd(), 'firebase-applet-config.json')];
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    candidates.push(path.join(currentDir, '..', 'firebase-applet-config.json'));
+  } catch {}
+
+  for (const configPath of candidates) {
+    try {
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        break;
+      }
+    } catch {}
+  }
+
+  const isReal = (val?: string) =>
+    Boolean(
+      val &&
+      typeof val === 'string' &&
+      val.trim().length > 0 &&
+      !val.includes('example') &&
+      !val.includes('Placeholder') &&
+      !val.includes('0000000000')
+    );
+
+  const apiKey = process.env.FIREBASE_API_KEY || (isReal(fileConfig.apiKey) ? fileConfig.apiKey : '');
+  const projectId = process.env.FIREBASE_PROJECT_ID || (isReal(fileConfig.projectId) ? fileConfig.projectId : '');
+  const appId = process.env.FIREBASE_APP_ID || (isReal(fileConfig.appId) ? fileConfig.appId : '');
+  const authDomain =
+    process.env.FIREBASE_AUTH_DOMAIN ||
+    (isReal(fileConfig.authDomain) ? fileConfig.authDomain : projectId ? `${projectId}.firebaseapp.com` : '');
+  const firestoreDatabaseId =
+    process.env.FIRESTORE_DATABASE_ID ||
+    process.env.FIREBASE_DATABASE_ID ||
+    (isReal(fileConfig.firestoreDatabaseId) ? fileConfig.firestoreDatabaseId : '(default)');
+  const storageBucket =
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    (isReal(fileConfig.storageBucket) ? fileConfig.storageBucket : projectId ? `${projectId}.firebasestorage.app` : '');
+  const messagingSenderId =
+    process.env.FIREBASE_MESSAGING_SENDER_ID || (isReal(fileConfig.messagingSenderId) ? fileConfig.messagingSenderId : '');
+
+  const isExampleConfig = !isReal(apiKey) || !isReal(projectId);
+
+  return {
+    projectId: projectId || 'example-prople-store',
+    appId: appId || '1:000000000000:web:0000000000000000000000',
+    apiKey: apiKey || 'AIzaSyExamplePlaceholderApiKey0000000000',
+    authDomain: authDomain || 'example-prople-store.firebaseapp.com',
+    firestoreDatabaseId: firestoreDatabaseId || 'example-firestore-database-id',
+    storageBucket: storageBucket || 'example-prople-store.firebasestorage.app',
+    messagingSenderId: messagingSenderId || '000000000000',
+    isExampleConfig,
+  };
+}
 
 const SITEMAP_BASE = 'https://prople.co.in';
 

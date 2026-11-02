@@ -1,5 +1,81 @@
-import { getServerFirebaseConfig } from '../../server/firebaseConfig';
-import { isStrictAdminEmail } from '../../server/securityDefense';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const DEFAULT_ADMIN_EMAILS = [
+  'sahanurmolla7076@gmail.com',
+  'sahanurmolla2886@gmail.com',
+  'sahanurmolla190@gmail.com',
+  'prople.site@gmail.com',
+  'cloaktailsupport@gmail.com',
+  'cloaktailofficial@gmail.com',
+  'prople.org@gmail.com',
+];
+
+const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
+
+function isStrictAdminEmail(email?: string | null): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const norm = email.toLowerCase().trim();
+  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
+
+  const envAdmins = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (envAdmins.includes(norm)) return true;
+  if (norm.endsWith(VERIFIED_ADMIN_DOMAIN)) {
+    const local = norm.slice(0, -VERIFIED_ADMIN_DOMAIN.length);
+    if (['admin', 'security', 'moderator', 'executive', 'root', 'dev'].includes(local)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getServerFirebaseConfig() {
+  let fileConfig: any = {};
+  const candidates: string[] = [path.join(process.cwd(), 'firebase-applet-config.json')];
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    candidates.push(path.join(currentDir, '..', '..', 'firebase-applet-config.json'));
+  } catch {}
+
+  for (const configPath of candidates) {
+    try {
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        break;
+      }
+    } catch {}
+  }
+
+  const isReal = (val?: string) =>
+    Boolean(
+      val &&
+      typeof val === 'string' &&
+      val.trim().length > 0 &&
+      !val.includes('example') &&
+      !val.includes('Placeholder') &&
+      !val.includes('0000000000')
+    );
+
+  const apiKey = process.env.FIREBASE_API_KEY || (isReal(fileConfig.apiKey) ? fileConfig.apiKey : '');
+  const projectId = process.env.FIREBASE_PROJECT_ID || (isReal(fileConfig.projectId) ? fileConfig.projectId : '');
+  const firestoreDatabaseId =
+    process.env.FIRESTORE_DATABASE_ID ||
+    process.env.FIREBASE_DATABASE_ID ||
+    (isReal(fileConfig.firestoreDatabaseId) ? fileConfig.firestoreDatabaseId : '(default)');
+
+  const isExampleConfig = !isReal(apiKey) || !isReal(projectId);
+
+  return {
+    projectId: projectId || 'example-prople-store',
+    firestoreDatabaseId: firestoreDatabaseId || '(default)',
+    isExampleConfig,
+  };
+}
 
 const TRUSTED_ORIGIN_PATTERNS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,

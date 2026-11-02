@@ -2,7 +2,7 @@ import React from 'react';
 import { Download } from 'lucide-react';
 import { AppListing, AppDetails } from '../types';
 import { getAppActionFileLabel } from '../services/osDetectionService';
-import { getDirectDownloadUrl } from '../context/InstallContext';
+import { dispatchInstantNativeDownload } from '../context/InstallContext';
 
 export type LoadingStyleVariant = 
   | 'tonal-brand'
@@ -22,7 +22,7 @@ interface InstallProgressButtonProps {
 /**
  * Direct Download Button:
  * Places the genuine release binary link directly behind the download button,
- * triggering immediate native browser downloads straight from CDN with background telemetry.
+ * triggering immediate native browser downloads straight from CDN inside the store app.
  */
 export const InstallProgressButton: React.FC<InstallProgressButtonProps> = ({
   app,
@@ -31,21 +31,14 @@ export const InstallProgressButton: React.FC<InstallProgressButtonProps> = ({
   className = ''
 }) => {
   const label = getAppActionFileLabel(app as any, resolvedPlatform);
-  const directReleaseUrl = getDirectDownloadUrl(app.downloadUrl, app.assetName, resolvedPlatform) || app.downloadUrl || '';
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (onDownload) {
       onDownload();
-    } else if (directReleaseUrl && directReleaseUrl !== '#') {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = directReleaseUrl;
-      document.body.appendChild(iframe);
-      setTimeout(() => {
-        if (document.body.contains(iframe)) document.body.removeChild(iframe);
-      }, 30000);
+    } else if (app.downloadUrl && app.downloadUrl !== '#') {
+      dispatchInstantNativeDownload(app.downloadUrl, app.assetName, resolvedPlatform);
     }
   };
 
