@@ -41,7 +41,6 @@ import {
   renderNotFoundHtml,
   slugifyAppName
 } from "./server/seoRenderer.ts";
-import { createS3UploadPresignedUrl, uploadBufferToS3, S3_BUCKET_NAME, S3_REGION } from "./server/s3Storage.ts";
 import { 
   generateOtp, 
   storeOtp, 
@@ -1203,114 +1202,39 @@ async function startServer() {
   });
 
   // ==========================================
-  // AWS S3 Media Storage APIs
+  // Firebase Media Validation & Storage APIs
   // ==========================================
 
-  // Check S3 Configuration & Health
   app.get("/api/storage/status", (_req, res) => {
-    const hasKeys = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
     return res.json({
       success: true,
-      bucket: S3_BUCKET_NAME,
-      region: S3_REGION,
-      hasCredentials: hasKeys,
-      publicBaseUrl: `https://${S3_BUCKET_NAME}.s3.${S3_REGION}.amazonaws.com`,
+      provider: "firebase",
+      projectId: firebaseConfig.projectId,
     });
   });
 
-  // Request a Pre-Signed Upload URL (Upload directly to S3 from browser)
-  app.post("/api/storage/presigned-url", async (req, res) => {
-    try {
-      const { filename, contentType, folder = "apps" } = req.body || {};
-      if (!filename) {
-        return res.status(400).json({ success: false, error: "Missing filename parameter." });
-      }
-
-      const safeFolder = String(folder).replace(/[^a-zA-Z0-9_\-\/]/g, "").slice(0, 50);
-      const cleanFilename = String(filename).replace(/[^a-zA-Z0-9_\-\.]/g, "_").slice(0, 100);
-      const timestamp = Date.now();
-      const randomNonce = Math.random().toString(36).substring(2, 8);
-      const s3Key = `${safeFolder}/${timestamp}-${randomNonce}-${cleanFilename}`;
-
-      const presigned = await createS3UploadPresignedUrl(
-        s3Key,
-        contentType || "image/webp",
-        900 // 15 minutes validity
-      );
-
-      if (!presigned) {
-        return res.status(200).json({
-          success: false,
-          s3Unavailable: true,
-          fallbackUrl: null,
-        });
-      }
-
-      return res.json({
-        success: true,
-        uploadUrl: presigned.uploadUrl,
-        publicUrl: presigned.publicUrl,
-        key: s3Key,
-      });
-    } catch (err: any) {
-      console.warn("[Backend S3] Presigned URL notice:", err.message);
-      return res.status(200).json({ success: false, s3Unavailable: true, fallbackUrl: null });
-    }
-  });
-
-  // Server-side Direct Upload to S3 (Accepts base64 or binary data)
   app.post("/api/storage/upload", async (req, res) => {
     try {
-      const { dataUrl, filename, folder = "apps" } = req.body || {};
+      const { dataUrl, filename } = req.body || {};
       if (!dataUrl || typeof dataUrl !== "string") {
         return res.status(400).json({ success: false, error: "Missing or invalid dataUrl payload." });
       }
 
-      // Check if it's already an external URL
       if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
-        return res.json({ success: true, url: dataUrl });
+        return res.json({ success: true, url: dataUrl, provider: "firebase" });
       }
 
-      // Strict binary validation
       const validation = validateImageSource(dataUrl, filename || "Upload Image");
       if (!validation.valid) {
         return res.status(400).json({ success: false, error: validation.error });
       }
 
-      const match = dataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
-      if (!match) {
-        return res.status(400).json({ success: false, error: "Malformed base64 image data." });
-      }
-
-      const subtype = match[1];
-      const base64Data = match[2];
-      const buffer = Buffer.from(base64Data, "base64");
-      const contentType = `image/${subtype}`;
-
-      const safeFolder = String(folder).replace(/[^a-zA-Z0-9_\-\/]/g, "").slice(0, 50);
-      const cleanFilename = String(filename || "image").replace(/[^a-zA-Z0-9_\-\.]/g, "_").slice(0, 100);
-      const s3Key = `${safeFolder}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${cleanFilename}.${subtype}`;
-
-      const publicUrl = await uploadBufferToS3(buffer, s3Key, contentType);
-      if (!publicUrl) {
-        // Fallback cleanly to validated inline Data URL when S3 is not configured
-        return res.json({
-          success: true,
-          url: dataUrl,
-          key: s3Key,
-          sizeBytes: buffer.length,
-          source: "inline-data-url"
-        });
-      }
-
       return res.json({
         success: true,
-        url: publicUrl,
-        key: s3Key,
-        sizeBytes: buffer.length,
+        url: dataUrl,
+        provider: "firebase",
       });
     } catch (err: any) {
-      console.error("[Backend S3] Server upload error:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });

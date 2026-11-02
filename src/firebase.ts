@@ -11,6 +11,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 interface ExtendedFirebaseConfig {
@@ -176,6 +177,7 @@ export const db = firestoreInstance;
 
 export const auth = getAuth(app);
 export const rtdb = getDatabase(app, config.databaseURL);
+export const storage = getStorage(app);
 
 // Test connection to Firestore on boot
 async function testConnection() {
