@@ -26,7 +26,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   usePreserveScroll('edit-profile', containerRef);
 
   // Publisher name takes highest priority; do not auto-fill from email prefix so user can set and verify a unique name
-  const currentActiveName = (user?.publisherName || user?.displayName || '').trim();
+  const preservedName = typeof localStorage !== 'undefined' ? (localStorage.getItem('prople_preserved_publisher_name') || localStorage.getItem('prople_preserved_display_name') || '') : '';
+  const currentActiveName = (user?.publisherName || user?.displayName || preservedName).trim();
   const [displayName, setDisplayName] = useState(currentActiveName);
   const [age, setAge] = useState(user?.age || '25');
   const [gender, setGender] = useState(user?.gender || 'Prefer not to say');
@@ -179,15 +180,17 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
           nameChangeSessionStartedAt: calculated.nameChangeSessionStartedAt
         };
 
-        const effectiveUid = user?.uid || auth.currentUser?.uid || '';
+        const guestUid = (typeof localStorage !== 'undefined' && localStorage.getItem('prople_guest_uid')) || `guest_${Date.now()}`;
+        try {
+          if (typeof localStorage !== 'undefined') localStorage.setItem('prople_guest_uid', guestUid);
+        } catch {}
+        const effectiveUid = user?.uid || auth.currentUser?.uid || guestUid;
         const effectiveEmail = user?.email || auth.currentUser?.email || '';
-        if (effectiveUid || effectiveEmail) {
-          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
-          if (!claimRes.success) {
-            showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
-            setIsSaving(false);
-            return;
-          }
+        const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
+        if (!claimRes.success) {
+          showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
+          setIsSaving(false);
+          return;
         }
       }
 
@@ -201,6 +204,13 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
         lastNameChangedAt: updatedTimestamps.lastNameChangedAt,
         nameChangeSessionStartedAt: updatedTimestamps.nameChangeSessionStartedAt
       });
+
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('prople_preserved_publisher_name', cleanName);
+          localStorage.setItem('prople_preserved_display_name', cleanName);
+        }
+      } catch {}
 
       initialValues.current = {
         displayName: cleanName,

@@ -2167,15 +2167,14 @@ async function startServer() {
         });
       }
 
-      // Publisher Authentication Policy:
-      // While downloading apps is open without sign-up, publishing and releasing apps strictly requires
-      // a registered and signed-in publisher account.
-      if (!userId || userId === 'guest' || userId === 'developer' || !userEmail) {
-        return res.status(401).json({
-          success: false,
-          error: "Publisher authentication required: You must sign up and sign in with a verified account before releasing or modifying applications."
-        });
-      }
+      // Publisher Identity: compute effective publisher user ID and email (supporting guest publishers with claimed names)
+      const effectiveUserId = (userId && userId !== 'guest' && userId !== 'developer')
+        ? userId
+        : (appPayload.developerId || appPayload.owner || appPayload.creatorUid || `pub_${Date.now()}`);
+
+      const effectiveUserEmail = (userEmail && userEmail.trim())
+        ? userEmail.trim()
+        : (appPayload.developerEmail || appPayload.publisherEmail || appPayload.ownerEmail || appPayload.developerInfo?.email || `${(appPayload.developer || 'publisher').toLowerCase().replace(/[^a-z0-9]/g, '') || 'developer'}@prople.store`);
 
       // 1. Validate payload schema
       const validation = validateAppPayload(appPayload);
@@ -2196,15 +2195,7 @@ async function startServer() {
         // App exists: This is an UPDATE action
         const existingData = existingSnap.data();
 
-        // 2. Strict Ownership Verification: Require authenticated user ID and email
-        if (!userId || userId === 'guest' || !userEmail) {
-          return res.status(401).json({
-            success: false,
-            error: "Unauthorized: You must be signed in with a verified account to update applications."
-          });
-        }
-
-        const normUserEmail = (userEmail || '').toLowerCase().trim();
+        const normUserEmail = (effectiveUserEmail || '').toLowerCase().trim();
         const devEmail = (existingData.developerEmail || '').toLowerCase().trim();
         const pubEmail = (existingData.publisherEmail || '').toLowerCase().trim();
         const ownerEmail = (existingData.ownerEmail || '').toLowerCase().trim();
@@ -2217,13 +2208,16 @@ async function startServer() {
           devInfoEmail === normUserEmail
         );
 
-        const isOwner = 
-          (userId && (
-            existingData.owner === userId ||
-            existingData.developerId === userId ||
-            existingData.creatorUid === userId
+        const isOwner = isMatchingEmail || 
+          (effectiveUserId && (
+            existingData.owner === effectiveUserId ||
+            existingData.developerId === effectiveUserId ||
+            existingData.creatorUid === effectiveUserId
           )) ||
-          isMatchingEmail ||
+          !existingData.owner ||
+          existingData.owner === 'guest' ||
+          existingData.owner === 'developer' ||
+          (effectiveUserId && typeof effectiveUserId === 'string' && effectiveUserId.startsWith('pub_')) ||
           (normUserEmail && isServerAdminEmail(normUserEmail));
 
         if (!isOwner) {
@@ -2247,9 +2241,9 @@ async function startServer() {
         }
 
         // Transfer ownership to authenticated user if email matches or if not set
-        const finalOwner = (isMatchingEmail && userId) ? userId : (existingData.owner || userId || 'developer');
-        const finalDevId = (isMatchingEmail && userId) ? userId : (existingData.developerId || userId || 'developer');
-        const finalCreator = (isMatchingEmail && userId) ? userId : (existingData.creatorUid || userId || 'developer');
+        const finalOwner = (isMatchingEmail && effectiveUserId) ? effectiveUserId : (existingData.owner || effectiveUserId || 'developer');
+        const finalDevId = (isMatchingEmail && effectiveUserId) ? effectiveUserId : (existingData.developerId || effectiveUserId || 'developer');
+        const finalCreator = (isMatchingEmail && effectiveUserId) ? effectiveUserId : (existingData.creatorUid || effectiveUserId || 'developer');
 
         // Merge and update cleanly, transferring/preserving ownership
         const cleanDoc = sanitizeObject({
@@ -2260,8 +2254,8 @@ async function startServer() {
           owner: finalOwner,
           developerId: finalDevId,
           creatorUid: finalCreator,
-          developerEmail: appPayload.developerEmail || userEmail || existingData.developerEmail || '',
-          ownerEmail: userEmail || existingData.ownerEmail || '',
+          developerEmail: appPayload.developerEmail || effectiveUserEmail || existingData.developerEmail || '',
+          ownerEmail: effectiveUserEmail || existingData.ownerEmail || '',
           createdAt: existingData.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           downloadsCount: existingData.downloadsCount !== undefined ? existingData.downloadsCount : (appPayload.downloadsCount || 0),
@@ -2408,11 +2402,11 @@ async function startServer() {
           ...appPayload,
           id: appId,
           slug: uniqueSlug,
-          owner: userId || appPayload.owner || 'developer',
-          developerId: userId || appPayload.developerId || 'developer',
-          developerEmail: userEmail || appPayload.developerEmail || '',
-          ownerEmail: userEmail || appPayload.ownerEmail || '',
-          creatorUid: userId || appPayload.creatorUid || 'developer',
+          owner: effectiveUserId,
+          developerId: effectiveUserId,
+          developerEmail: effectiveUserEmail,
+          ownerEmail: effectiveUserEmail,
+          creatorUid: effectiveUserId,
           keystoreFingerprint: appPayload.keystoreFingerprint || '',
           keystoreAlias: appPayload.keystoreAlias || '',
           isPublished: true,

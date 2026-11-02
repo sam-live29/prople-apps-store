@@ -159,12 +159,14 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
     return () => clearTimeout(timer);
   }, [isAuthLoading, user, activeView, showToast, hasActiveToast]);
 
-  const userEmail = user?.email || "Guest User";
-  const userName = user?.publisherName || user?.displayName || "Guest";
+  const preservedPublisherName = typeof localStorage !== 'undefined' ? (localStorage.getItem('prople_preserved_publisher_name') || localStorage.getItem('prople_preserved_display_name') || '') : '';
+  const userEmail = user?.email || (preservedPublisherName ? "Publisher Profile" : "Guest User");
+  const userName = user?.publisherName || user?.displayName || preservedPublisherName || "Guest";
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
     (user?.displayName && AdminModerationService.isPublisherVerified(user.displayName)) ||
+    (preservedPublisherName && AdminModerationService.isPublisherVerified(preservedPublisherName)) ||
     AdminModerationService.isPublisherVerified(userName)
   );
 
@@ -292,16 +294,14 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
 
           <div className="w-full flex-col flex">
             {/* Dedicated Edit Profile option in Settings */}
-            {user && (
-              <MenuItem 
-                onClick={() => setActiveView('edit-profile')}
-                icon={<User className="w-5 h-5 text-theme-text-muted" />} 
-                label="Edit Profile" 
-                sublabel="Display name, bio & preferences"
-                hasBorder={false}
-                rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
-              />
-            )}
+            <MenuItem 
+              onClick={() => setActiveView('edit-profile')}
+              icon={<User className="w-5 h-5 text-theme-text-muted" />} 
+              label="Edit Profile" 
+              sublabel="Display name, publisher name & preferences"
+              hasBorder={false}
+              rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
+            />
             
             {/* Sustain Prople Platform Donation Modal Option */}
             <MenuItem 
