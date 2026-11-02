@@ -225,6 +225,44 @@
         "dismissedAt": { "type": "number" }
       },
       "required": ["notificationId", "dismissedAt"]
+    },
+    "LockedIp": {
+      "title": "LockedIp",
+      "description": "Blacklisted client IP addresses locked due to excessive failed attempts",
+      "type": "object",
+      "properties": {
+        "ip": { "type": "string" },
+        "lockedAt": { "type": "number" },
+        "lockedAtIso": { "type": "string" },
+        "reason": { "type": "string" },
+        "strikeCount": { "type": "number" },
+        "lastTargetEmail": { "type": "string" },
+        "userAgent": { "type": "string" }
+      },
+      "required": ["ip", "lockedAt"]
+    },
+    "AuthSecurityState": {
+      "title": "AuthSecurityState",
+      "description": "Aggregated security state including active IP verification strike tallies",
+      "type": "object",
+      "properties": {
+        "lastUpdated": { "type": "number" }
+      }
+    },
+    "AuthFailedLog": {
+      "title": "AuthFailedLog",
+      "description": "Security audit log of failed authentication, OTP, and reset verification attempts",
+      "type": "object",
+      "properties": {
+        "ip": { "type": "string" },
+        "email": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "isoTime": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["ip", "type", "timestamp"]
     }
   },
   "firestore": {
@@ -293,6 +331,24 @@
         "$ref": "#/entities/Notification"
       },
       "description": "Store-wide broadcast notifications and new app release announcements"
+    },
+    "/locked_ips/{ipId}": {
+      "schema": {
+        "$ref": "#/entities/LockedIp"
+      },
+      "description": "Client IP blacklist records locked due to repeated verification failures"
+    },
+    "/auth_security_state/{docId}": {
+      "schema": {
+        "$ref": "#/entities/AuthSecurityState"
+      },
+      "description": "Aggregated authentication security state and active strike counters"
+    },
+    "/auth_failed_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/AuthFailedLog"
+      },
+      "description": "Security audit logs of failed login and authentication attempts"
     }
   }
 }

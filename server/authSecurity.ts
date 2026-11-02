@@ -90,31 +90,39 @@ export async function initAuthSecurity(db: any) {
   if (isInitialized || !db) return;
   try {
     // 1. Load locked IPs
-    const lockedSnap = await getDocs(collection(db, 'locked_ips'));
-    lockedSnap.forEach((d) => {
-      const data = d.data();
-      if (data?.ip) lockedIps.add(data.ip.trim());
-      else if (d.id) lockedIps.add(d.id.trim());
-    });
-    console.log(`[Auth Security] Loaded ${lockedIps.size} locked IP(s) from database.`);
+    try {
+      const lockedSnap = await getDocs(collection(db, 'locked_ips'));
+      lockedSnap.forEach((d) => {
+        const data = d.data();
+        if (data?.ip) lockedIps.add(data.ip.trim());
+        else if (d.id) lockedIps.add(d.id.trim());
+      });
+      console.log(`[Auth Security] Loaded ${lockedIps.size} locked IP(s) from database.`);
+    } catch (ipErr: any) {
+      console.warn('[Auth Security] Locked IPs state notice:', ipErr.message);
+    }
 
     // 2. Load recent IP strikes
-    const stateDoc = await getDoc(doc(db, 'auth_security_state', 'active_ip_strikes'));
-    if (stateDoc.exists()) {
-      const data = stateDoc.data() || {};
-      for (const [ip, count] of Object.entries(data)) {
-        if (typeof count === 'number') {
-          ipTotalStrikes.set(ip, count);
-          if (count > MAX_IP_STRIKES_BEFORE_LOCK) {
-            lockedIps.add(ip);
+    try {
+      const stateDoc = await getDoc(doc(db, 'auth_security_state', 'active_ip_strikes'));
+      if (stateDoc.exists()) {
+        const data = stateDoc.data() || {};
+        for (const [ip, count] of Object.entries(data)) {
+          if (typeof count === 'number') {
+            ipTotalStrikes.set(ip, count);
+            if (count > MAX_IP_STRIKES_BEFORE_LOCK) {
+              lockedIps.add(ip);
+            }
           }
         }
       }
+    } catch (stateErr: any) {
+      console.warn('[Auth Security] IP strikes state notice:', stateErr.message);
     }
 
     isInitialized = true;
   } catch (err: any) {
-    console.warn('[Auth Security] Failed to load security state from Firestore:', err.message);
+    console.warn('[Auth Security] Security initialization notice:', err.message);
   }
 }
 

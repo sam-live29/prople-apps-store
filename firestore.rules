@@ -158,7 +158,9 @@ service cloud.firestore {
     }
 
     match /auth_failed_logs/{logId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
     match /locked_ips/{ipId} {
@@ -167,7 +169,8 @@ service cloud.firestore {
     }
 
     match /auth_security_state/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /banners/{bannerId} {

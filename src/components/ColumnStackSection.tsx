@@ -47,14 +47,13 @@ export default function ColumnStackSection({
     }
   }, [activeSectionId]);
 
-  if (!apps || apps.length === 0) return null;
-
-  const visibleApps = apps.slice(0, displayCount);
-  const hasMore = apps.length > displayCount;
+  const safeApps = apps || [];
+  const visibleApps = safeApps.slice(0, displayCount);
+  const hasMore = safeApps.length > displayCount;
 
   const dynamicMeta = useMemo(() => {
-    return deriveDynamicSectionTitle(apps, 'column', 0);
-  }, [apps]);
+    return deriveDynamicSectionTitle(safeApps, 'column', 0);
+  }, [safeApps]);
 
   const displayTitle = title || dynamicMeta.title;
   const displaySubtitle = subtitle || dynamicMeta.subtitle;
@@ -67,6 +66,8 @@ export default function ColumnStackSection({
     }
     return cols;
   }, [visibleApps]);
+
+  if (safeApps.length === 0) return null;
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;

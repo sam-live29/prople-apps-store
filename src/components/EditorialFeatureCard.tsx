@@ -86,11 +86,6 @@ function EditorialCardItem({
     (app.videoThumbnailUrl && app.videoThumbnailUrl.trim()) ||
     ((details as any).videoThumbnailUrl && (details as any).videoThumbnailUrl.trim());
 
-  // If no banner graphic exists, strict policy: do not showcase
-  if (!bannerGraphic) {
-    return null;
-  }
-
   const purchaseCaption = useMemo(() => {
     const hasIAP = Boolean((details as any)?.inAppPurchases || app.inAppPurchases);
     if (hasIAP) return 'In-app purchases';
@@ -105,6 +100,11 @@ function EditorialCardItem({
 
   // Dynamic Ambient Colored Shadow & Side Border Glow derived from the banner side border colors
   const ambientColors = useBannerAmbientColors(bannerGraphic);
+
+  // If no banner graphic exists, strict policy: do not showcase
+  if (!bannerGraphic) {
+    return null;
+  }
 
   // Derive Spotlight Badge Tag from developer console or item metadata
   const badgeText =

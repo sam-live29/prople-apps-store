@@ -233,19 +233,20 @@ export default function VideoCardsSection({
     });
   }, [apps, appsMap]);
 
-  if (!appsWithTrailers || appsWithTrailers.length === 0) return null;
-
-  const visibleApps = appsWithTrailers.slice(0, displayCount);
-  const hasMore = appsWithTrailers.length > displayCount;
+  const safeApps = appsWithTrailers || [];
+  const visibleApps = safeApps.slice(0, displayCount);
+  const hasMore = safeApps.length > displayCount;
 
   // Derive dynamic title and tag if not provided
   const dynamicMeta = React.useMemo(() => {
-    return deriveDynamicSectionTitle(appsWithTrailers, 'video', 0);
-  }, [appsWithTrailers]);
+    return deriveDynamicSectionTitle(safeApps, 'video', 0);
+  }, [safeApps]);
 
   const displayTitle = title || dynamicMeta.title;
   const displaySubtitle = subtitle || dynamicMeta.subtitle;
   const displayTag = defaultCategoryTag || dynamicMeta.tag;
+
+  if (safeApps.length === 0) return null;
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;

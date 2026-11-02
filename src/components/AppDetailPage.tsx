@@ -376,6 +376,7 @@ export default function AppDetailPage({
   };
 
   const [copiedHash, setCopiedHash] = useState(false);
+  const lastDownloadClickRef = useRef<number>(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
@@ -1123,8 +1124,6 @@ export default function AppDetailPage({
     showToast('SHA-256 hash copied to clipboard');
     setTimeout(() => setCopiedHash(false), 2500);
   };
-
-  const lastDownloadClickRef = useRef<number>(0);
 
   const handleDownloadAction = (e?: React.MouseEvent) => {
     e?.preventDefault();

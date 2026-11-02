@@ -252,19 +252,20 @@ export default function LandscapeCardsSection({
     }
   }, [activeSectionId]);
 
-  if (!eligibleApps || eligibleApps.length === 0) return null;
-
-  const visibleApps = eligibleApps.slice(0, displayCount);
-  const hasMore = eligibleApps.length > displayCount;
+  const safeApps = eligibleApps || [];
+  const visibleApps = safeApps.slice(0, displayCount);
+  const hasMore = safeApps.length > displayCount;
 
   // Derive dynamic title and tag if not provided
   const dynamicMeta = React.useMemo(() => {
-    return deriveDynamicSectionTitle(eligibleApps, 'landscape', 0);
-  }, [eligibleApps]);
+    return deriveDynamicSectionTitle(safeApps, 'landscape', 0);
+  }, [safeApps]);
 
   const displayTitle = title || dynamicMeta.title;
   const displaySubtitle = subtitle || dynamicMeta.subtitle;
   const displayTag = defaultCategoryTag || dynamicMeta.tag;
+
+  if (safeApps.length === 0) return null;
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
