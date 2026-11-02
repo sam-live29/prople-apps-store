@@ -271,20 +271,23 @@ export function dispatchInstantNativeDownload(
   }
 
   const exactFileName = extractExactPackageFileName(cleanUrl, fileName);
+  const isDirectHttpUrl = cleanUrl.startsWith('https://') || cleanUrl.startsWith('http://');
 
-  // If it's a non-GitHub URL and we have neither a binary URL nor an exact binary package filename, refuse bloat fallback
-  if (!cleanUrl.includes('github.com') && !cleanUrl.startsWith('/api/download-') && !cleanUrl.startsWith('blob:') && !exactFileName && !isBinaryFileName(cleanUrl)) {
-    const err = 'No exact binary package found at target URL.';
+  if (!isDirectHttpUrl && !cleanUrl.startsWith('/api/download-') && !cleanUrl.startsWith('blob:')) {
+    const err = 'Invalid package download URL.';
     onError?.(err);
     return { success: false, error: err };
   }
 
-  // ALWAYS stream through same-origin /api/download-apk so the user never navigates away to GitHub!
+  // ALWAYS stream through same-origin /api/download-apk so the user never navigates away from Prople Store!
   let sameOriginDownloadUrl = cleanUrl;
   if (!cleanUrl.startsWith('/api/download-apk') && !cleanUrl.startsWith('blob:')) {
     const params = new URLSearchParams();
     params.set('url', cleanUrl);
-    if (exactFileName) params.set('name', exactFileName);
+    const fallbackCleanName = fileName ? decodeURIComponent(fileName.split('?')[0].split('#')[0].split('/').pop() || '').trim() : '';
+    if (exactFileName || fallbackCleanName) {
+      params.set('name', exactFileName || fallbackCleanName);
+    }
     if (platform) params.set('platform', platform);
     sameOriginDownloadUrl = `/api/download-apk?${params.toString()}`;
   }

@@ -170,6 +170,19 @@ export const DEFAULT_ALLOWED_OUTBOUND_HOST_PATTERNS: RegExp[] = [
   // AWS S3 & CloudFront CDNs
   /^([a-z0-9-]+\.)?amazonaws\.com$/i,
   /^([a-z0-9-]+\.)?cloudfront\.net$/i,
+  // Cloudflare R2 Object Storage
+  /^([a-z0-9-]+\.)?r2\.dev$/i,
+  /^([a-z0-9-]+\.)?r2\.cloudflarestorage\.com$/i,
+  // DigitalOcean Spaces, Backblaze B2, BunnyCDN, Wasabi, Linode, Hetzner, Contabo, Supabase, Vercel Blob
+  /^([a-z0-9-]+\.)?digitaloceanspaces\.com$/i,
+  /^([a-z0-9-]+\.)?backblazeb2\.com$/i,
+  /^([a-z0-9-]+\.)?b-cdn\.net$/i,
+  /^([a-z0-9-]+\.)?wasabisys\.com$/i,
+  /^([a-z0-9-]+\.)?linodeobjects\.com$/i,
+  /^([a-z0-9-]+\.)?your-objectstorage\.com$/i,
+  /^([a-z0-9-]+\.)?contabostorage\.com$/i,
+  /^([a-z0-9-]+\.)?supabase\.co$/i,
+  /^([a-z0-9-]+\.)?vercel-storage\.com$/i,
   // Firebase Storage & Google Cloud Storage
   /^([a-z0-9-]+\.)?firebasestorage\.app$/i,
   /^([a-z0-9-]+\.)?storage\.googleapis\.com$/i,

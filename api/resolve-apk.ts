@@ -153,6 +153,252 @@ function pickMainAsset(rawAssets: any[], platform?: string) {
   );
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return '';
+  const gb = 1024 * 1024 * 1024;
+  const mb = 1024 * 1024;
+  const kb = 1024;
+  if (bytes >= gb) return `${(bytes / gb).toFixed(2)} GB`;
+  if (bytes >= mb) return `${(bytes / mb).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / kb))} KB`;
+}
+
+function parseContentDispositionFileName(disposition?: string | null): string {
+  if (!disposition || typeof disposition !== 'string') return '';
+  const utf8Match = disposition.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;\r\n]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return utf8Match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  const plainMatch = disposition.match(/filename\s*=\s*"([^"]+)"/i) || disposition.match(/filename\s*=\s*([^;\r\n]+)/i);
+  if (plainMatch?.[1]) {
+    try {
+      return decodeURIComponent(plainMatch[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return plainMatch[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return '';
+}
+
+function detectStorageProvider(urlStr: string): string {
+  try {
+    const host = new URL(urlStr).hostname.toLowerCase();
+    if (host.endsWith('.r2.dev') || host.endsWith('.r2.cloudflarestorage.com')) return 'Cloudflare R2';
+    if (host.endsWith('.amazonaws.com')) return 'AWS S3';
+    if (host.endsWith('.cloudfront.net')) return 'AWS CloudFront';
+    if (host.endsWith('.digitaloceanspaces.com')) return 'DigitalOcean Spaces';
+    if (host.endsWith('.backblazeb2.com')) return 'Backblaze B2';
+    if (host.endsWith('.b-cdn.net')) return 'Bunny CDN';
+    if (host.endsWith('.wasabisys.com')) return 'Wasabi Cloud';
+    if (host.endsWith('.firebasestorage.app') || host.endsWith('.googleapis.com')) return 'Cloud Storage';
+    if (host.includes('github.com') || host.includes('githubusercontent.com')) return 'GitHub Release';
+    return `Direct Storage (${host})`;
+  } catch {
+    return 'Direct Storage';
+  }
+}
+
+function isReservedIpv4(a: number, b: number, c: number, _d: number): boolean {
+  if (a === 0 || a === 127 || a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isSafePublicProbeUrl(candidateUrl: string): boolean {
+  if (!candidateUrl || typeof candidateUrl !== 'string') return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidateUrl.trim());
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' && (process.env.NODE_ENV === 'production' || parsed.protocol !== 'http:')) {
+    return false;
+  }
+  if (parsed.username || parsed.password) return false;
+  if (parsed.port && parsed.port !== '80' && parsed.port !== '443') return false;
+  const hostname = parsed.hostname.toLowerCase().trim();
+  if (!hostname) return false;
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    hostname === '169.254.169.254' ||
+    hostname === 'metadata.google.internal' ||
+    hostname.startsWith('[') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.lan') ||
+    hostname.endsWith('.localhost') ||
+    hostname.includes('127.0.0.1') ||
+    hostname.includes('169.254.') ||
+    hostname.includes('192.168.')
+  ) {
+    return false;
+  }
+  const parts = hostname.split('.');
+  if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+    const nums = parts.map((p) => parseInt(p, 10));
+    if (nums.every((n) => n >= 0 && n <= 255) && isReservedIpv4(nums[0], nums[1], nums[2], nums[3])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function inferBinaryDetails(nameOrUrl: string, requestedPlatform?: string) {
+  const lowerClean = (nameOrUrl || '').toLowerCase().split('?')[0].split('#')[0];
+  const base = lowerClean.split('/').pop() || lowerClean;
+  if (isBloatPackage(base)) {
+    return { isBinary: false, isApk: false, isIos: false, isWindows: false, isLinux: false, isMac: false, platform: requestedPlatform || 'android', format: 'apk' };
+  }
+  const isDirectApk = base.endsWith('.apk') || base.endsWith('.aab');
+  const isDirectIpa = base.endsWith('.ipa');
+  const isDirectWin = base.endsWith('.exe') || base.endsWith('.msi') || base.endsWith('.msix') || base.endsWith('.msixbundle') || base.endsWith('.appx') || base.endsWith('.appxbundle');
+  const isDirectLin = base.endsWith('.appimage') || base.endsWith('.deb') || base.endsWith('.rpm') || base.endsWith('.tar.gz') || base.endsWith('.tgz') || base.endsWith('.tar.xz') || base.endsWith('.tar.zst') || base.endsWith('.snap') || base.endsWith('.flatpak') || base.endsWith('.run') || base.endsWith('.bin');
+  const isDirectMac = base.endsWith('.dmg') || (base.endsWith('.pkg') && !base.includes('.pkg.tar.'));
+  const isArchivePkg = base.endsWith('.zip') || base.endsWith('.7z') || base.endsWith('.rar');
+
+  const isBinary = isDirectApk || isDirectIpa || isDirectWin || isDirectLin || isDirectMac || isArchivePkg;
+  let platform = requestedPlatform || 'android';
+  let format = 'apk';
+
+  if (isDirectIpa) {
+    platform = 'ios';
+    format = 'ipa';
+  } else if (isDirectMac) {
+    platform = 'mac';
+    format = base.endsWith('.pkg') ? 'pkg' : 'dmg';
+  } else if (isDirectLin) {
+    platform = 'linux';
+    format = base.endsWith('.deb') ? 'deb' : base.endsWith('.rpm') ? 'rpm' : (base.endsWith('.tar.gz') || base.endsWith('.tgz')) ? 'tar.gz' : 'AppImage';
+  } else if (isDirectWin) {
+    platform = 'windows';
+    format = base.endsWith('.msi') ? 'msi' : base.endsWith('.msix') ? 'msix' : 'exe';
+  } else if (isDirectApk) {
+    platform = 'android';
+    format = base.endsWith('.aab') ? 'aab' : 'apk';
+  } else if (isArchivePkg) {
+    platform = requestedPlatform || (base.includes('mac') || base.includes('darwin') ? 'mac' : base.includes('linux') ? 'linux' : 'windows');
+    format = base.endsWith('.7z') ? '7z' : base.endsWith('.rar') ? 'rar' : 'zip';
+  }
+
+  return {
+    isBinary,
+    isApk: platform === 'android' && isBinary,
+    isIos: platform === 'ios' && isBinary,
+    isWindows: platform === 'windows' && isBinary,
+    isLinux: platform === 'linux' && isBinary,
+    isMac: platform === 'mac' && isBinary,
+    platform,
+    format,
+  };
+}
+
+async function probeDirectBinaryUrl(initialUrl: string): Promise<{
+  reachable: boolean;
+  finalUrl: string;
+  size: number;
+  dispositionFileName: string;
+  contentType: string;
+}> {
+  let currentUrl = initialUrl;
+  const fetchHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PropleStore/1.0',
+    Accept: '*/*',
+  };
+
+  const followSafe = async (method: 'HEAD' | 'GET', extraHeaders?: Record<string, string>) => {
+    let url = currentUrl;
+    for (let hop = 0; hop <= 5; hop++) {
+      if (!isSafePublicProbeUrl(url)) throw new Error('Unsafe target URL');
+      const resp = await fetch(url, {
+        method,
+        headers: { ...fetchHeaders, ...(extraHeaders || {}) },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(3500),
+      });
+      if ([301, 302, 303, 307, 308].includes(resp.status)) {
+        const loc = resp.headers.get('location');
+        if (!loc) return { resp, url };
+        const next = new URL(loc, url).toString();
+        if (url.startsWith('https:') && next.startsWith('http:')) throw new Error('HTTPS downgrade blocked');
+        url = next;
+        continue;
+      }
+      return { resp, url };
+    }
+    throw new Error('Too many redirects');
+  };
+
+  try {
+    let { resp, url: resolvedFinal } = await followSafe('HEAD');
+    let totalSize = 0;
+    const cl = resp.headers.get('content-length');
+    if (cl) totalSize = parseInt(cl, 10) || 0;
+
+    // Many S3/R2 presigned URLs or custom VPS servers disallow HEAD (403/405/501) or omit Content-Length on HEAD
+    if (!resp.ok || totalSize <= 0) {
+      try {
+        const rangeAttempt = await followSafe('GET', { Range: 'bytes=0-0' });
+        if (rangeAttempt.resp.ok || rangeAttempt.resp.status === 206) {
+          resp = rangeAttempt.resp;
+          resolvedFinal = rangeAttempt.url;
+          const contentRange = resp.headers.get('content-range');
+          if (contentRange) {
+            const totalMatch = contentRange.match(/\/(\d+)\s*$/);
+            if (totalMatch?.[1]) {
+              totalSize = parseInt(totalMatch[1], 10) || 0;
+            }
+          }
+          if (totalSize <= 0) {
+            const getCl = resp.headers.get('content-length');
+            if (getCl) {
+              const parsed = parseInt(getCl, 10) || 0;
+              if (resp.status === 200 && parsed > 1) totalSize = parsed;
+            }
+          }
+        }
+        try {
+          await rangeAttempt.resp.body?.cancel();
+        } catch {}
+      } catch {}
+    }
+
+    const dispositionFileName = parseContentDispositionFileName(resp.headers.get('content-disposition'));
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    return {
+      reachable: resp.ok || resp.status === 206,
+      finalUrl: resolvedFinal,
+      size: totalSize,
+      dispositionFileName,
+      contentType,
+    };
+  } catch {
+    return {
+      reachable: false,
+      finalUrl: initialUrl,
+      size: 0,
+      dispositionFileName: '',
+      contentType: '',
+    };
+  }
+}
+
 export default async function handler(req: any, res: any) {
   const corsHeaders = getSecureCorsHeaders(req.headers?.origin);
   for (const [key, value] of Object.entries(corsHeaders)) {
@@ -164,37 +410,71 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const rawUrl = (req.query?.url as string || '').trim();
-    const platform = (req.query?.platform as string || '').trim().toLowerCase();
+    const rawUrl = ((req.query?.url as string) || '').trim();
+    const platform = ((req.query?.platform as string) || '').trim().toLowerCase();
 
     if (!rawUrl) {
       return res.status(400).json({ success: false, error: 'Missing url parameter.' });
     }
 
-    const cleanUrl = rawUrl;
-    const lowerClean = cleanUrl.toLowerCase().split('?')[0];
-    const isDirectApk = lowerClean.endsWith('.apk') || lowerClean.endsWith('.aab');
-    const isDirectIpa = lowerClean.endsWith('.ipa');
-    const isDirectWin = lowerClean.endsWith('.exe') || lowerClean.endsWith('.msi') || lowerClean.endsWith('.msix') || lowerClean.endsWith('.appx');
-    const isDirectLin = lowerClean.endsWith('.appimage') || lowerClean.endsWith('.deb') || lowerClean.endsWith('.rpm') || lowerClean.endsWith('.tar.gz') || lowerClean.endsWith('.tgz') || lowerClean.endsWith('.tar.xz') || lowerClean.endsWith('.tar.zst') || lowerClean.endsWith('.snap') || lowerClean.endsWith('.flatpak') || lowerClean.endsWith('.run') || lowerClean.endsWith('.bin');
-    const isDirectMac = lowerClean.endsWith('.dmg') || (lowerClean.endsWith('.pkg') && !lowerClean.includes('.pkg.tar.'));
+    const cleanUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : `https://${rawUrl}`;
+    const lowerPath = cleanUrl.toLowerCase().split('?')[0];
+    const isGitHubRepoOrReleaseWebpage =
+      lowerPath.includes('github.com') &&
+      !lowerPath.includes('/releases/download/') &&
+      !lowerPath.includes('/raw/');
 
-    if (isDirectApk || isDirectIpa || isDirectWin || isDirectLin || isDirectMac) {
-      const parts = cleanUrl.split('/');
-      const assetName = decodeURIComponent(parts[parts.length - 1]?.split('?')[0]?.split('#')[0] || '').trim();
+    // Direct storage / cloud CDN / VPS / R2 / S3 / direct GitHub release binary URL
+    if (!isGitHubRepoOrReleaseWebpage) {
+      if (!isSafePublicProbeUrl(cleanUrl)) {
+        return res.status(403).json({ success: false, error: 'Destination URL is restricted by security policy.' });
+      }
+
+      const initialDetails = inferBinaryDetails(cleanUrl, platform);
+      const probed = await probeDirectBinaryUrl(cleanUrl);
+
+      const urlFileName = decodeURIComponent(cleanUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim();
+      const redirectedFileName = decodeURIComponent(probed.finalUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim();
+      const bestCandidateName =
+        (probed.dispositionFileName && inferBinaryDetails(probed.dispositionFileName, platform).isBinary ? probed.dispositionFileName : '') ||
+        (initialDetails.isBinary ? urlFileName : '') ||
+        (inferBinaryDetails(redirectedFileName, platform).isBinary ? redirectedFileName : '') ||
+        probed.dispositionFileName ||
+        urlFileName;
+
+      const finalDetails = inferBinaryDetails(bestCandidateName || probed.finalUrl || cleanUrl, platform);
+      const isHtmlOrJson =
+        probed.contentType.includes('text/html') ||
+        probed.contentType.includes('application/json') ||
+        probed.contentType.includes('text/plain');
+
+      if ((finalDetails.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
+        const storageProvider = detectStorageProvider(cleanUrl);
+        return res.status(200).json({
+          success: true,
+          isBinary: true,
+          isApk: finalDetails.isApk,
+          isIos: finalDetails.isIos,
+          isWindows: finalDetails.isWindows,
+          isLinux: finalDetails.isLinux,
+          isMac: finalDetails.isMac,
+          platform: finalDetails.platform,
+          format: finalDetails.format,
+          resolvedUrl: cleanUrl,
+          assetName: bestCandidateName,
+          size: probed.size || undefined,
+          sizeFormatted: formatBytes(probed.size) || undefined,
+          storageProvider,
+          source: cleanUrl.includes('github.com') ? 'direct_binary' : 'direct_storage',
+        });
+      }
+
       return res.status(200).json({
         success: true,
-        isBinary: true,
-        isApk: isDirectApk,
-        isIos: isDirectIpa,
-        isWindows: isDirectWin,
-        isLinux: isDirectLin,
-        isMac: isDirectMac,
-        platform: isDirectIpa ? 'ios' : isDirectMac ? 'mac' : isDirectLin ? 'linux' : isDirectWin ? 'windows' : 'android',
-        format: isDirectIpa ? 'ipa' : isDirectMac ? (lowerClean.endsWith('.pkg') ? 'pkg' : 'dmg') : isDirectLin ? 'AppImage' : isDirectWin ? 'exe' : 'apk',
-        resolvedUrl: cleanUrl,
-        assetName,
-        source: 'direct_binary'
+        isBinary: false,
+        isApk: false,
+        resolvedUrl: '',
+        source: 'external_url',
       });
     }
 
@@ -205,7 +485,7 @@ export default async function handler(req: any, res: any) {
         isBinary: false,
         isApk: false,
         resolvedUrl: '',
-        source: 'external_url'
+        source: 'external_url',
       });
     }
 
@@ -215,40 +495,40 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ success: false, error: 'Invalid repository identifier' });
     }
 
+    const ghHeaders: Record<string, string> = {
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'PropleStore',
+    };
+    if (process.env.GITHUB_TOKEN) {
+      ghHeaders['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
+    }
+
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
-    const ghRes = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'PropleStore'
-      }
-    });
+    const ghRes = await fetch(apiUrl, { headers: ghHeaders });
 
     if (ghRes.ok) {
       const release = await ghRes.json();
       if (Array.isArray(release.assets)) {
         const best = pickMainAsset(release.assets, platform);
         if (best?.browser_download_url) {
-          const lowerName = (best.name || '').toLowerCase();
-          const isIos = lowerName.endsWith('.ipa');
-          const isMac = !isIos && (lowerName.endsWith('.dmg') || lowerName.endsWith('.pkg') || lowerName.includes('darwin') || lowerName.includes('macos') || lowerName.includes('osx'));
-          const isLin = !isIos && !isMac && (lowerName.endsWith('.appimage') || lowerName.endsWith('.deb') || lowerName.endsWith('.rpm') || lowerName.endsWith('.tar.gz'));
-          const isApk = !isIos && !isMac && !isLin && lowerName.endsWith('.apk');
-          const isWin = !isIos && !isMac && !isLin && !isApk;
+          const details = inferBinaryDetails(best.name || '', platform);
           return res.status(200).json({
             success: true,
             isBinary: true,
-            isApk,
-            isIos,
-            isWindows: isWin,
-            isLinux: isLin,
-            isMac,
-            platform: isIos ? 'ios' : isMac ? 'mac' : isLin ? 'linux' : isWin ? 'windows' : 'android',
-            format: isIos ? 'ipa' : isMac ? (lowerName.endsWith('.pkg') ? 'pkg' : 'dmg') : isLin ? 'AppImage' : isWin ? 'exe' : 'apk',
+            isApk: details.isApk,
+            isIos: details.isIos,
+            isWindows: details.isWindows,
+            isLinux: details.isLinux,
+            isMac: details.isMac,
+            platform: details.platform,
+            format: details.format,
             resolvedUrl: best.browser_download_url,
             assetName: best.name,
             size: best.size,
+            sizeFormatted: formatBytes(best.size) || undefined,
             tagName: release.tag_name,
-            source: 'github_release_asset'
+            storageProvider: 'GitHub Release',
+            source: 'github_release_asset',
           });
         }
       }
@@ -256,10 +536,7 @@ export default async function handler(req: any, res: any) {
 
     // Fallback: search releases list
     const listRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=5`, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'PropleStore'
-      }
+      headers: ghHeaders,
     });
 
     if (listRes.ok) {
@@ -269,27 +546,24 @@ export default async function handler(req: any, res: any) {
           if (Array.isArray(rel.assets)) {
             const best = pickMainAsset(rel.assets, platform);
             if (best?.browser_download_url) {
-              const lowerName = (best.name || '').toLowerCase();
-              const isIos = lowerName.endsWith('.ipa');
-              const isMac = !isIos && (lowerName.endsWith('.dmg') || lowerName.endsWith('.pkg') || lowerName.includes('darwin') || lowerName.includes('macos') || lowerName.includes('osx'));
-              const isLin = !isIos && !isMac && (lowerName.endsWith('.appimage') || lowerName.endsWith('.deb') || lowerName.endsWith('.rpm') || lowerName.endsWith('.tar.gz'));
-              const isApk = !isIos && !isMac && !isLin && lowerName.endsWith('.apk');
-              const isWin = !isIos && !isMac && !isLin && !isApk;
+              const details = inferBinaryDetails(best.name || '', platform);
               return res.status(200).json({
                 success: true,
                 isBinary: true,
-                isApk,
-                isIos,
-                isWindows: isWin,
-                isLinux: isLin,
-                isMac,
-                platform: isIos ? 'ios' : isMac ? 'mac' : isLin ? 'linux' : isWin ? 'windows' : 'android',
-                format: isIos ? 'ipa' : isMac ? (lowerName.endsWith('.pkg') ? 'pkg' : 'dmg') : isLin ? 'AppImage' : isWin ? 'exe' : 'apk',
+                isApk: details.isApk,
+                isIos: details.isIos,
+                isWindows: details.isWindows,
+                isLinux: details.isLinux,
+                isMac: details.isMac,
+                platform: details.platform,
+                format: details.format,
                 resolvedUrl: best.browser_download_url,
                 assetName: best.name,
                 size: best.size,
+                sizeFormatted: formatBytes(best.size) || undefined,
                 tagName: rel.tag_name,
-                source: 'github_release_asset'
+                storageProvider: 'GitHub Release',
+                source: 'github_release_asset',
               });
             }
           }
@@ -302,7 +576,7 @@ export default async function handler(req: any, res: any) {
       isBinary: false,
       isApk: false,
       resolvedUrl: '',
-      source: 'fallback_repo'
+      source: 'fallback_repo',
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });

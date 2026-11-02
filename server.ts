@@ -403,7 +403,7 @@ function validateAppPayload(app: any): { valid: boolean; error?: string } {
     return { valid: false, error: 'Invalid developer name: must be between 1 and 150 characters.' };
   }
   if (!app.downloadUrl || typeof app.downloadUrl !== 'string' || app.downloadUrl.trim().length === 0) {
-    return { valid: false, error: 'Invalid download URL: an APK download link is required.' };
+    return { valid: false, error: 'Invalid download URL: a package download link is required.' };
   }
   
   // Security validation against image poisoning and disguised documents
@@ -550,7 +550,7 @@ async function startServer() {
         "img-src 'self' data: blob: https: http:",
         "media-src 'self' blob: https:",
         "connect-src 'self' https: wss: http: ws:",
-        "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://www.youtube.com https://www.youtube-nocookie.com",
+        "frame-src 'self' https:",
         "worker-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'self'",
@@ -4127,6 +4127,91 @@ async function startServer() {
     const cleanPath = targetUrl.split('?')[0];
     const directPackage = detectPackageDetails(cleanPath);
 
+    const parseDispositionFileName = (disposition?: string | null): string => {
+      if (!disposition || typeof disposition !== 'string') return '';
+      const utf8Match = disposition.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;\r\n]+)/i);
+      if (utf8Match?.[1]) {
+        try {
+          return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+        } catch {
+          return utf8Match[1].trim().replace(/^["']|["']$/g, '');
+        }
+      }
+      const plainMatch = disposition.match(/filename\s*=\s*"([^"]+)"/i) || disposition.match(/filename\s*=\s*([^;\r\n]+)/i);
+      if (plainMatch?.[1]) {
+        try {
+          return decodeURIComponent(plainMatch[1].trim().replace(/^["']|["']$/g, ''));
+        } catch {
+          return plainMatch[1].trim().replace(/^["']|["']$/g, '');
+        }
+      }
+      return '';
+    };
+
+    const probeDirectPackageHeaders = async (urlToProbe: string) => {
+      const followSafe = async (method: 'HEAD' | 'GET', extraHeaders?: Record<string, string>) => {
+        let cur = urlToProbe;
+        for (let hop = 0; hop <= 5; hop++) {
+          const parsed = new URL(cur);
+          if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isPrivateOrReservedHost(parsed.hostname)) {
+            throw new Error('Blocked private or invalid host');
+          }
+          const resp = await fetch(cur, {
+            method,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PropleStore/1.0',
+              Accept: '*/*',
+              ...(extraHeaders || {})
+            },
+            redirect: 'manual',
+            signal: AbortSignal.timeout(3500)
+          });
+          if ([301, 302, 303, 307, 308].includes(resp.status)) {
+            const loc = resp.headers.get('location');
+            if (!loc) return { resp, finalUrl: cur };
+            const next = new URL(loc, cur).toString();
+            if (cur.startsWith('https:') && next.startsWith('http:')) throw new Error('HTTPS downgrade blocked');
+            cur = next;
+            continue;
+          }
+          return { resp, finalUrl: cur };
+        }
+        throw new Error('Too many redirects');
+      };
+
+      try {
+        let { resp, finalUrl } = await followSafe('HEAD');
+        let size = parseInt(resp.headers.get('content-length') || '0', 10) || 0;
+        if (!resp.ok || size <= 0) {
+          try {
+            const rangeAttempt = await followSafe('GET', { Range: 'bytes=0-0' });
+            if (rangeAttempt.resp.ok || rangeAttempt.resp.status === 206) {
+              resp = rangeAttempt.resp;
+              finalUrl = rangeAttempt.finalUrl;
+              const cr = resp.headers.get('content-range');
+              const totalMatch = cr?.match(/\/(\d+)\s*$/);
+              if (totalMatch?.[1]) {
+                size = parseInt(totalMatch[1], 10) || 0;
+              } else if (resp.status === 200) {
+                const getLen = parseInt(resp.headers.get('content-length') || '0', 10) || 0;
+                if (getLen > 1) size = getLen;
+              }
+            }
+            try { await rangeAttempt.resp.body?.cancel(); } catch {}
+          } catch {}
+        }
+        return {
+          reachable: resp.ok || resp.status === 206,
+          finalUrl,
+          size,
+          dispositionFileName: parseDispositionFileName(resp.headers.get('content-disposition')),
+          contentType: (resp.headers.get('content-type') || '').toLowerCase()
+        };
+      } catch {
+        return { reachable: false, finalUrl: urlToProbe, size: 0, dispositionFileName: '', contentType: '' };
+      }
+    };
+
     // Case 1: Already a direct binary package link (ends in .apk, .exe, .msi, .msix, .zip, .deb, .AppImage, .rpm, .tar.gz)
     // NOTE: If the URL is a GitHub repo root or webpage (e.g. github.com/user/linux), it must NOT be treated as a direct binary just because the repo name contains 'linux'
     const isGitHubWebpage = targetUrl.includes('github.com') && !cleanPath.includes('/releases/download/') && !cleanPath.includes('/raw/');
@@ -4136,25 +4221,29 @@ async function startServer() {
       let repo: string | undefined;
       let tag: string | undefined;
       
-      if (parts.length >= 6 && parts[2] === 'releases' && parts[3] === 'download') {
+      if (targetUrl.toLowerCase().includes('github.com') && parts.length >= 6 && parts[2] === 'releases' && parts[3] === 'download') {
         owner = parts[0];
         repo = parts[1];
         tag = parts[4];
       }
 
-      const fileName = decodeURIComponent(cleanPath.split('/').pop() || '');
+      const probed = await probeDirectPackageHeaders(targetUrl);
+      const fileName = probed.dispositionFileName || decodeURIComponent(cleanPath.split('/').pop() || '');
+      const finalPkg = detectPackageDetails(fileName || cleanPath);
       return {
         resolvedUrl: targetUrl,
         assetName: fileName,
-        isApk: directPackage.isApk,
-        isWindows: directPackage.isWindows,
-        isLinux: directPackage.isLinux,
+        isApk: finalPkg.isApk,
+        isWindows: finalPkg.isWindows,
+        isLinux: finalPkg.isLinux,
         isBinary: true,
-        platform: directPackage.platform,
-        format: directPackage.format,
+        platform: finalPkg.platform,
+        format: finalPkg.format,
         tagName: tag,
         repoOwner: owner,
-        repoName: repo
+        repoName: repo,
+        size: probed.size || undefined,
+        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined
       };
     }
 
@@ -4363,6 +4452,33 @@ async function startServer() {
         repoOwner: owner,
         repoName: repo,
         platform: (plat as any) || 'android'
+      };
+    }
+
+    // Case 3: Non-GitHub direct cloud storage / R2 / S3 / VPS link without an extension in the URL path
+    const probed = await probeDirectPackageHeaders(targetUrl);
+    const candidateName =
+      probed.dispositionFileName ||
+      decodeURIComponent(probed.finalUrl.split('?')[0].split('#')[0].split('/').pop() || '') ||
+      decodeURIComponent(cleanPath.split('/').pop() || '');
+    const probedPkg = detectPackageDetails(candidateName || probed.finalUrl || cleanPath);
+    const isHtmlOrJson =
+      probed.contentType.includes('text/html') ||
+      probed.contentType.includes('application/json') ||
+      probed.contentType.includes('text/plain');
+
+    if ((probedPkg.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
+      return {
+        resolvedUrl: targetUrl,
+        assetName: candidateName,
+        isApk: probedPkg.isBinary ? probedPkg.isApk : (plat ? plat === 'android' : true),
+        isWindows: probedPkg.isWindows,
+        isLinux: probedPkg.isLinux,
+        isBinary: true,
+        platform: probedPkg.isBinary ? probedPkg.platform : ((plat as any) || 'android'),
+        format: probedPkg.isBinary ? probedPkg.format : (fallbackExt as any),
+        size: probed.size || undefined,
+        sizeFormatted: probed.size > 0 ? formatBytesHelper(probed.size) : undefined
       };
     }
 
@@ -4593,28 +4709,6 @@ async function startServer() {
         }
       }
 
-      // Verify resolved target is a real binary package, not a web page
-      const resolvedPkg = detectPackageDetails(targetBinaryUrl);
-      if (!resolvedPkg.isBinary && !targetBinaryUrl.includes('/releases/download/')) {
-        return res.status(204).end();
-      }
-
-      // Extract exact package filename from the binary URL or resolved asset (never invent bloat fallback files)
-      const urlBaseName = decodeURIComponent(targetBinaryUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim();
-      const customCleanName = decodeURIComponent(customName.split('?')[0].split('#')[0].split('/').pop() || '').trim();
-      let safeFileName = '';
-      if (resolvedExactName && detectPackageDetails(resolvedExactName).isBinary) {
-        safeFileName = resolvedExactName;
-      } else if (urlBaseName && detectPackageDetails(urlBaseName).isBinary) {
-        safeFileName = urlBaseName;
-      } else if (customCleanName && detectPackageDetails(customCleanName).isBinary) {
-        safeFileName = customCleanName;
-      }
-
-      if (!safeFileName) {
-        return res.status(204).end();
-      }
-
       if (!targetBinaryUrl.startsWith('http://') && !targetBinaryUrl.startsWith('https://')) {
         targetBinaryUrl = 'https://' + targetBinaryUrl;
       }
@@ -4634,17 +4728,73 @@ async function startServer() {
         return res.status(403).end();
       }
 
-      // Step 2: Stream the authentic binary directly on-site to the client response:
-      // Zero redirect to GitHub, zero browser address bar loading line, zero page navigation, zero RAM cache accumulation.
-      const upstreamRes = await fetch(targetBinaryUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': '*/*'
-        },
-        redirect: 'follow'
-      });
+      // Step 2: Stream the authentic binary directly on-site to the client response with SSRF-safe redirect checks:
+      // Zero redirect to external pages, zero browser address bar loading line, zero page navigation, zero RAM cache accumulation.
+      let currentFetchUrl = targetBinaryUrl;
+      let upstreamRes: Response | null = null;
+      for (let hop = 0; hop <= 5; hop++) {
+        const hopParsed = new URL(currentFetchUrl);
+        if ((hopParsed.protocol !== 'http:' && hopParsed.protocol !== 'https:') || isPrivateOrReservedHost(hopParsed.hostname)) {
+          return res.status(403).end();
+        }
+        const hopRes = await fetch(currentFetchUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': '*/*'
+          },
+          redirect: 'manual'
+        });
+        if ([301, 302, 303, 307, 308].includes(hopRes.status)) {
+          const loc = hopRes.headers.get('location');
+          if (!loc) {
+            upstreamRes = hopRes;
+            break;
+          }
+          const nextUrl = new URL(loc, currentFetchUrl).toString();
+          if (currentFetchUrl.startsWith('https:') && nextUrl.startsWith('http:')) {
+            return res.status(403).end();
+          }
+          currentFetchUrl = nextUrl;
+          continue;
+        }
+        upstreamRes = hopRes;
+        break;
+      }
 
-      if (!upstreamRes.ok || !upstreamRes.body) {
+      if (!upstreamRes || !upstreamRes.ok || !upstreamRes.body) {
+        return res.status(204).end();
+      }
+
+      // Extract exact package filename from Content-Disposition, resolved asset, URL, or redirected URL
+      const rawDisp = upstreamRes.headers.get('content-disposition') || '';
+      const utf8DispMatch = rawDisp.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;\r\n]+)/i);
+      const plainDispMatch = rawDisp.match(/filename\s*=\s*"([^"]+)"/i) || rawDisp.match(/filename\s*=\s*([^;\r\n]+)/i);
+      let dispFileName = '';
+      if (utf8DispMatch?.[1] || plainDispMatch?.[1]) {
+        const rawMatch = (utf8DispMatch?.[1] || plainDispMatch?.[1] || '').trim().replace(/^["']|["']$/g, '');
+        try { dispFileName = decodeURIComponent(rawMatch); } catch { dispFileName = rawMatch; }
+      }
+
+      const urlBaseName = decodeURIComponent(targetBinaryUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim();
+      const redirectedBaseName = decodeURIComponent(currentFetchUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim();
+      const customCleanName = decodeURIComponent(customName.split('?')[0].split('#')[0].split('/').pop() || '').trim();
+      let safeFileName = '';
+      if (resolvedExactName && detectPackageDetails(resolvedExactName).isBinary) {
+        safeFileName = resolvedExactName;
+      } else if (dispFileName && detectPackageDetails(dispFileName).isBinary) {
+        safeFileName = dispFileName;
+      } else if (urlBaseName && detectPackageDetails(urlBaseName).isBinary) {
+        safeFileName = urlBaseName;
+      } else if (redirectedBaseName && detectPackageDetails(redirectedBaseName).isBinary) {
+        safeFileName = redirectedBaseName;
+      } else if (customCleanName && detectPackageDetails(customCleanName).isBinary) {
+        safeFileName = customCleanName;
+      } else if (dispFileName && !isBloatAsset(dispFileName)) {
+        safeFileName = dispFileName;
+      }
+
+      if (!safeFileName) {
+        try { await upstreamRes.body.cancel(); } catch {}
         return res.status(204).end();
       }
 

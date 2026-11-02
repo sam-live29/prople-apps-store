@@ -15,6 +15,17 @@ const DEFAULT_ALLOWED_OUTBOUND_HOST_PATTERNS: RegExp[] = [
   /^([a-z0-9-]+\.)?githubusercontent\.com$/i,
   /^([a-z0-9-]+\.)?amazonaws\.com$/i,
   /^([a-z0-9-]+\.)?cloudfront\.net$/i,
+  /^([a-z0-9-]+\.)?r2\.dev$/i,
+  /^([a-z0-9-]+\.)?r2\.cloudflarestorage\.com$/i,
+  /^([a-z0-9-]+\.)?digitaloceanspaces\.com$/i,
+  /^([a-z0-9-]+\.)?backblazeb2\.com$/i,
+  /^([a-z0-9-]+\.)?b-cdn\.net$/i,
+  /^([a-z0-9-]+\.)?wasabisys\.com$/i,
+  /^([a-z0-9-]+\.)?linodeobjects\.com$/i,
+  /^([a-z0-9-]+\.)?your-objectstorage\.com$/i,
+  /^([a-z0-9-]+\.)?contabostorage\.com$/i,
+  /^([a-z0-9-]+\.)?supabase\.co$/i,
+  /^([a-z0-9-]+\.)?vercel-storage\.com$/i,
   /^([a-z0-9-]+\.)?firebasestorage\.app$/i,
   /^([a-z0-9-]+\.)?storage\.googleapis\.com$/i,
   /^([a-z0-9-]+\.)?googleapis\.com$/i,
@@ -330,6 +341,27 @@ function getExactMimeType(fileName: string, upstreamContentType?: string | null)
   return 'application/octet-stream';
 }
 
+function parseContentDispositionFileName(disposition?: string | null): string {
+  if (!disposition || typeof disposition !== 'string') return '';
+  const utf8Match = disposition.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;\r\n]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return utf8Match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  const plainMatch = disposition.match(/filename\s*=\s*"([^"]+)"/i) || disposition.match(/filename\s*=\s*([^;\r\n]+)/i);
+  if (plainMatch?.[1]) {
+    try {
+      return decodeURIComponent(plainMatch[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return plainMatch[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return '';
+}
+
 function extractExactFileName(urlStr: string, customName?: string): string {
   const cleanUrlPath = (urlStr || '').split('?')[0].split('#')[0];
   const urlBase = decodeURIComponent(cleanUrlPath.split('/').pop() || '').trim();
@@ -454,11 +486,6 @@ export default async function handler(req: any, res: any) {
       return res.status(403).end();
     }
 
-    const safeFileName = resolvedExactAssetName || extractExactFileName(targetBinaryUrl, customName);
-    if (!safeFileName) {
-      return res.status(204).end();
-    }
-
     const { res: upstreamRes, finalUrl } = await safeFetchWithRedirectCheck(
       targetBinaryUrl,
       {
@@ -472,6 +499,23 @@ export default async function handler(req: any, res: any) {
     );
 
     if (!upstreamRes.ok || !upstreamRes.body) {
+      return res.status(204).end();
+    }
+
+    const dispositionName = parseContentDispositionFileName(upstreamRes.headers.get('content-disposition'));
+    let safeFileName =
+      resolvedExactAssetName ||
+      (dispositionName && isBinaryPackage(dispositionName) ? dispositionName : '') ||
+      extractExactFileName(targetBinaryUrl, customName) ||
+      extractExactFileName(finalUrl, customName);
+
+    if (!safeFileName && dispositionName && !isBloatOrSecondaryAsset(dispositionName)) {
+      safeFileName = dispositionName;
+    }
+    if (!safeFileName) {
+      try {
+        await upstreamRes.body.cancel();
+      } catch {}
       return res.status(204).end();
     }
 
@@ -561,8 +605,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // On Vercel Serverless Functions, packages larger than 4 MB exceed the 4.5 MB Lambda response payload cap.
-    // After verifying binary signature & size >= 1 MB, redirect the hidden iframe directly to the verified CDN binary stream.
-    if (process.env.VERCEL && (!contentLength || parsedLen > VERCEL_STREAM_THRESHOLD) && isAllowedOutboundHost(new URL(finalUrl).hostname)) {
+    // After verifying SSRF safety, binary signature & size >= 1 MB, redirect the hidden iframe directly to the verified HTTPS binary stream (AWS S3, Cloudflare R2, VPS, CDN, or GitHub).
+    if (
+      process.env.VERCEL &&
+      (!contentLength || parsedLen > VERCEL_STREAM_THRESHOLD) &&
+      finalUrl.startsWith('https://') &&
+      isSafePublicUrl(finalUrl, false)
+    ) {
       try {
         await reader.cancel();
       } catch {}

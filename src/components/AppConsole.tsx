@@ -106,6 +106,27 @@ import PackageFormatIcon from './PackageFormatIcon';
 import { checkPublisherNameAvailability, claimPublisherName } from '../services/publisherNameService';
 import { computeDeterministicSha256, extractSha256FromText } from '../utils/securityUtils';
 
+export function detectStorageProviderLabel(urlStr?: string): string {
+  const clean = (urlStr || '').trim();
+  if (!clean) return 'Direct Storage';
+  try {
+    const withProto = clean.startsWith('http://') || clean.startsWith('https://') ? clean : `https://${clean}`;
+    const host = new URL(withProto).hostname.toLowerCase();
+    if (host.endsWith('.r2.dev') || host.endsWith('.r2.cloudflarestorage.com')) return 'Cloudflare R2';
+    if (host.endsWith('.amazonaws.com')) return 'AWS S3';
+    if (host.endsWith('.cloudfront.net')) return 'AWS CloudFront';
+    if (host.endsWith('.digitaloceanspaces.com')) return 'DigitalOcean Spaces';
+    if (host.endsWith('.backblazeb2.com')) return 'Backblaze B2';
+    if (host.endsWith('.b-cdn.net')) return 'Bunny CDN';
+    if (host.endsWith('.wasabisys.com')) return 'Wasabi Cloud';
+    if (host.endsWith('.firebasestorage.app') || host.endsWith('.googleapis.com')) return 'Cloud Storage';
+    if (host.includes('github.com') || host.includes('githubusercontent.com')) return 'GitHub Release';
+    return `Direct Server (${host})`;
+  } catch {
+    return 'Direct Storage';
+  }
+}
+
 export function parseSizeString(raw: string): { num: string; unit: 'MB' | 'GB' } {
   if (!raw || raw === 'Varies with device' || raw === 'Direct Binary' || raw === 'No binary available') {
     return { num: '', unit: 'MB' };
@@ -1609,12 +1630,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [termsAndConditionsUrl, setTermsAndConditionsUrl] = useState(() => initialDraft?.termsAndConditionsUrl || '');
   const [developerAddress, setDeveloperAddress] = useState(() => initialDraft?.developerAddress || '');
 
-  // Auto-derive upstream GitHub repository owner whenever githubUrl, downloadUrl or githubRepoUrl changes
+  // Auto-derive upstream GitHub repository owner whenever githubUrl, downloadUrl or githubRepoUrl changes (clears cleanly for repo-free cloud/VPS URLs)
   useEffect(() => {
     const extracted = extractGitHubRepoOwner(githubUrl || downloadUrl || githubRepoUrl);
-    if (extracted) {
-      setGithubRepoOwner(extracted);
-    }
+    setGithubRepoOwner(extracted || '');
   }, [githubUrl, downloadUrl, githubRepoUrl]);
 
   // Track state of publish button: 'idle' | 'warning' | 'publishing' | 'success'
@@ -1624,13 +1643,13 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const getPublishingMissingSteps = useCallback((): { step: 1 | 2 | 3 | 4 | 5 | 6; title: string; message: string; targetId: string }[] => {
     const missing: { step: 1 | 2 | 3 | 4 | 5 | 6; title: string; message: string; targetId: string }[] = [];
 
-    // Step 1: GitHub release & owner (GitHub Releases Only)
-    const cleanSource = (githubUrl || githubRepoUrl || downloadUrl || '').trim();
+    // Step 1: Package Download Link (Cloudflare R2, AWS S3, VPS, CDN, or GitHub Release)
+    const cleanSource = (downloadUrl || githubUrl || githubRepoUrl || '').trim();
     if (!cleanSource || cleanSource === '#') {
       missing.push({
         step: 1,
         title: 'Release Package URL',
-        message: 'Step 1 is incomplete: A valid package download link or GitHub release URL is required for app publishing.',
+        message: 'Step 1 is incomplete: A valid public binary download link (Cloudflare R2, AWS S3, VPS, CDN, or GitHub Release) is required.',
         targetId: 'input-github-release-url'
       });
     }
@@ -1645,19 +1664,33 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       });
     }
 
-    // Step 3: Package Download Link, GitHub Origin & Version Number
-    if (!downloadUrl.trim()) {
+    // Step 3: Direct Binary Download Link (any valid public HTTP/HTTPS storage URL, not a repo webpage or source archive)
+    const trimmedDl = downloadUrl.trim();
+    const lowerDl = trimmedDl.toLowerCase().split('?')[0];
+    if (!trimmedDl) {
       missing.push({
         step: 3,
         title: 'Package Download Link',
-        message: 'Step 3 is incomplete: GitHub release binary package download link is required.',
+        message: 'Step 3 is incomplete: A public binary package download URL (AWS S3, Cloudflare R2, VPS, or GitHub Release asset) is required.',
         targetId: 'input-download-url'
       });
-    } else if (!downloadUrl.toLowerCase().includes('github.com') && !downloadUrl.toLowerCase().includes('githubusercontent.com')) {
+    } else if (!trimmedDl.startsWith('https://') && !trimmedDl.startsWith('http://')) {
       missing.push({
         step: 3,
-        title: 'GitHub Release Binary Only',
-        message: 'Step 3 is incomplete: Direct download URL must originate from an official GitHub Release asset.',
+        title: 'Valid HTTPS Download URL',
+        message: 'Step 3 is incomplete: Download URL must start with https:// or http://.',
+        targetId: 'input-download-url'
+      });
+    } else if (
+      (lowerDl.includes('github.com') && !lowerDl.includes('/releases/download/') && !lowerDl.includes('/raw/')) ||
+      lowerDl.includes('/archive/refs/') ||
+      lowerDl.includes('/zipball/') ||
+      lowerDl.includes('/tarball/')
+    ) {
+      missing.push({
+        step: 3,
+        title: 'Direct Binary Asset Required',
+        message: 'Step 3 is incomplete: Please provide a direct binary download link (e.g. Cloudflare R2, AWS S3, VPS, or GitHub /releases/download/ asset) rather than a repository webpage or source archive.',
         targetId: 'input-download-url'
       });
     }
@@ -2158,7 +2191,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         : existingAddress
     );
     setDeveloperAddress(initialAddress);
-    setGithubUrl(app.githubReleaseUrl || app.githubRepo || '');
+    setGithubUrl(app.githubReleaseUrl || app.githubRepo || app.downloadUrl || '');
     setStep(2);
 
     const initialSnap = createSnapshotString({
@@ -2218,7 +2251,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       privacyPolicyUrl: app.developerInfo?.privacyPolicy || app.privacyPolicy || '',
       termsAndConditionsUrl: app.developerInfo?.termsAndConditions || app.developerInfo?.termsOfService || app.termsAndConditions || app.termsOfService || '',
       developerAddress: initialAddress,
-      githubUrl: app.githubReleaseUrl || app.githubRepo || '',
+      githubUrl: app.githubReleaseUrl || app.githubRepo || app.downloadUrl || '',
     });
     setInitialAppSnapshot(initialSnap);
   }, [currentGoogleName, currentGoogleEmail, banners, user, ALL_PERMISSION_CATALOG, createSnapshotString]);
@@ -2623,37 +2656,93 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setIsTestingDownload(false);
   };
 
-  // Dynamic auto-detect from GitHub Release URL using appMetricsAlgorithm (GitHub Releases Only)
+  // Dynamic auto-detect from Direct Cloud/VPS Storage URL (Cloudflare R2, AWS S3, VPS, CDN) or Public GitHub Release URL
   const handleFetchGithubRelease = async () => {
     if (!githubUrl.trim()) {
-      showToast('Please enter an official GitHub Release URL');
+      showToast('Please enter a public binary download URL (Cloudflare R2, AWS S3, VPS) or GitHub Release URL');
       return;
     }
 
     const cleanUrl = githubUrl.trim();
     if (!cleanUrl.toLowerCase().includes('github.com')) {
       if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
-        // Direct package download link provided by the user
-        const baseName = decodeURIComponent(cleanUrl.split('?')[0].split('#')[0].split('/').pop() || 'app.apk').trim();
-        const rawTitle = baseName.replace(/\.[^/.]+$/, '').split(/[-_]/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
-        setName(rawTitle || 'My Application');
-        setDownloadUrl(cleanUrl);
-        setAssetName(baseName);
-        const detected = inferPlatformAndFormat(baseName);
-        setPlatform(detected.platform);
-        setPackageFormat(detected.packageFormat as any);
-        setMinAndroid(detected.minRequirement);
-        setTargetOs(detected.targetOs);
-        setVersion('v1.0.0');
-        setVersionName('1.0.0');
-        setDeveloperName(currentGoogleName);
-        setDeveloperEmail(currentGoogleEmail);
-        setGithubRepoUrl(cleanUrl);
-        showToast(`Package recognized (${baseName})! Proceeding to Step 2 to configure app details.`);
-        setStep(2);
+        setReleaseUrlError(null);
+        const banCheck = AdminModerationService.checkIfUrlOrProfileBanned(cleanUrl);
+        if (banCheck.isBanned) {
+          const reasonMsg = banCheck.reason ? ` Reason: ${banCheck.reason}` : '';
+          showToast(`Rejected: This download link has been banned from this platform.${reasonMsg}`, { type: 'error', duration: 6000 });
+          setReleaseUrlError(`Rejected: This download link has been banned from this platform due to safety policies.${reasonMsg}`);
+          return;
+        }
+
+        setIsFetchingRelease(true);
+        try {
+          let resolvedName = decodeURIComponent(cleanUrl.split('?')[0].split('#')[0].split('/').pop() || 'app.apk').trim();
+          let probedSizeFormatted = '';
+          let probedPlatform = '';
+          let probedFormat = '';
+          const providerLabel = detectStorageProviderLabel(cleanUrl);
+
+          try {
+            const { ok, data } = await safeFetchJson<any>(`/api/resolve-apk?url=${encodeURIComponent(cleanUrl)}`);
+            if (ok && data?.success) {
+              if (data.assetName) resolvedName = data.assetName;
+              if (data.sizeFormatted) probedSizeFormatted = data.sizeFormatted;
+              if (data.platform) probedPlatform = data.platform;
+              if (data.format) probedFormat = data.format;
+            }
+          } catch (probeErr) {
+            console.warn('Direct storage probe fallback:', probeErr);
+          }
+
+          const verMatch = resolvedName.match(/[-_.]v?(\d+\.\d+(?:\.\d+)?)/i);
+          const inferredVersionNum = verMatch?.[1] || '1.0.0';
+          const strippedBase = resolvedName
+            .replace(/\.(tar\.gz|tar\.xz|tar\.zst|appimage|msixbundle|appxbundle|[a-z0-9]{2,6})$/i, '')
+            .replace(/[-_.]v?\d+\.\d+(?:\.\d+)?.*$/i, '');
+          const rawTitle = strippedBase
+            .split(/[-_.]/)
+            .filter(Boolean)
+            .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+            .join(' ');
+
+          if (!name.trim()) {
+            setName((rawTitle || 'My Application').slice(0, 50));
+          }
+          setDownloadUrl(cleanUrl);
+          setAssetName(resolvedName);
+          if (probedSizeFormatted) {
+            applyNewAssetSize(probedSizeFormatted);
+          }
+
+          const detected = inferPlatformAndFormat(resolvedName || cleanUrl);
+          const finalPlat = (probedPlatform as any) || detected.platform;
+          const finalFmt = (probedFormat as any) || detected.packageFormat;
+          setPlatform(finalPlat);
+          setPackageFormat(finalFmt);
+          setMinAndroid(detected.minRequirement);
+          setTargetOs(detected.targetOs);
+          setVersion(`v${inferredVersionNum}`);
+          setVersionName(inferredVersionNum);
+          setGithubRepoOwner('');
+          setGithubRepoUrl('');
+          setDeveloperName(currentGoogleName);
+          setDeveloperEmail(currentGoogleEmail);
+          setSha256(computeDeterministicSha256(`${rawTitle || 'app'}:v${inferredVersionNum}:${resolvedName || cleanUrl}`));
+
+          const nowStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          setReleaseDate(nowStr);
+          setInitialReleaseDate(nowStr);
+
+          const sizeSuffix = probedSizeFormatted ? ` • ${probedSizeFormatted}` : '';
+          showToast(`Loaded ${providerLabel} binary: ${resolvedName}${sizeSuffix}`);
+          setStep(2);
+        } finally {
+          setIsFetchingRelease(false);
+        }
         return;
       } else {
-        showToast('Please enter an official GitHub Release URL or direct package download URL (HTTP/HTTPS).');
+        showToast('Please enter a valid HTTPS binary download URL (Cloudflare R2, AWS S3, VPS) or public GitHub Release URL.');
         return;
       }
     }
@@ -2843,7 +2932,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
           setAssetName('');
           setDownloadUrl('');
           setAssetSize('');
-          showToast('No exact binary release asset found. Please enter direct package URL in Step 3.');
+          showToast('No public release binary found. Private repos block public downloads — host your binary on Cloudflare R2, AWS S3, or a VPS and paste its public link instead.', { type: 'warning', duration: 6000 });
         }
 
         const directTarget = targetName || cleanUrl;
@@ -2865,8 +2954,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       setStep(2);
     } catch (err) {
       console.warn('GitHub release detection error:', err);
-      showToast('Could not fetch release metadata from GitHub. Please check the URL and ensure the release is public and contains installable binaries.');
-      // Keep developer on Step 1 to enter a valid GitHub release
+      showToast('Could not fetch from GitHub (private repos cannot serve public downloads). Host your binary on Cloudflare R2, AWS S3, or a VPS and paste its public link instead.', { type: 'warning', duration: 6000 });
     } finally {
       setIsFetchingRelease(false);
     }
@@ -3026,16 +3114,20 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       const appId = isUpdateMode ? (editingAppId as string) : `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const finalScreenshots = screenshotsList;
 
-      // Ensure downloadUrl is a direct binary package link before publishing
+      // Ensure downloadUrl is a direct binary package link (and probe filename/size if needed) before publishing
       let finalApkDownloadUrl = downloadUrl.trim();
       let finalApkAssetName = assetName || (finalApkDownloadUrl ? decodeURIComponent(finalApkDownloadUrl.split('?')[0].split('#')[0].split('/').pop() || '').trim() : '');
+      let finalResolvedSize = assetSize.trim();
 
-      if (finalApkDownloadUrl && !isBinaryFileName(finalApkDownloadUrl) && finalApkDownloadUrl.includes('github.com')) {
+      if (finalApkDownloadUrl && (!isBinaryFileName(finalApkDownloadUrl) || !finalResolvedSize || finalResolvedSize === 'Varies with device' || finalResolvedSize === 'Direct Binary')) {
         try {
           const { ok, data } = await safeFetchJson<any>(`/api/resolve-apk?url=${encodeURIComponent(finalApkDownloadUrl)}&platform=${encodeURIComponent(platform)}`);
-          if (ok && data?.success && (data.isBinary || data.isApk || data.isWindows || data.isLinux) && data.resolvedUrl) {
+          if (ok && data?.success && (data.isBinary || data.isApk || data.isWindows || data.isLinux || data.isMac || data.isIos) && data.resolvedUrl) {
             finalApkDownloadUrl = data.resolvedUrl;
             if (data.assetName) finalApkAssetName = data.assetName;
+            if (data.sizeFormatted && (!finalResolvedSize || finalResolvedSize === 'Varies with device' || finalResolvedSize === 'Direct Binary')) {
+              finalResolvedSize = data.sizeFormatted;
+            }
           }
         } catch (e) {
           console.warn('Could not pre-resolve binary package before publishing:', e);
@@ -3109,7 +3201,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         rating: existingApp && typeof existingApp.rating === 'number' ? existingApp.rating : 0,
         ratingsCount: existingApp && typeof existingApp.ratingsCount === 'number' ? existingApp.ratingsCount : 0,
         reviewsCount: existingApp && existingApp.reviewsCount ? existingApp.reviewsCount : '0 reviews',
-        size: assetSize.trim() || 'Varies with device',
+        size: finalResolvedSize || 'Varies with device',
         downloads: finalDownloads,
         downloadsCount: finalDownloadsCount,
         contentRating: contentRating || 'Rated for 3+',
@@ -3130,7 +3222,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         videoThumbnailUrl: videoThumbnailUrl.trim(),
         type: 'github_release',
         githubRepo: githubRepoUrl.trim() || '',
-        githubReleaseUrl: githubUrl || '',
+        githubReleaseUrl: githubUrl.toLowerCase().includes('github.com') ? githubUrl.trim() : '',
         website: websiteUrl.trim() || '',
         address: developerAddress.trim() || '',
         privacyPolicy: privacyPolicyUrl.trim(),
@@ -3821,30 +3913,33 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
           className="flex-1 overflow-y-auto scrollbar-hide px-2.5 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 space-y-4 w-full max-w-7xl mx-auto"
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
-          {/* Step 1: Release & Quick Import (Strictly GitHub Releases Only) */}
+          {/* Step 1: Release & Quick Import (Cloud Storage, R2, S3, VPS, or Public GitHub Release) */}
           {step === 1 && (
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-theme-text flex items-center gap-1.5">
-                    <Github className="w-4 h-4 text-theme-text" />
-                    <span>Application Release Package</span>
+                    <UploadCloud className="w-4 h-4 text-theme-text" />
+                    <span>Application Binary Source</span>
                   </div>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-theme-hover text-theme-text-muted">
+                    Repo-Free Supported
+                  </span>
                 </div>
                 
                 <p className="text-xs text-theme-text-muted leading-relaxed">
-                  Release applications directly on Prople Store! You can enter a direct APK or binary package download URL hosted on your own server or cloud storage, or import an official GitHub Release URL.
+                  Paste any public binary link from <span className="text-theme-text font-medium">Cloudflare R2, AWS S3, your own VPS / CDN</span>, or a public GitHub Release. No code repository is required — ideal for private or proprietary codebases.
                 </p>
                 
                 <div className="space-y-2 pt-1">
                   <label className="block text-xs font-medium text-theme-text">
-                    Package Download URL or GitHub Release URL *
+                    Public Binary Download URL (R2 / S3 / VPS / CDN) or GitHub Release URL *
                   </label>
                   <input 
                     id="input-github-release-url"
                     type="url" 
                     maxLength={1000}
-                    placeholder="https://your-server.com/app.apk or https://github.com/owner/repo/releases/latest"
+                    placeholder="https://pub-xxx.r2.dev/app-v1.0.apk, https://s3.../setup.exe, or https://dl.your-vps.com/app.dmg"
                     value={githubUrl} 
                     onChange={e => {
                       setGithubUrl(e.target.value);
@@ -3875,10 +3970,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     {isFetchingRelease ? (
                       <span className="flex items-center gap-1.5">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Extracting Release Assets & Notes...</span>
+                        <span>Probing Binary Size & Package Info...</span>
                       </span>
                     ) : (
-                      <span>Load Package & Release Info</span>
+                      <span>Load Binary Package & Info</span>
                     )}
                   </button>
                 </div>
@@ -4051,20 +4146,31 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
               <div className="space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
                     <label className="block text-xs font-medium text-theme-text">
-                      <span>Direct Download URL *</span>
+                      <span>Direct Binary Download URL *</span>
                     </label>
                     {downloadUrl.trim() && (
-                      <button
-                        type="button"
-                        onClick={handleTestDownload}
-                        disabled={isTestingDownload}
-                        className="text-[11px] text-blue-500 hover:text-blue-400 flex items-center gap-1 font-medium transition-colors"
-                      >
-                        <Download className="w-3 h-3" />
-                        {isTestingDownload ? 'Testing stream...' : 'Test Download'}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleResolveApk(downloadUrl)}
+                          disabled={isResolvingApk}
+                          className="text-[11px] text-emerald-500 hover:text-emerald-400 flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isResolvingApk ? 'animate-spin' : ''}`} />
+                          {isResolvingApk ? 'Probing...' : 'Detect Size & Info'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleTestDownload}
+                          disabled={isTestingDownload}
+                          className="text-[11px] text-blue-500 hover:text-blue-400 flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3 h-3" />
+                          {isTestingDownload ? 'Testing stream...' : 'Test Download'}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <input 
@@ -4072,22 +4178,26 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     type="url" 
                     required
                     maxLength={1000}
-                    placeholder="https://github.com/org/repo/releases/download/v1.0.0/app-release-package"
+                    placeholder="https://pub-xxx.r2.dev/app-release.apk or https://s3.amazonaws.com/bucket/app.exe"
                     value={downloadUrl} 
                     onChange={e => setDownloadUrl(e.target.value.slice(0, 1000))}
                     className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs font-mono text-theme-text outline-none focus:border-blue-500"
                   />
 
-                  {downloadUrl.trim() && !downloadUrl.toLowerCase().includes('github.com') && !downloadUrl.toLowerCase().includes('githubusercontent.com') && (
-                    <p className="text-[11px] text-red-500 dark:text-red-400 mt-1 flex items-center gap-1">
-                      <span>GitHub Release Only: Download URL must originate from an official GitHub Release asset.</span>
+                  {downloadUrl.trim() && downloadUrl.toLowerCase().includes('github.com') && !downloadUrl.toLowerCase().includes('/releases/download/') && !downloadUrl.toLowerCase().includes('/raw/') ? (
+                    <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>This looks like a GitHub webpage rather than a binary asset. Click &ldquo;Detect Size &amp; Info&rdquo; or use a Cloudflare R2 / AWS S3 / VPS binary link.</span>
                     </p>
-                  )}
-                  
-
+                  ) : downloadUrl.trim() ? (
+                    <p className="text-[11px] text-emerald-500 dark:text-emerald-400 mt-1 flex items-center gap-1.5">
+                      <HardDrive className="w-3 h-3 shrink-0" />
+                      <span>Detected host: {detectStorageProviderLabel(downloadUrl)}</span>
+                    </p>
+                  ) : null}
 
                   <p className="text-[10px] text-theme-text-muted mt-1">
-                    Direct binary asset link from your GitHub Release. Used by the store for 1-click downloads.
+                    Supports Cloudflare R2, AWS S3, CloudFront, VPS / self-hosted servers, CDNs, and public GitHub Release assets for instant in-app downloads without needing a public repository.
                   </p>
                 </div>
 
@@ -4874,16 +4984,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   </div>
                   <div className="relative mt-3.5 group">
                     <label className="absolute -top-2.5 left-3.5 px-1.5 bg-theme-bg text-[12px] sm:text-[13px] font-medium text-theme-text-muted group-focus-within:text-blue-500 dark:group-focus-within:text-[#8ab4f8] pointer-events-none select-none z-10 font-google-sans leading-none transition-colors">
-                      GitHub repo owner (required)
+                      Distribution source
                     </label>
                     <input 
                       type="text" 
-                      required
                       readOnly
                       disabled
-                      value={githubRepoOwner ? `@${githubRepoOwner}` : 'Not detected (Set release link in Step 1)'} 
+                      value={githubRepoOwner ? `@${githubRepoOwner} (GitHub Release)` : (downloadUrl.trim() ? `${detectStorageProviderLabel(downloadUrl)} (Repo-Free)` : 'Not set (Add binary URL in Step 1 or Step 3)')} 
                       className="w-full bg-transparent border border-theme-border/60 rounded-xl px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-theme-text cursor-not-allowed select-none opacity-80"
-                      title="Repository owner is fetched from the GitHub release link and cannot be edited manually."
+                      title="Automatically detected from your binary storage URL (Cloudflare R2, AWS S3, VPS, or GitHub)."
                     />
                   </div>
                 </div>
@@ -5042,13 +5151,17 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 py-2 border-b border-theme-border/25">
-                  <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Repository Owner:</span>
+                  <span className="text-theme-text-muted w-[130px] sm:w-[155px] shrink-0">Distribution Source:</span>
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span className="font-mono text-theme-text truncate">@{githubRepoOwner || 'Not detected'}</span>
-                    <span className="text-[10px] text-theme-text-muted bg-theme-hover px-1.5 py-0.5 rounded shrink-0">GitHub Release</span>
+                    <span className="font-mono text-theme-text truncate">
+                      {githubRepoOwner ? `@${githubRepoOwner}` : detectStorageProviderLabel(downloadUrl)}
+                    </span>
+                    <span className="text-[10px] text-theme-text-muted bg-theme-hover px-1.5 py-0.5 rounded shrink-0">
+                      {githubRepoOwner ? 'GitHub Release' : 'Direct Binary Storage'}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => navigateToStepAndSection(1, 'input-github-release-url')}
+                      onClick={() => navigateToStepAndSection(3, 'input-download-url')}
                       className="text-[11px] text-blue-400 hover:underline ml-auto shrink-0 cursor-pointer"
                     >
                       Edit
