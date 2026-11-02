@@ -25,8 +25,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
 
   usePreserveScroll('edit-profile', containerRef);
 
-  // Publisher name takes highest priority over raw email/display name
-  const currentActiveName = user?.publisherName || user?.displayName || (user?.email && !user.email.includes('user') ? user.email.split('@')[0] : '');
+  // Publisher name takes highest priority; do not auto-fill from email prefix so user can set and verify a unique name
+  const currentActiveName = (user?.publisherName || user?.displayName || '').trim();
   const [displayName, setDisplayName] = useState(currentActiveName);
   const [age, setAge] = useState(user?.age || '25');
   const [gender, setGender] = useState(user?.gender || 'Prefer not to say');
@@ -76,8 +76,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   // Keep form fields synced if user profile finishes loading or updates externally before user starts typing
   useEffect(() => {
     if (!user || isDirty || isSaving) return;
-    const latestName = user.publisherName || user.displayName || (user.email && !user.email.includes('user') ? user.email.split('@')[0] : '');
-    if (latestName && latestName !== initialValues.current.displayName) {
+    const latestName = (user.publisherName || user.displayName || '').trim();
+    if (latestName !== initialValues.current.displayName) {
       setDisplayName(latestName);
       initialValues.current.displayName = latestName;
     }

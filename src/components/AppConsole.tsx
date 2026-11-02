@@ -1134,9 +1134,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   
   // Section 1: Basic Info & Branding
   const [name, setName] = useState(() => initialDraft?.name || '');
-  const currentGoogleName = user?.publisherName || user?.displayName || 'Verified Publisher';
+  const currentGoogleName = (user?.publisherName || user?.displayName || '').trim();
   const currentGoogleEmail = user?.email || 'support@prople.co.in';
-  const [developerName, setDeveloperName] = useState(() => currentGoogleName);
+  const [developerName, setDeveloperName] = useState(() => {
+    const draftDev = (initialDraft?.developerName || '').trim();
+    if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer') {
+      return draftDev;
+    }
+    return currentGoogleName;
+  });
   const [githubRepoOwner, setGithubRepoOwner] = useState(() => initialDraft?.githubRepoOwner || '');
   const [category, setCategory] = useState(() => initialDraft?.category || 'Productivity');
   const [tagline, setTagline] = useState(() => initialDraft?.tagline || '');
@@ -1147,10 +1153,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [tags, setTags] = useState(() => initialDraft?.tags || '');
   const [interactiveElements, setInteractiveElements] = useState<string[]>(() => initialDraft?.interactiveElements || []);
 
-  // Publisher Name conflict detection and session-scoped toast notification
-  const activePublisherName = (user?.publisherName || user?.displayName || developerName || '').trim();
+  // Publisher Name conflict detection and real-time availability validation
+  const activePublisherName = (developerName || user?.publisherName || user?.displayName || '').trim();
   const [isPublisherNameConflict, setIsPublisherNameConflict] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
+  const [isCheckingPublisherField, setIsCheckingPublisherField] = useState(false);
+  const [publisherFieldStatusMsg, setPublisherFieldStatusMsg] = useState('');
   const [showChangePublisherModal, setShowChangePublisherModal] = useState(false);
   const [newCandidatePublisherName, setNewCandidatePublisherName] = useState('');
   const [candidateValidationMsg, setCandidateValidationMsg] = useState('');
@@ -1160,46 +1168,60 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
   // Authoritative database check for publisher name uniqueness
   useEffect(() => {
-    if (!activePublisherName || activePublisherName.length < 2) return;
-    let isMounted = true;
+    if (!activePublisherName) {
+      setIsPublisherNameConflict(false);
+      setConflictMessage('');
+      setPublisherFieldStatusMsg('');
+      setIsCheckingPublisherField(false);
+      return;
+    }
+    if (activePublisherName.length < 2) {
+      setIsPublisherNameConflict(false);
+      setConflictMessage('Publisher name must be at least 2 characters.');
+      setPublisherFieldStatusMsg('Mandatory: Publisher name must be at least 2 characters');
+      setIsCheckingPublisherField(false);
+      return;
+    }
 
-    const verifyName = async () => {
+    let isMounted = true;
+    setIsCheckingPublisherField(true);
+
+    const timer = setTimeout(async () => {
       try {
         const res = await checkPublisherNameAvailability(activePublisherName, {
           currentUserId: user?.uid,
           currentUserEmail: user?.email,
-          currentUserName: activePublisherName,
           allApps: appsList
         });
 
         if (!isMounted) return;
 
-        if (!res.available && res.isTaken) {
+        if (!res.available || res.isTaken) {
           setIsPublisherNameConflict(true);
-          const msg = 'Your publisher name is already taken. Please change or claim a unique publisher name to activate publishing.';
+          const msg = res.message || `The publisher name "${activePublisherName}" is already claimed by another developer.`;
           setConflictMessage(msg);
-
-          // Session-scoped toast: show just once per browser session
-          const sessionToastKey = `prople_pub_name_conflict_session_${(user?.uid || user?.email || 'guest')}`;
-          if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(sessionToastKey)) {
-            sessionStorage.setItem(sessionToastKey, '1');
-            showToast(msg, { type: 'error', duration: 6000 });
-          }
+          setPublisherFieldStatusMsg(msg);
         } else {
           setIsPublisherNameConflict(false);
           setConflictMessage('');
+          setPublisherFieldStatusMsg(
+            user?.publisherName && user.publisherName.trim().toLowerCase() === activePublisherName.toLowerCase()
+              ? `Authorized: Verified Publisher (${activePublisherName})`
+              : `Available: "${activePublisherName}" is ready to claim`
+          );
         }
       } catch (err) {
         console.warn('[AppConsole] Publisher name verification error:', err);
+      } finally {
+        if (isMounted) setIsCheckingPublisherField(false);
       }
-    };
-
-    verifyName();
+    }, 250);
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
     };
-  }, [activePublisherName, user?.uid, user?.email, user?.publisherName, appsList, showToast]);
+  }, [activePublisherName, user?.uid, user?.email, user?.publisherName, appsList]);
 
   // Real-time debounced validation for candidate new publisher name
   useEffect(() => {
@@ -1216,12 +1238,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       setIsCandidateChecking(false);
       return;
     }
-    if (trimmed.toLowerCase() === activePublisherName.toLowerCase() && !isPublisherNameConflict) {
-      setCandidateValidationMsg('This is your current publisher name.');
-      setIsCandidateAvailable(true);
-      setIsCandidateChecking(false);
-      return;
-    }
 
     setIsCandidateChecking(true);
     const timer = setTimeout(async () => {
@@ -1229,7 +1245,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
         const res = await checkPublisherNameAvailability(trimmed, {
           currentUserId: user?.uid,
           currentUserEmail: user?.email,
-          currentUserName: activePublisherName,
           allApps: appsList
         });
         setIsCandidateAvailable(res.available && !res.isTaken);
@@ -1243,16 +1258,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [newCandidatePublisherName, activePublisherName, isPublisherNameConflict, user?.uid, user?.email, appsList]);
+  }, [newCandidatePublisherName, user?.uid, user?.email, appsList]);
 
-  const handleClaimCandidatePublisherName = async () => {
-    const trimmed = newCandidatePublisherName.trim();
+  const handleClaimCandidatePublisherName = async (overrideName?: string) => {
+    const trimmed = (overrideName !== undefined ? overrideName : newCandidatePublisherName).trim();
     if (!trimmed || trimmed.length < 2) {
       showToast('Publisher name must be at least 2 characters long.', { type: 'error' });
-      return;
-    }
-    if (!isCandidateAvailable) {
-      showToast(candidateValidationMsg || 'This publisher name is not available.', { type: 'error' });
       return;
     }
 
@@ -1260,23 +1271,35 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     try {
       const effectiveUid = user?.uid || auth.currentUser?.uid || '';
       const effectiveEmail = user?.email || auth.currentUser?.email || '';
-      const res = await claimPublisherName(trimmed, effectiveUid, effectiveEmail, undefined, true);
+      const check = await checkPublisherNameAvailability(trimmed, {
+        currentUserId: effectiveUid,
+        currentUserEmail: effectiveEmail,
+        allApps: appsList
+      });
+      if (!check.available || check.isTaken) {
+        showToast(check.message || 'This publisher name is already taken by another developer.', { type: 'error' });
+        setIsSavingPublisherName(false);
+        return;
+      }
+
+      const res = await claimPublisherName(trimmed, effectiveUid, effectiveEmail, undefined, true, user?.publisherName);
       if (!res.success) {
         showToast(res.message || 'Failed to claim publisher name.', { type: 'error' });
         setIsSavingPublisherName(false);
         return;
       }
 
+      setDeveloperName(trimmed);
       await updateUserProfile({
         publisherName: trimmed,
-        displayName: user?.displayName || trimmed,
+        displayName: trimmed,
         isPublisher: true
       });
 
       setIsPublisherNameConflict(false);
       setConflictMessage('');
       setShowChangePublisherModal(false);
-      showToast(`Publisher name "${trimmed}" successfully claimed and applied!`);
+      showToast(`Publisher name "${trimmed}" verified and claimed!`);
     } catch (err: any) {
       showToast(err?.message || 'Failed to claim publisher name.', { type: 'error' });
     } finally {
@@ -1292,34 +1315,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   };
 
   const handleAttemptNext = () => {
-    if (isPublisherNameConflict) {
-      showToast(conflictMessage || 'Please claim a unique publisher name to continue.', { type: 'error', duration: 5000 });
-      setNewCandidatePublisherName(activePublisherName);
-      setShowChangePublisherModal(true);
-      return;
-    }
     setStep((s) => Math.min(6, s + 1) as any);
   };
 
   const handleAttemptStepTab = (targetStep: number) => {
-    if (isPublisherNameConflict) {
-      showToast(conflictMessage || 'Please claim a unique publisher name to continue.', { type: 'error', duration: 5000 });
-      setNewCandidatePublisherName(activePublisherName);
-      setShowChangePublisherModal(true);
-      return;
-    }
     if (targetStep === step) return;
     setStep(targetStep as any);
   };
 
   const handleAttemptPublish = () => {
-    if (isPublisherNameConflict) {
-      showToast(conflictMessage || 'Your publisher name is already taken. Please change your publisher name to continue publishing.', { type: 'error', duration: 5000 });
-      setNewCandidatePublisherName(activePublisherName);
-      setShowChangePublisherModal(true);
-      return;
-    }
-
     if (editingAppId && !isOwnerAuthorized) {
       showToast('Unauthorized: You can only publish updates for apps owned by your account.', { type: 'error' });
       return;
@@ -1338,13 +1342,16 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     handlePublishApp();
   };
 
-  // Auto-sync developer profile info - inherited from editable publisher account profile
+  // Auto-sync developer profile info when user profile loads if developerName is not yet set
   useEffect(() => {
     if (user) {
-      setDeveloperName(user.publisherName || user.displayName || 'Verified Publisher');
+      const cleanUserPub = (user.publisherName || user.displayName || '').trim();
+      if (cleanUserPub && !developerName) {
+        setDeveloperName(cleanUserPub);
+      }
       if (user.email) setDeveloperEmail(user.email);
     }
-  }, [user]);
+  }, [user?.publisherName, user?.displayName, user?.email]);
 
   // Section 2: Binary & Platform Package
   const [platform, setPlatform] = useState<'android' | 'windows' | 'linux' | 'mac' | 'ios' | 'multiplatform'>(() => initialDraft?.platform || 'android');
@@ -1641,9 +1648,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [termsAndConditionsUrl, setTermsAndConditionsUrl] = useState(() => initialDraft?.termsAndConditionsUrl || '');
   const [developerAddress, setDeveloperAddress] = useState(() => initialDraft?.developerAddress || '');
 
-  // Keep immutable publisher identity fields continuously synced with the user's global account profile
+  // Keep developerEmail synced with the user's global account profile
   useEffect(() => {
-    if (currentGoogleName) {
+    if (currentGoogleName && !developerName) {
       setDeveloperName(currentGoogleName);
     }
     if (currentGoogleEmail) {
@@ -1660,7 +1667,32 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   // Track state of publish button: 'idle' | 'warning' | 'publishing' | 'success'
   const [publishButtonState, setPublishButtonState] = useState<'idle' | 'warning' | 'publishing' | 'success'>('idle');
 
-  // Comprehensive validator to detect all missing steps before publishing
+  // Section 4: Data Safety & Highlights
+  const [dataSafetySummary, setDataSafetySummary] = useState(() => initialDraft?.dataSafetySummary || '');
+  const [dataSafetyOverview, setDataSafetyOverview] = useState(() => initialDraft?.dataSafetyOverview || '');
+  const [safetyHighlights, setSafetyHighlights] = useState<SafetyHighlight[]>(() => initialDraft?.safetyHighlights || []);
+
+  const [dataShared, setDataShared] = useState(() => initialDraft?.dataShared || '');
+  const [sharesDataWithThirdParties, setSharesDataWithThirdParties] = useState(() => Boolean(initialDraft?.sharesDataWithThirdParties));
+  const [dataSharedDetails, setDataSharedDetails] = useState(() => initialDraft?.dataSharedDetails || '');
+  const [customDataCollected, setCustomDataCollected] = useState(() => initialDraft?.customDataCollected || '');
+  
+  const [permissionsRequired, setPermissionsRequired] = useState<string[]>(() => initialDraft?.permissionsRequired || []);
+  const [permissionsText, setPermissionsText] = useState<string>(() => (initialDraft?.permissionsRequired ? (Array.isArray(initialDraft.permissionsRequired) ? initialDraft.permissionsRequired.join('\n') : String(initialDraft.permissionsRequired)) : ''));
+  const [permCamera, setPermCamera] = useState(() => initialDraft?.permCamera || '');
+  const [permLocation, setPermLocation] = useState(() => initialDraft?.permLocation || '');
+  const [permMicrophone, setPermMicrophone] = useState(() => initialDraft?.permMicrophone || '');
+  const [permTelephone, setPermTelephone] = useState(() => initialDraft?.permTelephone || '');
+  const [permStorage, setPermStorage] = useState(() => initialDraft?.permStorage || '');
+  const [permOther, setPermOther] = useState(() => initialDraft?.permOther || '');
+  const [dataDeletionPolicy, setDataDeletionPolicy] = useState(() => initialDraft?.dataDeletionPolicy || 'Users can request permanent data deletion or clear application cache locally at any time.');
+
+  const isValidHttpsUrl = useCallback((urlStr: string): boolean => {
+    const trimmed = (urlStr || '').trim();
+    return Boolean(trimmed && (trimmed.startsWith('https://') || trimmed.startsWith('http://')) && trimmed.length > 10);
+  }, []);
+
+  // Comprehensive validator to detect all missing steps/sections before publishing and direct user back to the exact input section
   const getPublishingMissingSteps = useCallback((): { step: 1 | 2 | 3 | 4 | 5 | 6; title: string; message: string; targetId: string }[] => {
     const missing: { step: 1 | 2 | 3 | 4 | 5 | 6; title: string; message: string; targetId: string }[] = [];
 
@@ -1670,29 +1702,63 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       missing.push({
         step: 1,
         title: 'Release Package URL',
-        message: 'Step 1 is incomplete: A valid public binary download link (Cloudflare R2, AWS S3, VPS, CDN, or GitHub Release) is required.',
+        message: 'Step 1 is incomplete: Mandatory — Please provide a valid public binary download link or GitHub Release URL.',
         targetId: 'input-github-release-url'
       });
     }
 
-    // Step 2: App Name & Category
+    // Step 2: App Name, Publisher Name, Category, Tagline
     if (!name.trim()) {
       missing.push({
         step: 2,
         title: 'App Name',
-        message: 'Step 2 is incomplete: Please enter an App Name.',
+        message: 'Step 2 is incomplete: Mandatory — Please enter an App Name.',
         targetId: 'input-app-name'
       });
     }
 
-    // Step 3: Direct Binary Download Link (any valid public HTTP/HTTPS storage URL, not a repo webpage or source archive)
+    if (!activePublisherName || activePublisherName.length < 2) {
+      missing.push({
+        step: 2,
+        title: 'Publisher Name',
+        message: 'Step 2 is incomplete: Mandatory — Please enter and verify your unique Publisher Name (at least 2 characters).',
+        targetId: 'input-publisher-name'
+      });
+    } else if (isPublisherNameConflict) {
+      missing.push({
+        step: 2,
+        title: 'Publisher Name Conflict',
+        message: conflictMessage || `Step 2 is incomplete: The publisher name "${activePublisherName}" is already claimed by another developer. Please choose a unique Publisher Name.`,
+        targetId: 'input-publisher-name'
+      });
+    }
+
+    if (!category || !category.trim()) {
+      missing.push({
+        step: 2,
+        title: 'Category',
+        message: 'Step 2 is incomplete: Mandatory — Please select an application category.',
+        targetId: 'input-app-category'
+      });
+    }
+
+    if (!tagline.trim()) {
+      missing.push({
+        step: 2,
+        title: 'Tagline / Short Summary',
+        message: 'Step 2 is incomplete: Mandatory — Please provide a short summary / tagline for your application.',
+        targetId: 'input-app-tagline'
+      });
+    }
+
+    // Step 3: Direct Binary Download Link, Version Number, Version Tag
     const trimmedDl = downloadUrl.trim();
     const lowerDl = trimmedDl.toLowerCase().split('?')[0];
     if (!trimmedDl) {
       missing.push({
         step: 3,
         title: 'Package Download Link',
-        message: 'Step 3 is incomplete: A public binary package download URL (AWS S3, Cloudflare R2, VPS, or GitHub Release asset) is required.',
+        message: 'Step 3 is incomplete: Mandatory — A public binary package download URL (AWS S3, Cloudflare R2, VPS, or GitHub Release asset) is required.',
         targetId: 'input-download-url'
       });
     } else if (!trimmedDl.startsWith('https://') && !trimmedDl.startsWith('http://')) {
@@ -1711,21 +1777,85 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       missing.push({
         step: 3,
         title: 'Direct Binary Asset Required',
-        message: 'Step 3 is incomplete: Please provide a direct binary download link (e.g. Cloudflare R2, AWS S3, VPS, or GitHub /releases/download/ asset) rather than a repository webpage or source archive.',
+        message: 'Step 3 is incomplete: Please provide a direct binary download link rather than a repository webpage or source archive.',
         targetId: 'input-download-url'
       });
     }
 
-    if (!versionName.trim() && !version.trim()) {
+    if (!versionName.trim()) {
       missing.push({
         step: 3,
         title: 'Version Number',
-        message: 'Step 3 is incomplete: Package version number (e.g. 1.0.0) is required.',
+        message: 'Step 3 is incomplete: Mandatory — Package version number (e.g. 1.0.0) is required.',
         targetId: 'input-version-name'
       });
     }
 
-    // Step 5: Mandatory Legal Policies (Authorized HTTPS links)
+    if (!version.trim()) {
+      missing.push({
+        step: 3,
+        title: 'Version Tag',
+        message: 'Step 3 is incomplete: Mandatory — Release version tag (e.g. v1.0.0) is required.',
+        targetId: 'input-version-tag'
+      });
+    }
+
+    // Step 4: App Icon & Full Store Description
+    if (!iconUrl.trim()) {
+      missing.push({
+        step: 4,
+        title: 'App Icon',
+        message: 'Step 4 is incomplete: Mandatory — Please upload or provide an App Icon in the Media section.',
+        targetId: 'section-media-upload'
+      });
+    }
+
+    if (!description.trim()) {
+      missing.push({
+        step: 4,
+        title: 'About This App (Full Store Description)',
+        message: 'Step 4 is incomplete: Mandatory — Please provide the Full Store Description in About This App.',
+        targetId: 'input-app-description'
+      });
+    }
+
+    // Step 5: Data Safety Declarations & Mandatory Legal Policies
+    if (!dataSafetyOverview.trim()) {
+      missing.push({
+        step: 5,
+        title: 'Data Safety Overview',
+        message: 'Step 5 is incomplete: Mandatory — Please provide the Data Safety report introduction / overview.',
+        targetId: 'input-data-safety-overview'
+      });
+    }
+
+    if (!customDataCollected.trim()) {
+      missing.push({
+        step: 5,
+        title: 'Data Collected Declaration',
+        message: 'Step 5 is incomplete: Mandatory — Please declare what data your app collects (or state that no personal data is collected).',
+        targetId: 'input-data-collected'
+      });
+    }
+
+    if (!dataShared.trim()) {
+      missing.push({
+        step: 5,
+        title: 'Data Shared Declaration',
+        message: 'Step 5 is incomplete: Mandatory — Please declare whether data is shared with third parties.',
+        targetId: 'input-data-shared'
+      });
+    }
+
+    if (!dataDeletionPolicy.trim()) {
+      missing.push({
+        step: 5,
+        title: 'Data Deletion Policy',
+        message: 'Step 5 is incomplete: Mandatory — Please provide your data deletion & retention policy.',
+        targetId: 'input-data-deletion-policy'
+      });
+    }
+
     const privAuth = checkAuthorizedLink(privacyPolicyUrl);
     if (!privAuth.isAuthorized) {
       missing.push({
@@ -1746,31 +1876,18 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     }
 
     return missing;
-  }, [githubRepoOwner, githubUrl, githubRepoUrl, downloadUrl, versionName, version, name, privacyPolicyUrl, termsAndConditionsUrl]);
+  }, [
+    githubRepoOwner, githubUrl, githubRepoUrl, downloadUrl,
+    name, activePublisherName, isPublisherNameConflict, conflictMessage, category, tagline,
+    versionName, version, iconUrl, description,
+    dataSafetyOverview, customDataCollected, dataShared, dataDeletionPolicy,
+    privacyPolicyUrl, termsAndConditionsUrl
+  ]);
 
   // Steps can be freely skipped; navigation is never blocked
   const validateStepRequirements = (_currentStepNum: number, _targetStepNum: number): boolean => {
     return true;
   };
-
-  // Section 4: Data Safety & Highlights
-  const [dataSafetySummary, setDataSafetySummary] = useState(() => initialDraft?.dataSafetySummary || '');
-  const [dataSafetyOverview, setDataSafetyOverview] = useState(() => initialDraft?.dataSafetyOverview || '');
-  const [safetyHighlights, setSafetyHighlights] = useState<SafetyHighlight[]>(() => initialDraft?.safetyHighlights || []);
-
-  const [dataShared, setDataShared] = useState(() => initialDraft?.dataShared || '');
-  const [sharesDataWithThirdParties, setSharesDataWithThirdParties] = useState(() => Boolean(initialDraft?.sharesDataWithThirdParties));
-  const [dataSharedDetails, setDataSharedDetails] = useState(() => initialDraft?.dataSharedDetails || '');
-  const [customDataCollected, setCustomDataCollected] = useState(() => initialDraft?.customDataCollected || '');
-  
-  const [permissionsRequired, setPermissionsRequired] = useState<string[]>(() => initialDraft?.permissionsRequired || []);
-  const [permissionsText, setPermissionsText] = useState<string>(() => (initialDraft?.permissionsRequired ? (Array.isArray(initialDraft.permissionsRequired) ? initialDraft.permissionsRequired.join('\n') : String(initialDraft.permissionsRequired)) : ''));
-  const [permCamera, setPermCamera] = useState(() => initialDraft?.permCamera || '');
-  const [permLocation, setPermLocation] = useState(() => initialDraft?.permLocation || '');
-  const [permMicrophone, setPermMicrophone] = useState(() => initialDraft?.permMicrophone || '');
-  const [permTelephone, setPermTelephone] = useState(() => initialDraft?.permTelephone || '');
-  const [permStorage, setPermStorage] = useState(() => initialDraft?.permStorage || '');
-  const [permOther, setPermOther] = useState(() => initialDraft?.permOther || '');
 
   // Official Android Permission Catalog
   const ALL_PERMISSION_CATALOG = useMemo(() => [
@@ -1855,8 +1972,6 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   ) => {
     updateDynamicPermission(category, val);
   }, [updateDynamicPermission]);
-
-  const [dataDeletionPolicy, setDataDeletionPolicy] = useState(() => initialDraft?.dataDeletionPolicy || 'Users can request permanent data deletion or clear application cache locally at any time.');
 
   const createSnapshotString = useCallback((data: any) => {
     return JSON.stringify({
@@ -3211,25 +3326,51 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
       const finalDownloads = existingApp && existingApp.downloads ? existingApp.downloads : '0+';
       const finalDownloadsCount = existingApp && existingApp.downloadsCount !== undefined ? existingApp.downloadsCount : 0;
 
-      const finalPublisherName = user?.publisherName?.trim() || user?.displayName?.trim() || developerName.trim() || currentGoogleName;
+      const finalPublisherName = (developerName.trim() || user?.publisherName?.trim() || user?.displayName?.trim() || currentGoogleName).trim();
       const finalSupportEmail = (user?.email || developerEmail || currentGoogleEmail || '').toLowerCase().trim();
       const finalRepoOwner = githubRepoOwner.trim() || extractGitHubRepoOwner(githubUrl || githubRepoUrl || finalApkDownloadUrl) || '';
 
       const isOwner = existingApp ? isUserOwnerOfApp(existingApp) : true;
       const targetOwnerUid = (isOwner && currentUid) ? currentUid : (existingApp?.owner || currentUid);
 
+      if (!finalPublisherName || finalPublisherName.length < 2) {
+        setPublishButtonState('warning');
+        setIsPublishing(false);
+        showToast('Please enter and verify a unique Publisher Name before publishing.', { type: 'error', duration: 4000 });
+        navigateToStepAndSection(2, 'input-publisher-name');
+        return;
+      }
+
       // Verify publisher name is unique and not claimed by another developer
-      if (finalPublisherName && (!existingApp || existingApp.developer?.toLowerCase() !== finalPublisherName.toLowerCase())) {
-        const pubCheck = await checkPublisherNameAvailability(finalPublisherName, {
-          currentUserId: targetOwnerUid,
-          currentUserEmail: finalSupportEmail,
-          allApps: appsList
-        });
-        if (!pubCheck.available && pubCheck.isTaken) {
-          showToast(pubCheck.message || 'Publisher name is already registered to another developer. Please update your profile with a unique publisher name.', { type: 'error', duration: 5000 });
-          setIsPublishing(false);
-          setPublishButtonState('idle');
-          return;
+      const pubCheck = await checkPublisherNameAvailability(finalPublisherName, {
+        currentUserId: targetOwnerUid,
+        currentUserEmail: finalSupportEmail,
+        allApps: appsList
+      });
+      if (!pubCheck.available || pubCheck.isTaken) {
+        setPublishButtonState('warning');
+        setIsPublishing(false);
+        showToast(pubCheck.message || 'Publisher name is already claimed by another developer. Please choose a unique publisher name.', { type: 'error', duration: 5000 });
+        navigateToStepAndSection(2, 'input-publisher-name');
+        return;
+      }
+
+      // Claim the verified publisher name for this developer so it is locked to their account
+      if (targetOwnerUid || finalSupportEmail) {
+        await claimPublisherName(
+          finalPublisherName,
+          targetOwnerUid,
+          finalSupportEmail,
+          undefined,
+          true,
+          user?.publisherName || user?.displayName
+        );
+        if (user && (user.publisherName !== finalPublisherName || user.displayName !== finalPublisherName)) {
+          await updateUserProfile({
+            publisherName: finalPublisherName,
+            displayName: finalPublisherName,
+            isPublisher: true
+          });
         }
       }
 
@@ -3792,30 +3933,31 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     setDevTermsError('');
                     setIsSubmittingInquiry(true);
                     try {
-                      const pubName = (user.publisherName || user.displayName || 'Verified Developer').trim();
-                      const check = await checkPublisherNameAvailability(pubName, {
-                        currentUserId: user.uid,
-                        currentUserEmail: user.email,
-                        currentUserName: activePublisherName,
-                        allApps: appsList
-                      });
-                      if (!check.available && check.isTaken) {
-                        setDevTermsError(`The publisher name "${pubName}" is already claimed by another developer. Please claim a unique publisher name.`);
-                        showToast('Please claim a unique publisher name to activate publishing.', { type: 'error', duration: 5000 });
-                        setNewCandidatePublisherName(pubName);
-                        setShowChangePublisherModal(true);
-                        setIsSubmittingInquiry(false);
-                        return;
+                      const pubName = (user.publisherName || user.displayName || '').trim();
+                      if (pubName.length >= 2) {
+                        const check = await checkPublisherNameAvailability(pubName, {
+                          currentUserId: user.uid,
+                          currentUserEmail: user.email,
+                          allApps: appsList
+                        });
+                        if (!check.available && check.isTaken) {
+                          setDevTermsError(`The publisher name "${pubName}" is already claimed by another developer. Please claim a unique publisher name.`);
+                          showToast('Please claim a unique publisher name to activate publishing.', { type: 'error', duration: 5000 });
+                          setNewCandidatePublisherName(pubName);
+                          setShowChangePublisherModal(true);
+                          setIsSubmittingInquiry(false);
+                          return;
+                        }
+                        const effectiveUid = user?.uid || auth.currentUser?.uid || '';
+                        const effectiveEmail = user?.email || auth.currentUser?.email || '';
+                        if (effectiveUid || effectiveEmail) {
+                          await claimPublisherName(pubName, effectiveUid, effectiveEmail, undefined, true);
+                        }
                       }
 
                       setHasActivatedDev(true);
-                      const effectiveUid = user?.uid || auth.currentUser?.uid || '';
-                      const effectiveEmail = user?.email || auth.currentUser?.email || '';
-                      if (effectiveUid || effectiveEmail) {
-                        await claimPublisherName(pubName, effectiveUid, effectiveEmail, undefined, true);
-                      }
                       await updateUserProfile({
-                        publisherName: pubName,
+                        ...(pubName.length >= 2 ? { publisherName: pubName } : {}),
                         isPublisher: true,
                         publisherRole: isDeveloperEmail(user.email) ? 'Store Administrator' : 'Verified Developer'
                       });
@@ -4000,9 +4142,22 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       if (releaseUrlError) setReleaseUrlError(null);
                     }}
                     className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2.5 text-xs font-mono text-theme-text outline-none transition-colors ${
-                      releaseUrlError ? 'border-red-500 ring-1 ring-red-500/30' : 'border-theme-border focus:border-blue-500'
+                      releaseUrlError || (!isValidHttpsUrl(githubUrl) && !isValidHttpsUrl(downloadUrl))
+                        ? 'border-rose-500/80 focus:border-rose-500'
+                        : 'border-emerald-500/60 focus:border-emerald-500'
                     }`}
                   />
+                  <div className="mt-1 px-1 flex items-center gap-1.5">
+                    {isValidHttpsUrl(githubUrl) || isValidHttpsUrl(downloadUrl) ? (
+                      <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                        <Check className="w-3 h-3 shrink-0" /> Valid HTTPS Binary or Release URL provided
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a valid https:// binary or release URL
+                      </span>
+                    )}
+                  </div>
 
                   {releaseUrlError && (
                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 dark:text-red-400 text-xs flex items-start gap-2 leading-relaxed">
@@ -4059,8 +4214,23 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     placeholder="e.g. Focus Flow"
                     value={name} 
                     onChange={e => setName(e.target.value.slice(0, 50))}
-                    className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
+                    className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
+                      name.trim()
+                        ? 'border-emerald-500/60 focus:border-emerald-500'
+                        : 'border-rose-500/80 focus:border-rose-500'
+                    }`}
                   />
+                  <div className="mt-1 px-1 flex items-center gap-1.5">
+                    {name.trim() ? (
+                      <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                        <Check className="w-3 h-3 shrink-0" /> App Name provided
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter your application name
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4068,19 +4238,46 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
                       <label className="block text-xs font-medium text-theme-text flex items-center gap-1.5 truncate" title="Publisher Name">
                         <UserCheck className="w-3.5 h-3.5 text-theme-text-muted shrink-0" />
-                        <span className="truncate">Publisher Name</span>
+                        <span className="truncate">Publisher Name *</span>
                       </label>
+                      {activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available && (
+                        <span className="text-[10px] font-medium text-emerald-500 shrink-0">Verified Unique</span>
+                      )}
                     </div>
                     <div className="relative">
                       <input 
+                        id="input-publisher-name"
                         type="text" 
                         required
-                        readOnly
-                        disabled
-                        value={activePublisherName || currentGoogleName} 
-                        className="w-full rounded-lg px-3 py-2 text-xs sm:text-sm text-theme-text bg-theme-hover/20 border border-theme-border/60 cursor-not-allowed select-none opacity-85"
-                        title="Publisher name is linked to your developer profile and immutable in the publishing form"
+                        maxLength={50}
+                        placeholder="Enter unique publisher / studio name"
+                        value={developerName || user?.publisherName || user?.displayName || ''} 
+                        onChange={e => setDeveloperName(e.target.value.slice(0, 50))}
+                        className={`w-full rounded-lg px-3 py-2 text-xs sm:text-sm text-theme-text bg-theme-hover/40 border outline-none transition-colors ${
+                          activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available
+                            ? 'border-emerald-500/60 focus:border-emerald-500'
+                            : 'border-rose-500/80 focus:border-rose-500'
+                        }`}
                       />
+                    </div>
+                    <div className="mt-1 px-1 flex items-center justify-between gap-1.5 flex-wrap">
+                      {isCheckingPublisherField ? (
+                        <span className="text-[11px] font-medium text-blue-400 flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin shrink-0" /> Verifying publisher name availability...
+                        </span>
+                      ) : activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> {publisherFieldStatusMsg.message}
+                        </span>
+                      ) : activePublisherName.trim().length >= 2 && publisherFieldStatusMsg && !publisherFieldStatusMsg.available ? (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> {publisherFieldStatusMsg.message}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter and verify a unique Publisher Name
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -4088,9 +4285,14 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <label className="block text-xs font-medium text-theme-text whitespace-nowrap">Category *</label>
                     </div>
                     <select
+                      id="input-app-category"
                       value={category}
                       onChange={e => setCategory(e.target.value)}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
+                      className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
+                        category.trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     >
                       {appCategories && appCategories.length > 0 ? (
                         appCategories.map(cat => (
@@ -4111,22 +4313,50 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         </>
                       )}
                     </select>
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {category.trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Category selected
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Select a store category
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-theme-text">Tagline / Short Summary</label>
+                    <label className="block text-xs font-medium text-theme-text">Tagline / Short Summary *</label>
                     <span className="text-[10px] text-theme-text-muted">{tagline.length}/80</span>
                   </div>
                   <input 
+                    id="input-app-tagline"
                     type="text" 
+                    required
                     maxLength={80}
                     placeholder="e.g. High-performance offline notes with end-to-end privacy"
                     value={tagline} 
                     onChange={e => setTagline(e.target.value.slice(0, 80))}
-                    className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
+                    className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
+                      tagline.trim()
+                        ? 'border-emerald-500/60 focus:border-emerald-500'
+                        : 'border-rose-500/80 focus:border-rose-500'
+                    }`}
                   />
+                  <div className="mt-1 px-1 flex items-center gap-1.5">
+                    {tagline.trim() ? (
+                      <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                        <Check className="w-3 h-3 shrink-0" /> Short tagline summary provided
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a short tagline summary
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -4235,8 +4465,23 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     placeholder="https://pub-xxx.r2.dev/app-release.apk or https://s3.amazonaws.com/bucket/app.exe"
                     value={downloadUrl} 
                     onChange={e => setDownloadUrl(e.target.value.slice(0, 1000))}
-                    className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-xs font-mono text-theme-text outline-none focus:border-blue-500"
+                    className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-xs font-mono text-theme-text outline-none transition-colors ${
+                      isValidHttpsUrl(downloadUrl)
+                        ? 'border-emerald-500/60 focus:border-emerald-500'
+                        : 'border-rose-500/80 focus:border-rose-500'
+                    }`}
                   />
+                  <div className="mt-1 px-1 flex items-center gap-1.5">
+                    {isValidHttpsUrl(downloadUrl) ? (
+                      <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                        <Check className="w-3 h-3 shrink-0" /> Valid HTTPS Direct Binary Download URL provided
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a valid https:// Direct Binary Download URL
+                      </span>
+                    )}
+                  </div>
 
                   {downloadUrl.trim() && downloadUrl.toLowerCase().includes('github.com') && !downloadUrl.toLowerCase().includes('/releases/download/') && !downloadUrl.toLowerCase().includes('/raw/') ? (
                     <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1 flex items-center gap-1">
@@ -4276,8 +4521,23 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                           setVersion(val ? (val.startsWith('v') ? val : `v${val}`) : '');
                         }
                       }}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
+                      className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
+                        (versionName || '').trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {(versionName || '').trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Version number set
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter version number
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1 min-h-[20px]">
@@ -4298,8 +4558,23 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                           setVersionName(val.replace(/^v/i, ''));
                         }
                       }}
-                      className="w-full bg-theme-hover/40 border border-theme-border rounded-lg px-3 py-2 text-sm text-theme-text outline-none focus:border-blue-500"
+                      className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
+                        (version || '').trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {(version || '').trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Version tag set
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter version tag
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -4689,6 +4964,17 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     if (mediaData.videoThumbnailUrl !== undefined) setVideoThumbnailUrl(mediaData.videoThumbnailUrl);
                   }}
                 />
+                <div className="mt-1.5 px-1 flex items-center gap-1.5">
+                  {iconUrl.trim() ? (
+                    <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                      <Check className="w-3 h-3 shrink-0" /> App Icon provided
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Upload or provide an App Icon URL
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Spotlight Feed Placement Feature Graphic */}
@@ -4749,7 +5035,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-medium text-theme-text">
-                    About This App (Full Store Description)
+                    About This App (Full Store Description) *
                   </label>
                   <span className="text-[10px] text-theme-text-muted">
                     {description.length}/4000 characters
@@ -4762,8 +5048,23 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   placeholder="Comprehensive description of app features, functionality, system requirements, open source notes, and release highlights. Displayed in the 'About this app' store page..."
                   value={description} 
                   onChange={e => setDescription(e.target.value.slice(0, 4000))}
-                  className="w-full bg-theme-hover/40 border border-theme-border rounded-lg p-3 text-xs text-theme-text outline-none focus:border-blue-500 resize-y min-h-[140px] leading-relaxed"
+                  className={`w-full bg-theme-hover/40 border rounded-lg p-3 text-xs text-theme-text outline-none resize-y min-h-[140px] leading-relaxed transition-colors ${
+                    description.trim()
+                      ? 'border-emerald-500/60 focus:border-emerald-500'
+                      : 'border-rose-500/80 focus:border-rose-500'
+                  }`}
                 />
+                <div className="mt-1 px-1 flex items-center gap-1.5">
+                  {description.trim() ? (
+                    <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                      <Check className="w-3 h-3 shrink-0" /> Full store description provided
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a comprehensive app description
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -4786,73 +5087,137 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   {/* Overview Introduction */}
                   <div className="relative mt-3.5 group">
                     <label className="absolute -top-2.5 left-3.5 px-1.5 bg-theme-bg text-[12px] sm:text-[13px] font-medium text-theme-text-muted group-focus-within:text-blue-500 dark:group-focus-within:text-[#8ab4f8] pointer-events-none select-none z-10 font-google-sans leading-none transition-colors">
-                      Report page introduction / overview
+                      Report page introduction / overview *
                     </label>
                     <span className="absolute -top-2.5 right-3.5 px-1.5 bg-theme-bg text-[10px] sm:text-[11px] text-theme-text-muted select-none z-10 leading-none">
                       {dataSafetyOverview.length}/500
                     </span>
                     <textarea 
+                      id="input-data-safety-overview"
                       rows={3}
                       maxLength={1000}
                       placeholder="High-level summary of your app's privacy and data safety practices. Displayed on the Data Safety report page..."
                       value={dataSafetyOverview} 
                       onChange={e => setDataSafetyOverview(e.target.value.slice(0, 1000))}
-                      className="w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border border-theme-border focus:border-blue-500 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors"
+                      className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
+                        dataSafetyOverview.trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {dataSafetyOverview.trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Data safety overview provided
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter data safety overview
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Data Collected */}
                   <div className="relative mt-3.5 group">
                     <label className="absolute -top-2.5 left-3.5 px-1.5 bg-theme-bg text-[12px] sm:text-[13px] font-medium text-theme-text-muted group-focus-within:text-blue-500 dark:group-focus-within:text-[#8ab4f8] pointer-events-none select-none z-10 font-google-sans leading-none transition-colors">
-                      Data collected by app
+                      Data collected by app *
                     </label>
                     <span className="absolute -top-2.5 right-3.5 px-1.5 bg-theme-bg text-[10px] sm:text-[11px] text-theme-text-muted select-none z-10 leading-none">
                       {customDataCollected.length}/2000
                     </span>
                     <textarea 
+                      id="input-data-collected"
                       rows={3}
                       maxLength={2000}
                       placeholder="Describe what data your app collects and why, or state that no personal data is collected off-device. You can write paragraphs, lists, or custom bullet points freely..."
                       value={customDataCollected} 
                       onChange={e => setCustomDataCollected(e.target.value.slice(0, 2000))}
-                      className="w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border border-theme-border focus:border-blue-500 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors"
+                      className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
+                        customDataCollected.trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {customDataCollected.trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Data collection declaration provided
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Declare what data is collected (or state none)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Data Shared */}
                   <div className="relative mt-3.5 group">
                     <label className="absolute -top-2.5 left-3.5 px-1.5 bg-theme-bg text-[12px] sm:text-[13px] font-medium text-theme-text-muted group-focus-within:text-blue-500 dark:group-focus-within:text-[#8ab4f8] pointer-events-none select-none z-10 font-google-sans leading-none transition-colors">
-                      Data shared with third parties
+                      Data shared with third parties *
                     </label>
                     <span className="absolute -top-2.5 right-3.5 px-1.5 bg-theme-bg text-[10px] sm:text-[11px] text-theme-text-muted select-none z-10 leading-none">
                       {dataShared.length}/1000
                     </span>
                     <textarea 
+                      id="input-data-shared"
                       rows={3}
                       maxLength={1000}
                       placeholder="Describe third-party sharing, analytics, advertising SDKs, or state 'No data shared with third parties.'..."
                       value={dataShared} 
                       onChange={e => setDataShared(e.target.value.slice(0, 1000))}
-                      className="w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border border-theme-border focus:border-blue-500 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors"
+                      className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
+                        dataShared.trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {dataShared.trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Third-party data sharing declaration provided
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Declare third-party data sharing (or state none)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Data Deletion */}
                   <div className="relative mt-3.5 group">
                     <label className="absolute -top-2.5 left-3.5 px-1.5 bg-theme-bg text-[12px] sm:text-[13px] font-medium text-theme-text-muted group-focus-within:text-blue-500 dark:group-focus-within:text-[#8ab4f8] pointer-events-none select-none z-10 font-google-sans leading-none transition-colors">
-                      Data deletion & retention policy
+                      Data deletion & retention policy *
                     </label>
                     <span className="absolute -top-2.5 right-3.5 px-1.5 bg-theme-bg text-[10px] sm:text-[11px] text-theme-text-muted select-none z-10 leading-none">
                       {dataDeletionPolicy.length}/1000
                     </span>
                     <textarea 
+                      id="input-data-deletion-policy"
                       rows={3}
                       maxLength={1000}
                       placeholder="Users can request permanent data deletion or clear application cache locally at any time."
                       value={dataDeletionPolicy} 
                       onChange={e => setDataDeletionPolicy(e.target.value.slice(0, 1000))}
-                      className="w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border border-theme-border focus:border-blue-500 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors"
+                      className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
+                        dataDeletionPolicy.trim()
+                          ? 'border-emerald-500/60 focus:border-emerald-500'
+                          : 'border-rose-500/80 focus:border-rose-500'
+                      }`}
                     />
+                    <div className="mt-1 px-1 flex items-center gap-1.5">
+                      {dataDeletionPolicy.trim() ? (
+                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" /> Data deletion & retention policy provided
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter data deletion & retention policy
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

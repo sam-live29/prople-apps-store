@@ -107,7 +107,10 @@ export async function unifyUserProfileAcrossAccounts(
     if (typeof localStorage !== 'undefined') {
       const savedBackup = localStorage.getItem('prople_saved_profile_' + cleanEmail);
       if (savedBackup) {
-        localAccountData = JSON.parse(savedBackup);
+        const parsedBackup = JSON.parse(savedBackup);
+        if (parsedBackup && (parsedBackup as any).nameResetVersion === 'fresh_start_v1') {
+          localAccountData = parsedBackup;
+        }
       }
       if (!localAccountData) {
         const savedRaw = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -115,6 +118,7 @@ export async function unifyUserProfileAcrossAccounts(
           const parsed = JSON.parse(savedRaw);
           if (
             parsed &&
+            (parsed as any).nameResetVersion === 'fresh_start_v1' &&
             ((currentUid && parsed.uid === currentUid) ||
               (cleanEmail && (parsed.email || '').toLowerCase().trim() === cleanEmail))
           ) {
@@ -126,15 +130,23 @@ export async function unifyUserProfileAcrossAccounts(
   } catch {}
 
   let mergedIsPublisher = isDevHardcoded ? true : Boolean(initialData.isPublisher || localAccountData?.isPublisher);
-  const isDefaultInitialName = !initialData.publisherName || initialData.publisherName === 'User' || initialData.publisherName === 'Developer' || initialData.publisherName === cleanEmail.split('@')[0];
-  let mergedPublisherName =
-    (!isDefaultInitialName ? initialData.publisherName : undefined) ||
-    localAccountData?.publisherName ||
-    initialData.publisherName ||
-    localAccountData?.displayName ||
-    initialData.displayName ||
-    cleanEmail.split('@')[0] ||
-    'User';
+  const isInvalidName = (val?: string) =>
+    !val ||
+    val === 'User' ||
+    val === 'Developer' ||
+    val === 'Publisher' ||
+    val === 'Verified Publisher' ||
+    val === 'Verified Developer' ||
+    val.toLowerCase() === cleanEmail.split('@')[0];
+
+  const validInitialName = (initialData as any).nameResetVersion === 'fresh_start_v1' && !isInvalidName(initialData.publisherName || initialData.displayName)
+    ? (initialData.publisherName || initialData.displayName || '').trim()
+    : '';
+  const validLocalName = localAccountData && !isInvalidName(localAccountData.publisherName || localAccountData.displayName)
+    ? (localAccountData.publisherName || localAccountData.displayName || '').trim()
+    : '';
+
+  let mergedPublisherName = validInitialName || validLocalName || '';
   let mergedPublisherRole = isAdminHardcoded
     ? 'Store Administrator'
     : isDevHardcoded
@@ -158,13 +170,10 @@ export async function unifyUserProfileAcrossAccounts(
   let mergedPublisherWebsite = initialData.publisherWebsite || localAccountData?.publisherWebsite || '';
   let mergedPublisherGithub = initialData.publisherGithub || localAccountData?.publisherGithub || '';
   let mergedPublisherLocation = initialData.publisherLocation || localAccountData?.publisherLocation || '';
-  let mergedLastNameChangedAt = initialData.lastNameChangedAt || localAccountData?.lastNameChangedAt;
-  let mergedNameChangeSessionStartedAt = initialData.nameChangeSessionStartedAt || localAccountData?.nameChangeSessionStartedAt;
+  let mergedLastNameChangedAt = validInitialName ? initialData.lastNameChangedAt : (validLocalName ? localAccountData?.lastNameChangedAt : undefined);
+  let mergedNameChangeSessionStartedAt = validInitialName ? initialData.nameChangeSessionStartedAt : (validLocalName ? localAccountData?.nameChangeSessionStartedAt : undefined);
   let isVerifiedAdmin = isAdminHardcoded;
-  let hasAuthoritativeClientName = Boolean(
-    (initialData.publisherName && initialData.lastNameChangedAt) ||
-    (localAccountData?.publisherName && localAccountData?.lastNameChangedAt)
-  );
+  let hasAuthoritativeClientName = Boolean(mergedPublisherName && mergedLastNameChangedAt);
 
   // 1. Client-side Firestore check FIRST: directly read user's doc (fast, indexed, authorized by isOwner rule)
   if (currentUid && db && auth.currentUser?.uid === currentUid) {
@@ -174,17 +183,28 @@ export async function unifyUserProfileAcrossAccounts(
         const data = directDocSnap.data();
         if (data) {
           if (data.isPublisher) mergedIsPublisher = true;
-          const docChangedAt = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
-          const localChangedAt = localAccountData?.lastNameChangedAt ? new Date(localAccountData.lastNameChangedAt).getTime() : 0;
 
-          if (data.publisherName && data.publisherName !== 'User' && data.publisherName !== 'Developer') {
-            // Only let remote doc override local name if remote doc is at least as recent as local edit
-            if (!localChangedAt || docChangedAt >= localChangedAt) {
-              mergedPublisherName = data.publisherName;
-              if (data.lastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
-              if (data.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
+          if (data.nameResetVersion === 'fresh_start_v1') {
+            const docChangedAt = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
+            const localChangedAt = localAccountData?.lastNameChangedAt ? new Date(localAccountData.lastNameChangedAt).getTime() : 0;
+
+            if (data.publisherName && !isInvalidName(data.publisherName)) {
+              if (!localChangedAt || docChangedAt >= localChangedAt) {
+                mergedPublisherName = data.publisherName;
+                if (data.lastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
+                if (data.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
+              }
+              hasAuthoritativeClientName = true;
             }
-            hasAuthoritativeClientName = true;
+          } else {
+            // Fresh start reset: clear legacy un-verified name on this user doc
+            setDoc(doc(db, 'users', currentUid), {
+              displayName: mergedPublisherName || '',
+              publisherName: mergedPublisherName || '',
+              lastNameChangedAt: mergedLastNameChangedAt || null,
+              nameChangeSessionStartedAt: mergedNameChangeSessionStartedAt || null,
+              nameResetVersion: 'fresh_start_v1'
+            }, { merge: true }).catch(() => {});
           }
           if (data.publisherRole) {
             if (data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
@@ -254,10 +274,9 @@ export async function unifyUserProfileAcrossAccounts(
         if (u.isPublisher) mergedIsPublisher = true;
         if (
           !hasAuthoritativeClientName &&
+          u.nameResetVersion === 'fresh_start_v1' &&
           u.publisherName &&
-          u.publisherName !== 'User' &&
-          u.publisherName !== 'Developer' &&
-          u.publisherName !== cleanEmail.split('@')[0]
+          !isInvalidName(u.publisherName)
         ) {
           mergedPublisherName = u.publisherName;
         }
@@ -308,7 +327,7 @@ export async function unifyUserProfileAcrossAccounts(
   const unified: UserProfile = {
     uid: currentUid,
     email: cleanEmail,
-    displayName: mergedPublisherName || initialData.displayName || cleanEmail.split('@')[0],
+    displayName: mergedPublisherName || '',
     photoURL: mergedPhotoURL,
     age: mergedAge,
     gender: mergedGender,
@@ -316,7 +335,7 @@ export async function unifyUserProfileAcrossAccounts(
     bio: mergedBio,
     isEmailVerified: Boolean(initialData.isEmailVerified),
     isPublisher: mergedIsPublisher,
-    publisherName: mergedPublisherName,
+    publisherName: mergedPublisherName || '',
     publisherRole: mergedPublisherRole,
     publishedAppIds: mergedPublishedAppIds,
     developerKeystore: mergedKeystore,
@@ -326,7 +345,8 @@ export async function unifyUserProfileAcrossAccounts(
     publisherGithub: mergedPublisherGithub,
     publisherLocation: mergedPublisherLocation,
     lastNameChangedAt: mergedLastNameChangedAt,
-    nameChangeSessionStartedAt: mergedNameChangeSessionStartedAt
+    nameChangeSessionStartedAt: mergedNameChangeSessionStartedAt,
+    ...({ nameResetVersion: 'fresh_start_v1' } as any)
   };
 
   return unified;
@@ -369,6 +389,7 @@ async function syncUserProfileToFirestore(profile: UserProfile): Promise<void> {
         publisherLocation: profile.publisherLocation || profile.location || '',
         lastNameChangedAt: profile.lastNameChangedAt || null,
         nameChangeSessionStartedAt: profile.nameChangeSessionStartedAt || null,
+        nameResetVersion: 'fresh_start_v1',
         updatedAt: serverTimestamp()
       }, { merge: true });
     }
@@ -415,6 +436,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_PENDING_2FA_KEY) === '1') {
         return null;
       }
+      // One-time fresh start reset of all stored user names
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('prople_fresh_names_reset_v1') !== 'done') {
+        localStorage.setItem('prople_fresh_names_reset_v1', 'done');
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k === LOCAL_STORAGE_USER_KEY || k.startsWith('prople_saved_profile_'))) {
+            try {
+              const raw = localStorage.getItem(k);
+              if (raw) {
+                const p = JSON.parse(raw);
+                if (p && typeof p === 'object') {
+                  p.displayName = '';
+                  p.publisherName = '';
+                  delete p.lastNameChangedAt;
+                  delete p.nameChangeSessionStartedAt;
+                  p.nameResetVersion = 'fresh_start_v1';
+                  localStorage.setItem(k, JSON.stringify(p));
+                }
+              }
+            } catch {}
+          }
+        }
+        safeFetchJson('/api/publishers/reset-all-names', { method: 'POST' }).catch(() => {});
+      }
+
       // Purge any legacy inquiry status
       localStorage.removeItem('developer_inquiry_status');
       const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -432,6 +478,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
           return null;
+        }
+        if (parsed.nameResetVersion !== 'fresh_start_v1') {
+          parsed.displayName = '';
+          parsed.publisherName = '';
+          delete parsed.lastNameChangedAt;
+          delete parsed.nameChangeSessionStartedAt;
+          parsed.nameResetVersion = 'fresh_start_v1';
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(parsed));
         }
         // If not a store admin or verified publisher, ensure standard user role
         if (!isDeveloperEmail(parsed.email) && !parsed.isPublisher) {
@@ -488,11 +542,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const email = fbUser.email || remoteData.email || '';
         if (email) {
           try {
+            const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1';
             const unified = await unifyUserProfileAcrossAccounts(email, fbUser.uid, {
               ...remoteData,
               email,
-              displayName: remoteData.publisherName || remoteData.displayName || fbUser.displayName || undefined,
-              publisherName: remoteData.publisherName || undefined,
+              displayName: isFreshRemote ? (remoteData.publisherName || remoteData.displayName || '') : '',
+              publisherName: isFreshRemote ? (remoteData.publisherName || '') : '',
               photoURL: remoteData.photoURL || fbUser.photoURL || undefined,
               isEmailVerified: fbUser.emailVerified || remoteData.isEmailVerified,
             });
@@ -659,7 +714,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }).catch(() => {});
 
         const userEmail = cred.user.email || cleanEmail;
-        const displayName = cred.user.displayName || userEmail.split('@')[0] || 'User';
         
         let remoteData: Partial<UserProfile> = {};
         try {
@@ -669,12 +723,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch {}
 
+        const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1';
         const unified = await unifyUserProfileAcrossAccounts(userEmail, cred.user.uid, {
+          ...remoteData,
           email: userEmail,
-          displayName,
+          displayName: isFreshRemote ? (remoteData.publisherName || remoteData.displayName || '') : '',
+          publisherName: isFreshRemote ? (remoteData.publisherName || '') : '',
           photoURL: cred.user.photoURL || undefined,
           isEmailVerified: cred.user.emailVerified,
-          ...remoteData
         });
 
         setUser(unified);
@@ -699,7 +755,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (ok && data?.success && data.user) {
             const vUser = data.user;
             const userEmail = vUser.email || cleanEmail;
-            const displayName = vUser.displayName || userEmail.split('@')[0];
 
             let remoteData: Partial<UserProfile> = {};
             try {
@@ -709,13 +764,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             } catch {}
 
+            const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1' || vUser.nameResetVersion === 'fresh_start_v1';
             const unified = await unifyUserProfileAcrossAccounts(userEmail, vUser.uid, {
+              ...vUser,
+              ...remoteData,
               email: userEmail,
-              displayName,
+              displayName: isFreshRemote ? (remoteData.publisherName || vUser.publisherName || remoteData.displayName || vUser.displayName || '') : '',
+              publisherName: isFreshRemote ? (remoteData.publisherName || vUser.publisherName || '') : '',
               photoURL: vUser.photoURL || undefined,
               isEmailVerified: true,
-              ...vUser,
-              ...remoteData
             });
 
             setUser(unified);
@@ -911,17 +968,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      if (name) {
-        await updateProfile(cred.user, { displayName: name });
+      const cleanName = (name || '').trim();
+      if (cleanName) {
+        await updateProfile(cred.user, { displayName: cleanName });
       }
       const userEmail = cred.user.email || email;
-      const displayName = name || userEmail.split('@')[0] || 'User';
+      const nowTs = cleanName ? Date.now() : undefined;
 
       const unified = await unifyUserProfileAcrossAccounts(userEmail, cred.user.uid, {
         email: userEmail,
-        displayName,
+        displayName: cleanName,
+        publisherName: cleanName,
+        lastNameChangedAt: nowTs,
+        nameChangeSessionStartedAt: nowTs,
         photoURL: cred.user.photoURL || undefined,
-        isEmailVerified: true
+        isEmailVerified: true,
+        ...({ nameResetVersion: 'fresh_start_v1' } as any)
       });
 
       setUser(unified);
@@ -966,7 +1028,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const email = cred.user.email.toLowerCase().trim();
-      const displayName = cred.user.displayName || email.split('@')[0] || 'User';
 
       // Clear any pending 2FA gate since Google OAuth provides verified email authentication
       pendingTwoFactorRef.current = false;
@@ -979,13 +1040,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const persistentSaved = localStorage.getItem('prople_saved_profile_' + email);
         if (persistentSaved) {
-          cachedProfile = JSON.parse(persistentSaved);
+          const p = JSON.parse(persistentSaved);
+          if (p && p.nameResetVersion === 'fresh_start_v1') {
+            cachedProfile = p;
+          }
         }
         if (!cachedProfile.publisherName) {
           const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
           if (saved) {
             const p = JSON.parse(saved);
-            if (p && p.email && p.email.toLowerCase() === email) {
+            if (p && p.nameResetVersion === 'fresh_start_v1' && p.email && p.email.toLowerCase() === email) {
               cachedProfile = p;
             }
           }
@@ -995,11 +1059,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAdminHardcoded = isAdminEmail(email);
       const isDevHardcoded = isDeveloperEmail(email);
 
-      // 1. Fast, optimistic profile: user is logged in instantly without waiting for network roundtrips
+      // 1. Fast, optimistic profile: do not pre-profile name from Google account so user can set and verify availability
       resolvedUser = {
         uid: cred.user.uid,
         email,
-        displayName: cachedProfile.displayName || displayName,
+        displayName: cachedProfile.publisherName || cachedProfile.displayName || '',
         photoURL: cred.user.photoURL || cachedProfile.photoURL,
         age: cachedProfile.age || '25',
         gender: cachedProfile.gender || 'Prefer not to say',
@@ -1007,7 +1071,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bio: cachedProfile.bio || '',
         isEmailVerified: true,
         isPublisher: cachedProfile.isPublisher ?? (isAdminHardcoded || isDevHardcoded),
-        publisherName: cachedProfile.publisherName || cachedProfile.displayName || displayName,
+        publisherName: cachedProfile.publisherName || cachedProfile.displayName || '',
         publisherRole: cachedProfile.publisherRole || (isAdminHardcoded ? 'Store Administrator' : (isDevHardcoded ? 'Verified Developer' : 'Standard User')),
         publishedAppIds: cachedProfile.publishedAppIds || [],
         developerKeystore: cachedProfile.developerKeystore,
@@ -1016,6 +1080,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         publisherEmail: email,
         publisherGithub: cachedProfile.publisherGithub || '',
         publisherLocation: cachedProfile.publisherLocation || '',
+        ...({ nameResetVersion: 'fresh_start_v1' } as any)
       };
 
       setUser(resolvedUser);
@@ -1158,7 +1223,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const activeFbUid = auth.currentUser?.uid;
       const resolvedUid = activeFbUid || verifiedUser.uid;
       const userEmail = verifiedUser.email || cleanEmail;
-      const displayName = auth.currentUser?.displayName || verifiedUser.displayName || userEmail.split('@')[0];
 
       let remoteData: Partial<UserProfile> = {};
       try {
@@ -1168,12 +1232,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
 
+      const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1' || verifiedUser.nameResetVersion === 'fresh_start_v1';
       const unified = await unifyUserProfileAcrossAccounts(userEmail, resolvedUid, {
-        email: userEmail,
-        displayName,
-        isEmailVerified: true,
         ...verifiedUser,
-        ...remoteData
+        ...remoteData,
+        email: userEmail,
+        displayName: isFreshRemote ? (remoteData.publisherName || verifiedUser.publisherName || remoteData.displayName || verifiedUser.displayName || '') : '',
+        publisherName: isFreshRemote ? (remoteData.publisherName || verifiedUser.publisherName || '') : '',
+        isEmailVerified: true,
       });
 
       setUser(unified);
@@ -1268,7 +1334,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const userEmail = verifiedUser.email || cleanEmail;
-      const displayName = verifiedUser.displayName || userEmail.split('@')[0];
 
       let remoteData: Partial<UserProfile> = {};
       try {
@@ -1278,12 +1343,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
 
+      const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1' || verifiedUser.nameResetVersion === 'fresh_start_v1';
       const unified = await unifyUserProfileAcrossAccounts(userEmail, verifiedUser.uid, {
-        email: userEmail,
-        displayName,
-        isEmailVerified: true,
         ...verifiedUser,
-        ...remoteData
+        ...remoteData,
+        email: userEmail,
+        displayName: isFreshRemote ? (remoteData.publisherName || verifiedUser.publisherName || remoteData.displayName || verifiedUser.displayName || '') : '',
+        publisherName: isFreshRemote ? (remoteData.publisherName || verifiedUser.publisherName || '') : '',
+        isEmailVerified: true,
       });
 
       setUser(unified);
@@ -1306,11 +1373,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const userEmail = userData.email.toLowerCase().trim();
       const safeUid = userData.uid || 'usr_' + Buffer.from(userEmail).toString('base64url').slice(0, 24);
-      const displayName = userData.displayName || userEmail.split('@')[0] || 'User';
+      const isFresh = userData.nameResetVersion === 'fresh_start_v1';
 
       const unified = await unifyUserProfileAcrossAccounts(userEmail, safeUid, {
         ...userData,
-        displayName,
+        displayName: isFresh ? (userData.publisherName || userData.displayName || '') : '',
+        publisherName: isFresh ? (userData.publisherName || '') : '',
         isEmailVerified: true
       });
 
@@ -1373,10 +1441,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updated: UserProfile = { 
         ...baseProfile, 
         ...data,
-        displayName: newName || baseProfile.publisherName || baseProfile.displayName,
-        publisherName: newName || baseProfile.publisherName || baseProfile.displayName,
+        displayName: newName || baseProfile.publisherName || baseProfile.displayName || '',
+        publisherName: newName || baseProfile.publisherName || baseProfile.displayName || '',
         lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : baseProfile.lastNameChangedAt,
-        nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : baseProfile.nameChangeSessionStartedAt
+        nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : baseProfile.nameChangeSessionStartedAt,
+        ...({ nameResetVersion: 'fresh_start_v1' } as any)
       };
       if (!updated.developerKeystore && updated.uid) {
         updated.developerKeystore = generateDeveloperKeystore(updated.uid, updated.email, updated.displayName);
@@ -1447,8 +1516,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updated: UserProfile = {
         ...prev,
         isPublisher: nextStatus,
-        publisherName: prev.publisherName || prev.displayName || 'Publisher',
-        publisherRole: nextStatus ? (isDeveloperEmail(prev.email) ? 'Store Administrator' : 'Verified Developer') : 'Standard User'
+        publisherName: prev.publisherName || prev.displayName || '',
+        publisherRole: nextStatus ? (isDeveloperEmail(prev.email) ? 'Store Administrator' : 'Verified Developer') : 'Standard User',
+        ...({ nameResetVersion: 'fresh_start_v1' } as any)
       };
       try {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));

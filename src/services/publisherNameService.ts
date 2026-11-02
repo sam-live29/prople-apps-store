@@ -60,15 +60,6 @@ export async function checkPublisherNameAvailability(
   const cleanLower = trimmed.toLowerCase();
   const cleanAlpha = cleanLower.replace(/[^a-z0-9]/g, '');
 
-  // If the user hasn't changed their own existing name, it's valid
-  if (options?.currentUserName && options.currentUserName.trim().toLowerCase() === cleanLower) {
-    return {
-      available: true,
-      isTaken: false,
-      message: 'This is your current publisher name.'
-    };
-  }
-
   // Check prohibited names
   if (PROHIBITED_NAMES.includes(cleanLower) || PROHIBITED_NAMES.includes(cleanAlpha)) {
     return {
@@ -223,17 +214,6 @@ export function usePublisherNameValidation(
         available: false,
         isTaken: false,
         message: 'Publisher name must be at least 2 characters.'
-      });
-      return;
-    }
-
-    // If identical to current user's active name, it is valid immediately
-    if (options?.currentUserName && options.currentUserName.trim().toLowerCase() === trimmed.toLowerCase()) {
-      setIsChecking(false);
-      setCheckResult({
-        available: true,
-        isTaken: false,
-        message: ''
       });
       return;
     }
@@ -572,6 +552,25 @@ export async function claimPublisherName(
   try {
     if (auth.currentUser && curUid && db) {
       const regDocRef = doc(db, 'publisher_registry', cleanAlpha);
+      const existingRegSnap = await getDoc(regDocRef);
+      if (existingRegSnap.exists()) {
+        const regData = existingRegSnap.data();
+        if (regData && regData.isActive !== false) {
+          const regUid = (regData.ownerUid || regData.userId || '').trim();
+          const regEmail = (regData.ownerEmail || '').toLowerCase().trim();
+          const isSameOwner = Boolean(
+            (curUid && regUid && curUid === regUid) ||
+            (curEmail && regEmail && curEmail === regEmail)
+          );
+          if (!isSameOwner) {
+            return {
+              success: false,
+              message: `The publisher name "${trimmed}" is already claimed by another developer.`
+            };
+          }
+        }
+      }
+
       await setDoc(regDocRef, {
         normalizedName: cleanAlpha,
         displayName: trimmed,
@@ -588,6 +587,7 @@ export async function claimPublisherName(
         publisherName: trimmed,
         displayName: trimmed,
         isPublisher: true,
+        nameResetVersion: 'fresh_start_v1',
         lastNameChangedAt: timestamps?.lastNameChangedAt || Date.now(),
         nameChangeSessionStartedAt: timestamps?.nameChangeSessionStartedAt || Date.now(),
         updatedAt: new Date().toISOString()

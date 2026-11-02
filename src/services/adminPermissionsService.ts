@@ -25,6 +25,7 @@ export interface AdminAccountRecord {
 // Built-in verified administrator emails (equality across all admins)
 export const DEFAULT_ADMIN_EMAILS = [
   'ventureforge.corp@gmail.com',
+  'sahabhaiislive@gmail.com',
   'sahanurmolla077@gmail.com',
   'sahanurmolla1777@gmail.com',
   'sahanurmolla7076@gmail.com',

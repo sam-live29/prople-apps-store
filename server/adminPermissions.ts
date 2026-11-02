@@ -43,6 +43,7 @@ export const ALL_ADMIN_ACTIONS: AdminAction[] = [
 
 export const DEFAULT_ADMIN_EMAILS = [
   "ventureforge.corp@gmail.com",
+  "sahabhaiislive@gmail.com",
   "sahanurmolla077@gmail.com",
   "sahanurmolla1777@gmail.com",
   "sahanurmolla7076@gmail.com",

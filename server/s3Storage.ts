@@ -9,19 +9,12 @@ export const S3_BASE_URL = `https://${S3_BUCKET_NAME}.s3.${S3_REGION}.amazonaws.
 let s3ClientInstance: S3Client | null = null;
 
 export function getS3Client(): S3Client | null {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim();
 
   if (!accessKeyId || !secretAccessKey) {
-    // If AWS credentials aren't set in environment, S3 client will rely on IAM role or fail gracefully
-    try {
-      if (!s3ClientInstance) {
-        s3ClientInstance = new S3Client({ region: S3_REGION });
-      }
-      return s3ClientInstance;
-    } catch {
-      return null;
-    }
+    // When AWS credentials are not configured in environment variables, skip S3 and use inline/fallback storage cleanly
+    return null;
   }
 
   if (!s3ClientInstance) {
@@ -59,7 +52,7 @@ export async function createS3UploadPresignedUrl(
 
     return { uploadUrl, publicUrl };
   } catch (err: any) {
-    console.error("[S3] Failed to generate presigned URL:", err.message);
+    console.warn("[S3] Presigned URL unavailable:", err.message);
     return null;
   }
 }
@@ -86,7 +79,7 @@ export async function uploadBufferToS3(
     await client.send(command);
     return `${S3_BASE_URL}/${key}`;
   } catch (err: any) {
-    console.error("[S3] Direct upload failed:", err.message);
+    console.warn("[S3] Direct upload unavailable:", err.message);
     return null;
   }
 }

@@ -433,6 +433,41 @@ export async function publishAppToFirestore(
     };
     appDetailsMock[appId] = savedApp;
 
+    // Also ensure the app document is persisted directly via client Firestore SDK
+    if (auth.currentUser) {
+      try {
+        const appRef = doc(db, 'apps', appId);
+        const existingSnap = await getDoc(appRef).catch(() => null);
+        const existingDocData = existingSnap && existingSnap.exists() ? existingSnap.data() : null;
+        const authUid = auth.currentUser.uid;
+        const authEmail = auth.currentUser.email || currentAuthEmail || '';
+
+        const clientPayload: Record<string, any> = {
+          ...savedApp,
+          owner: existingDocData?.owner || authUid || savedApp.owner,
+          developerId: existingDocData?.developerId || authUid || savedApp.developerId,
+          creatorUid: existingDocData?.creatorUid || authUid || savedApp.creatorUid,
+          developerEmail: authEmail || savedApp.developerEmail || '',
+          publisherEmail: authEmail || savedApp.publisherEmail || '',
+          updatedAt: serverTimestamp()
+        };
+
+        const isAdminUser = AdminPermissionsService.hasPermission('UPDATE_APP', { uid: authUid, email: authEmail });
+        if (!isAdminUser) {
+          delete clientPayload.isVerified;
+          delete clientPayload.isEditorChoice;
+          delete clientPayload.isBanned;
+          delete clientPayload.quarantineStatus;
+          delete clientPayload.strikeCount;
+        }
+
+        const clientSanitized = sanitizeForFirestore(clientPayload);
+        await setDoc(appRef, clientSanitized, { merge: true });
+      } catch (clientWriteErr) {
+        console.warn('Client Firestore app sync notice:', clientWriteErr);
+      }
+    }
+
     // Sync user's publishedAppIds in user profile document in background
     if (currentAuthUid) {
       const userRef = doc(db, 'users', currentAuthUid);

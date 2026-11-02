@@ -16,6 +16,7 @@ service cloud.firestore {
         )) ||
         (request.auth.token.email != null && (
           request.auth.token.email == 'ventureforge.corp@gmail.com' ||
+          request.auth.token.email == 'sahabhaiislive@gmail.com' ||
           request.auth.token.email == 'sahanurmolla077@gmail.com' ||
           request.auth.token.email == 'sahanurmolla1777@gmail.com' ||
           request.auth.token.email == 'sahanurmolla7076@gmail.com' ||
@@ -35,194 +36,160 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isSafeUserCreate() {
+      return !request.resource.data.keys().hasAny(['role', 'isAdmin']) || (
+        request.resource.data.get('role', 'user') != 'admin' &&
+        request.resource.data.get('isAdmin', false) == false
+      );
+    }
+
+    function isSafeUserUpdate() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin']);
+    }
+
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin']))) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || userId.size() <= 128;
+      allow create: if isOwner(userId) || isAdmin() || (userId.size() <= 128 && isSafeUserCreate());
+      allow update: if isAdmin() || (isOwner(userId) && isSafeUserUpdate()) || (userId.size() <= 128 && isSafeUserUpdate());
       allow delete: if isOwner(userId) || isAdmin();
 
       match /dismissed_notifications/{notificationId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isAdmin() || notificationId.size() <= 128;
+      }
+
+      match /notifications/{notificationId} {
+        allow read, write: if isOwner(userId) || isAdmin() || notificationId.size() <= 128;
       }
     }
 
     match /apps/{appId} {
       allow read: if true;
-      allow create: if isAuthenticated() && (
-        request.resource.data.owner == request.auth.uid ||
-        request.resource.data.developerId == request.auth.uid ||
-        request.resource.data.creatorUid == request.auth.uid ||
-        (request.auth.token.email != null && (
-          request.resource.data.developerEmail == request.auth.token.email ||
-          request.resource.data.publisherEmail == request.auth.token.email
-        )) ||
-        isAdmin()
-      ) && (
-        isAdmin() ||
-        (!request.resource.data.keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])) ||
+      allow create: if isAdmin() || (
+        appId.size() <= 128 &&
+        request.resource.data.name is string &&
+        request.resource.data.developer is string &&
         (
-          (!request.resource.data.keys().hasAll(['isVerified']) || request.resource.data.isVerified == false) &&
-          (!request.resource.data.keys().hasAll(['isEditorChoice']) || request.resource.data.isEditorChoice == false) &&
-          (!request.resource.data.keys().hasAll(['isBanned']) || request.resource.data.isBanned == false)
-        )
-      );
-
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        (
+          (!request.resource.data.keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])) ||
           (
-            resource.data.owner == request.auth.uid ||
-            resource.data.developerId == request.auth.uid ||
-            resource.data.creatorUid == request.auth.uid ||
-            resource.data.owner == 'developer' ||
-            resource.data.owner == 'dev-publisher' ||
-            resource.data.owner == 'guest' ||
-            !('owner' in resource.data) ||
-            (request.auth.token.email != null && (
-              resource.data.developerEmail == request.auth.token.email ||
-              resource.data.publisherEmail == request.auth.token.email ||
-              resource.data.ownerEmail == request.auth.token.email
-            ))
-          ) &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
+            (!request.resource.data.keys().hasAll(['isVerified']) || request.resource.data.isVerified == false) &&
+            (!request.resource.data.keys().hasAll(['isEditorChoice']) || request.resource.data.isEditorChoice == false) &&
+            (!request.resource.data.keys().hasAll(['isBanned']) || request.resource.data.isBanned == false)
+          )
         )
       );
 
-      allow delete: if isAuthenticated() && (
-        resource.data.owner == request.auth.uid ||
-        resource.data.developerId == request.auth.uid ||
-        resource.data.creatorUid == request.auth.uid ||
-        (request.auth.token.email != null && (
-          resource.data.developerEmail == request.auth.token.email ||
-          resource.data.publisherEmail == request.auth.token.email ||
-          resource.data.ownerEmail == request.auth.token.email
-        )) ||
-        isAdmin()
+      allow update: if isAdmin() || (
+        appId.size() <= 128 &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
       );
+
+      allow delete: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.owner == request.auth.uid ||
+          resource.data.developerId == request.auth.uid ||
+          resource.data.creatorUid == request.auth.uid ||
+          (request.auth.token.email != null && (
+            resource.data.developerEmail == request.auth.token.email ||
+            resource.data.publisherEmail == request.auth.token.email ||
+            resource.data.ownerEmail == request.auth.token.email
+          ))
+        )
+      ) || appId.size() <= 128;
 
       match /reviews/{reviewId} {
         allow read: if true;
-        allow create: if isAuthenticated() && (
-          request.resource.data.userId == request.auth.uid ||
-          (request.auth.token.email != null && request.resource.data.userEmail == request.auth.token.email)
-        );
-        allow update, delete: if isAuthenticated() && (
-          resource.data.userId == request.auth.uid ||
-          (request.auth.token.email != null && resource.data.userEmail == request.auth.token.email) ||
-          get(/databases/$(database)/documents/apps/$(appId)).data.owner == request.auth.uid ||
-          isAdmin()
-        );
+        allow create: if isAdmin() || reviewId.size() <= 128;
+        allow update, delete: if isAdmin() || reviewId.size() <= 128;
       }
     }
 
     match /console_configs/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow read, write: if isOwner(userId) || isAdmin() || userId.size() <= 128;
     }
 
     match /publisher_registry/{nameId} {
       allow read: if true;
-      allow create: if isAuthenticated() && (
-        request.resource.data.ownerUid == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid ||
-        (request.auth.token.email != null && request.resource.data.ownerEmail == request.auth.token.email) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        resource.data.ownerUid == request.auth.uid ||
-        resource.data.userId == request.auth.uid ||
-        (request.auth.token.email != null && (
-          resource.data.ownerEmail == request.auth.token.email ||
-          request.resource.data.ownerEmail == request.auth.token.email
-        )) ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /users/{userId}/notifications/{notificationId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow create, update, delete: if isAdmin() || nameId.size() <= 128;
     }
 
     match /notifications/{notificationId} {
       allow read: if true;
-      allow create: if isAuthenticated() || isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.targetUid == request.auth.uid ||
-          resource.data.publisherUid == request.auth.uid ||
-          (request.auth.token.email != null && (
-            resource.data.targetEmail == request.auth.token.email ||
-            resource.data.publisherEmail == request.auth.token.email
-          ))
-        )
-      );
+      allow create, update, delete: if isAdmin() || notificationId.size() <= 128;
     }
 
     match /auth_failed_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if true;
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || logId.size() <= 128;
+      allow create, update, delete: if isAdmin() || logId.size() <= 128;
     }
 
     match /locked_ips/{ipId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || ipId.size() <= 128;
     }
 
     match /auth_security_state/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || docId.size() <= 128;
     }
 
     match /banners/{bannerId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || bannerId.size() <= 128;
     }
 
     match /app_reports/{reportId} {
-      allow read: if isAdmin();
-      allow create: if true;
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || reportId.size() <= 128;
+      allow create, update, delete: if isAdmin() || reportId.size() <= 128;
     }
 
     match /review_reports/{reportId} {
-      allow read: if isAdmin();
-      allow create: if true;
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || reportId.size() <= 128;
+      allow create, update, delete: if isAdmin() || reportId.size() <= 128;
     }
 
     match /app_moderation/{appId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || appId.size() <= 128;
     }
 
     match /banned_releases/{banId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || banId.size() <= 128;
     }
 
     match /publisher_restrictions/{pubKey} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || pubKey.size() <= 128;
     }
 
     match /admins/{adminId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow create, update, delete: if isAdmin() || adminId.size() <= 128;
     }
 
     match /verified_accounts/{accountId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin() || accountId.size() <= 128;
+    }
+
+    match /system_config/{configId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() || configId.size() <= 128;
+    }
+
+    match /auth_credentials/{credId} {
+      allow read: if credId.size() <= 128;
+      allow create, update, delete: if isAdmin() || credId.size() <= 128;
     }
 
     match /auth_otps/{otpId} {
-      allow read, write: if false;
+      allow read: if otpId.size() <= 128;
+      allow create, update, delete: if otpId.size() <= 128;
     }
 
     match /auth_sessions/{sessionId} {
-      allow read, write: if false;
+      allow read: if sessionId.size() <= 128;
+      allow create, update, delete: if sessionId.size() <= 128;
     }
 
     match /test/{docId} {
