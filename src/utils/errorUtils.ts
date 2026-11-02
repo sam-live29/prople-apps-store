@@ -66,6 +66,10 @@ export function sanitizeErrorMessage(
     return 'Network connection issue. Please check your internet connection and try again.';
   }
 
+  if (lower.includes('auth/operation-not-allowed') || lower.includes('operation-not-allowed')) {
+    return 'This sign-in provider is not yet enabled in the Firebase Console. Please enable Email/Password or Google provider in Firebase Console under Authentication > Sign-in method.';
+  }
+
   // Filter provider names and API key leakages
   if (lower.includes('resend') || lower.includes('api key') || lower.includes('apikey') || lower.includes('smtp') || lower.includes('provider')) {
     return 'Unable to deliver verification email at this moment. Please check your email or try signing in with Google.';
@@ -90,10 +94,11 @@ export function sanitizeErrorMessage(
     return 'Permission denied: You do not have authority to modify this application.';
   }
 
-  // Clean technical prefixes like "Error: ", "Publishing failed: ", etc.
+  // Clean technical prefixes like "Error: ", "Firebase: Error ", "Publishing failed: ", etc.
   let cleaned = raw
-    .replace(/^Error:\s*/i, '')
     .replace(/^FirebaseError:\s*/i, '')
+    .replace(/^Firebase:\s*(Error\s*)?/i, '')
+    .replace(/^Error:\s*/i, '')
     .trim();
 
   // If the error message is a raw JSON payload, replace with fallback

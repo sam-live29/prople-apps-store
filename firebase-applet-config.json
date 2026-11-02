@@ -1,12 +1,13 @@
 {
-  "projectId": "gen-lang-client-0978487894",
-  "appId": "1:291494208919:web:f3936aa291066802f650d2",
-  "apiKey": "AIzaSyD7fSkwzg_qGcfImWwY7AOqLNDM9Zh3O1E",
-  "authDomain": "gen-lang-client-0978487894.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-propleappsstore-4d19d2a3-eb86-4e65-b516-f36ed2be36fd",
-  "storageBucket": "gen-lang-client-0978487894.firebasestorage.app",
-  "messagingSenderId": "291494208919",
-  "measurementId": "",
-  "oAuthClientId": "291494208919-bhs3di897no2m66eq55hc6ej3vsae9hv.apps.googleusercontent.com",
+  "projectId": "prople-store-3efed",
+  "appId": "1:374295310162:web:dcd5f14a552ddbf96dd48b",
+  "apiKey": "AIzaSyC5iotZL4UVF7QcdVn1ps3gIcetBDt9sc4",
+  "authDomain": "prople-store-3efed.firebaseapp.com",
+  "databaseURL": "https://prople-store-3efed-default-rtdb.firebaseio.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "prople-store-3efed.firebasestorage.app",
+  "messagingSenderId": "374295310162",
+  "measurementId": "G-XSBPGFEZSG",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

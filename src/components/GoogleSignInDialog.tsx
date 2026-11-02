@@ -6,6 +6,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useNavigation } from '../context/NavigationContext';
+import { sanitizeErrorMessage } from '../utils/errorUtils';
 import defaultLogo from '../assets/images/logo.png';
 
 interface PendingInstallInfo {
@@ -51,9 +52,9 @@ export default function GoogleSignInDialog({
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
-      const msg = err?.message || 'Google sign-in failed. Please try again with a legitimate Google account.';
+      const msg = sanitizeErrorMessage(err, 'Google sign-in failed. Please try again with a legitimate Google account.');
       setErrorMessage(msg);
-      showToast(msg);
+      showToast(msg, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
     }

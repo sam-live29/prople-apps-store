@@ -664,9 +664,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       showToast('Signed in with Google successfully.');
       handleAuthSuccess();
     } catch (err: any) {
-      const msg = err?.message || 'Google sign-in was not completed.';
+      const msg = sanitizeErrorMessage(err, 'Google sign-in was not completed. Please try again.');
       setFieldErrors({ general: msg });
-      showToast(msg);
+      showToast(msg, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
     }

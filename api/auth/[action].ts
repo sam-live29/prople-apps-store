@@ -877,6 +877,41 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, challengeToken: clientChallengeToken });
     }
 
+    if (action === 'register-user') {
+      const password = (body.password || '').toString();
+      const displayName = (body.displayName || '').toString().trim();
+      const clientUid = (body.uid || '').toString();
+      if (!email || !password || password.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid email and password (min 6 characters) are required.',
+        });
+      }
+      const key = getOtpKey(email);
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      const pwdHash = `${salt}:${hash}`;
+      if (RTDB_URL) {
+        fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hash: pwdHash, updatedAt: Date.now() }),
+        }).catch(() => {});
+      }
+      const userUid = clientUid || `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`;
+      return res.status(200).json({
+        success: true,
+        user: {
+          uid: userUid,
+          email,
+          displayName,
+          publisherName: displayName,
+          isEmailVerified: true,
+          nameResetVersion: 'fresh_start_v1',
+        },
+      });
+    }
+
     if (action === 'reset-password') {
       const code = (body.code || '').toString().trim();
       const newPassword = (body.newPassword || '').toString();

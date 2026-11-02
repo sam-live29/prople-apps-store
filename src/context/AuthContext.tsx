@@ -966,22 +966,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (email: string, pass: string, name: string) => {
     setIsLoading(true);
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanName = (name || '').trim();
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      const cleanName = (name || '').trim();
-      if (cleanName) {
-        await updateProfile(cred.user, { displayName: cleanName });
-      }
-      const userEmail = cred.user.email || email;
-      const nowTs = cleanName ? Date.now() : undefined;
+      let userUid = '';
+      let cred: any = null;
 
-      const unified = await unifyUserProfileAcrossAccounts(userEmail, cred.user.uid, {
-        email: userEmail,
+      try {
+        cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        if (cleanName && cred?.user) {
+          await updateProfile(cred.user, { displayName: cleanName }).catch(() => {});
+        }
+        userUid = cred?.user?.uid || '';
+      } catch (fbErr: any) {
+        // If Firebase Auth does not have Email/Password enabled (auth/operation-not-allowed),
+        // gracefully fall back to server-authoritative registration
+        if (fbErr?.code === 'auth/operation-not-allowed') {
+          console.warn('[AuthContext] Firebase Email/Password not enabled in Firebase Console; using server-authoritative credential store.');
+        } else {
+          throw fbErr;
+        }
+      }
+
+      if (!userUid) {
+        userUid = 'usr_email_' + (typeof btoa !== 'undefined' ? btoa(cleanEmail).replace(/=/g, '').slice(0, 24) : 'id_' + Date.now());
+      }
+
+      // Authoritative server-side password & user sync
+      try {
+        await safeFetchJson('/api/auth/register-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, password: pass, displayName: cleanName, uid: userUid }),
+        });
+      } catch (serverErr) {
+        console.warn('[AuthContext] Server register-user notice:', serverErr);
+      }
+
+      const nowTs = cleanName ? Date.now() : undefined;
+      const unified = await unifyUserProfileAcrossAccounts(cleanEmail, userUid, {
+        email: cleanEmail,
         displayName: cleanName,
         publisherName: cleanName,
         lastNameChangedAt: nowTs,
         nameChangeSessionStartedAt: nowTs,
-        photoURL: cred.user.photoURL || undefined,
+        photoURL: cred?.user?.photoURL || undefined,
         isEmailVerified: true,
         ...({ nameResetVersion: 'fresh_start_v1' } as any)
       });
