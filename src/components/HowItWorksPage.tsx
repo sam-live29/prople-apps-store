@@ -181,8 +181,8 @@ const WORKFLOW_BRANCHES: WorkflowThreadBranch[] = [
       {
         number: '2',
         title: 'Media Magic-Byte & Format Sanitization',
-        description: 'Icons, screenshots, and feature banners stored in Firebase are validated for authentic image structures (PNG, JPEG, WebP, GIF, AVIF), blocking disguised executables or active scripts.',
-        protocol: 'Firebase Storage + Media Validator'
+        description: 'Icons, screenshots, and feature banners uploaded to S3 storage are validated for authentic image structures (PNG, JPEG, WebP, GIF, AVIF), blocking disguised executables or active scripts.',
+        protocol: 's3Storage + Media Validator'
       },
       {
         number: '3',

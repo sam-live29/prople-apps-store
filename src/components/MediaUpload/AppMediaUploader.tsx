@@ -8,6 +8,7 @@ import {
   extractYouTubeId, 
   ImageDimensionResult 
 } from '../../utils/mediaUtils';
+import { uploadMediaToS3 } from '../../services/s3MediaService';
 import { useToast } from '../../context/ToastContext';
 import MediaGalleryLightbox from './MediaGalleryLightbox';
 
@@ -219,8 +220,13 @@ export default function AppMediaUploader({
       const dataUrl = await compressImage(file, 512, 0.85);
       const diag = await inspectImage(dataUrl);
       setIconDiagnostics(diag);
-      setIconUrl(dataUrl);
-      showToast('App icon ready for Firebase');
+      
+      // Upload to AWS S3 bucket `prople`
+      const s3Url = await uploadMediaToS3(dataUrl, `icon-${file.name}`, 'apps/icons');
+      setIconUrl(s3Url || dataUrl);
+      if (s3Url && s3Url.startsWith('http')) {
+        showToast('App icon uploaded to AWS S3 successfully');
+      }
     } catch (err: any) {
       showToast(err.message || 'Error processing icon file');
     } finally {
@@ -235,7 +241,10 @@ export default function AppMediaUploader({
       const formatted = await fitImageToCanvas(iconUrl, 512, 512, 'cover');
       const diag = await inspectImage(formatted);
       setIconDiagnostics(diag);
-      setIconUrl(formatted);
+
+      // Upload formatted icon to S3
+      const s3Url = await uploadMediaToS3(formatted, 'icon-formatted.webp', 'apps/icons');
+      setIconUrl(s3Url || formatted);
     } catch (err) {
       showToast('Failed to auto-format icon');
     } finally {
@@ -252,8 +261,13 @@ export default function AppMediaUploader({
       const dataUrl = await compressImage(file, 1920, 0.85);
       const diag = await inspectImage(dataUrl);
       setFeatureDiagnostics(diag);
-      setFeatureGraphicUrl(dataUrl);
-      showToast('Banner ready for Firebase');
+
+      // Upload to AWS S3 bucket `prople`
+      const s3Url = await uploadMediaToS3(dataUrl, `banner-${file.name}`, 'apps/banners');
+      setFeatureGraphicUrl(s3Url || dataUrl);
+      if (s3Url && s3Url.startsWith('http')) {
+        showToast('Banner uploaded to AWS S3 successfully');
+      }
     } catch (err: any) {
       showToast(err.message || 'Error processing banner file');
     } finally {
@@ -268,7 +282,9 @@ export default function AppMediaUploader({
       const formatted = await fitImageToCanvas(featureGraphicUrl, 1920, 1080, 'cover');
       const diag = await inspectImage(formatted);
       setFeatureDiagnostics(diag);
-      setFeatureGraphicUrl(formatted);
+
+      const s3Url = await uploadMediaToS3(formatted, 'banner-feature-formatted.webp', 'apps/banners');
+      setFeatureGraphicUrl(s3Url || formatted);
     } catch (err) {
       showToast('Failed to auto-format feature graphic');
     } finally {
@@ -285,7 +301,9 @@ export default function AppMediaUploader({
       const dataUrl = await compressImage(file, 1920, 0.85);
       const diag = await inspectImage(dataUrl);
       setDetailsBannerDiagnostics(diag);
-      setDetailsBannerUrl(dataUrl);
+      
+      const s3Url = await uploadMediaToS3(dataUrl, `details-${file.name}`, 'apps/banners');
+      setDetailsBannerUrl(s3Url || dataUrl);
     } catch (err: any) {
       showToast(err.message || 'Error processing App Details banner file');
     } finally {
@@ -300,7 +318,9 @@ export default function AppMediaUploader({
       const formatted = await fitImageToCanvas(detailsBannerUrl, 1920, 1080, 'cover');
       const diag = await inspectImage(formatted);
       setDetailsBannerDiagnostics(diag);
-      setDetailsBannerUrl(formatted);
+
+      const s3Url = await uploadMediaToS3(formatted, 'details-formatted.webp', 'apps/banners');
+      setDetailsBannerUrl(s3Url || formatted);
     } catch (err) {
       showToast('Failed to auto-format App Details banner');
     } finally {
@@ -317,7 +337,9 @@ export default function AppMediaUploader({
       const dataUrl = await compressImage(file, 1920, 0.85);
       const diag = await inspectImage(dataUrl);
       setHeroBannerDiagnostics(diag);
-      setHeroBannerUrl(dataUrl);
+
+      const s3Url = await uploadMediaToS3(dataUrl, `hero-${file.name}`, 'apps/banners');
+      setHeroBannerUrl(s3Url || dataUrl);
     } catch (err: any) {
       showToast(err.message || 'Error processing Spotlight Hero banner file');
     } finally {
@@ -332,7 +354,9 @@ export default function AppMediaUploader({
       const formatted = await fitImageToCanvas(heroBannerUrl, 1920, 1080, 'cover');
       const diag = await inspectImage(formatted);
       setHeroBannerDiagnostics(diag);
-      setHeroBannerUrl(formatted);
+
+      const s3Url = await uploadMediaToS3(formatted, 'hero-formatted.webp', 'apps/banners');
+      setHeroBannerUrl(s3Url || formatted);
     } catch (err) {
       showToast('Failed to auto-format Spotlight Hero banner');
     } finally {
@@ -348,7 +372,11 @@ export default function AppMediaUploader({
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const finalUrl = await compressImage(file, 1080, 0.80);
+        const dataUrl = await compressImage(file, 1080, 0.80);
+        
+        // Upload screenshot to S3
+        const s3Url = await uploadMediaToS3(dataUrl, `screen-${i}-${file.name}`, 'apps/screenshots');
+        const finalUrl = s3Url || dataUrl;
         newUrls.push(finalUrl);
 
         // Capture natural image aspect ratio as it is
@@ -369,7 +397,7 @@ export default function AppMediaUploader({
       } else {
         setDesktopScreenshots((prev) => [...prev, ...newUrls].slice(0, 20));
       }
-      showToast(`Added ${newUrls.length} screenshot(s)`);
+      showToast(`Added ${newUrls.length} image(s) to S3`);
     } catch (err: any) {
       showToast(err.message || 'Failed to upload screenshots');
     } finally {
