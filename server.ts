@@ -1209,7 +1209,7 @@ async function startServer() {
     return res.json({
       success: true,
       provider: "firebase",
-      projectId: firebaseConfig.projectId,
+      projectId: getServerFirebaseConfig().projectId,
     });
   });
 
@@ -3117,13 +3117,25 @@ async function startServer() {
         });
         const average = count > 0 ? Number((totalRating / count).toFixed(1)) : 5.0;
         const appRef = serverDoc(serverDb, "apps", appId);
-        await serverSetDoc(appRef, {
+        const existingAppSnap = await serverGetDoc(appRef).catch(() => null);
+        const updatePayload: Record<string, any> = {
           rating: average,
           ratingsCount: count,
           reviewsCount: `${count} review${count === 1 ? '' : 's'}`,
           ratingBreakdown: breakdown,
           updatedAt: nowIso
-        }, { merge: true });
+        };
+        if (!existingAppSnap || !existingAppSnap.exists()) {
+          const allApps = await getAllAppsServer(500).catch(() => []);
+          const defaultApp = allApps.find((a: any) => a.id === appId);
+          updatePayload.id = appId;
+          updatePayload.name = defaultApp?.name || cleanReview.appName || appId;
+          updatePayload.developer = defaultApp?.developer || 'Developer';
+          updatePayload.category = defaultApp?.category || 'Utilities';
+          updatePayload.createdAt = nowIso;
+          updatePayload.isPublished = true;
+        }
+        await serverSetDoc(appRef, updatePayload, { merge: true });
         serverAppsCatalogCache = [];
       } catch (aggErr: any) {
         console.warn("[Backend Reviews] Rating aggregate recalculation notice:", aggErr.message);
