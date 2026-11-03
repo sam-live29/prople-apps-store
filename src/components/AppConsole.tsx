@@ -1134,11 +1134,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   
   // Section 1: Basic Info & Branding
   const [name, setName] = useState(() => initialDraft?.name || '');
-  const preservedPublisherName = typeof localStorage !== 'undefined' 
-    ? (localStorage.getItem('prople_preserved_publisher_name') || localStorage.getItem('prople_preserved_display_name') || '')
-    : '';
-  const currentGoogleName = (user?.publisherName || user?.displayName || preservedPublisherName || '').trim();
-  const currentGoogleEmail = user?.email || (typeof localStorage !== 'undefined' ? localStorage.getItem('prople_preserved_publisher_email') : '') || 'support@prople.co.in';
+  const currentGoogleName = (user?.publisherName || user?.displayName || '').trim();
+  const currentGoogleEmail = user?.email || 'support@prople.co.in';
   const [developerName, setDeveloperName] = useState(() => {
     const draftDev = (initialDraft?.developerName || '').trim();
     if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer') {
@@ -1156,18 +1153,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [tags, setTags] = useState(() => initialDraft?.tags || '');
   const [interactiveElements, setInteractiveElements] = useState<string[]>(() => initialDraft?.interactiveElements || []);
 
-  // Form submission and field touched tracking for normal inline error state
-  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const markTouched = useCallback((field: string) => {
-    setTouchedFields(prev => ({ ...prev, [field]: true }));
-  }, []);
-  const shouldShowError = useCallback((field: string, isInvalid: boolean) => {
-    return (hasAttemptedSubmit || Boolean(touchedFields[field])) && isInvalid;
-  }, [hasAttemptedSubmit, touchedFields]);
-
   // Publisher Name conflict detection and real-time availability validation
-  const activePublisherName = (developerName || user?.publisherName || user?.displayName || preservedPublisherName || '').trim();
+  const activePublisherName = (developerName || user?.publisherName || user?.displayName || '').trim();
   const [isPublisherNameConflict, setIsPublisherNameConflict] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const [isCheckingPublisherField, setIsCheckingPublisherField] = useState(false);
@@ -1328,18 +1315,15 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   };
 
   const handleAttemptNext = () => {
-    setHasAttemptedSubmit(true);
     setStep((s) => Math.min(6, s + 1) as any);
   };
 
   const handleAttemptStepTab = (targetStep: number) => {
     if (targetStep === step) return;
-    setHasAttemptedSubmit(true);
     setStep(targetStep as any);
   };
 
   const handleAttemptPublish = () => {
-    setHasAttemptedSubmit(true);
     if (editingAppId && !isOwnerAuthorized) {
       showToast('Unauthorized: You can only publish updates for apps owned by your account.', { type: 'error' });
       return;

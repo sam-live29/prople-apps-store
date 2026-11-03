@@ -403,6 +403,7 @@ export default function App() {
           </div>
         }>
           <AppDetailPage 
+            key={activeAppDetailsId}
             appId={activeAppDetailsId} 
             onBack={goBack} 
             onShowSimilarApps={openSimilarApps} 

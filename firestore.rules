@@ -64,10 +64,23 @@ service cloud.firestore {
 
     match /apps/{appId} {
       allow read: if true;
-      allow create, update: if isAdmin() || (
+      allow create: if isAdmin() || (
         appId.size() <= 128 &&
         request.resource.data.name is string &&
-        request.resource.data.developer is string
+        request.resource.data.developer is string &&
+        (
+          (!request.resource.data.keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])) ||
+          (
+            (!request.resource.data.keys().hasAll(['isVerified']) || request.resource.data.isVerified == false) &&
+            (!request.resource.data.keys().hasAll(['isEditorChoice']) || request.resource.data.isEditorChoice == false) &&
+            (!request.resource.data.keys().hasAll(['isBanned']) || request.resource.data.isBanned == false)
+          )
+        )
+      );
+
+      allow update: if isAdmin() || (
+        appId.size() <= 128 &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
       );
 
       allow delete: if isAdmin() || (

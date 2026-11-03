@@ -494,23 +494,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return parsed;
       }
-
-      // Check preserved publisher name across sessions / guest / after logout
-      const preservedName = localStorage.getItem('prople_preserved_publisher_name');
-      if (preservedName && preservedName.trim()) {
-        const guestUid = localStorage.getItem('prople_guest_uid') || `guest_${Date.now()}`;
-        return {
-          uid: guestUid,
-          email: '',
-          displayName: preservedName.trim(),
-          publisherName: preservedName.trim(),
-          publisherRole: 'Standard User',
-          isPublisher: true,
-          publishedAppIds: [],
-          isEmailVerified: false,
-          nameResetVersion: 'fresh_start_v1'
-        } as any;
-      }
     } catch {
       // fallback
     }
@@ -571,10 +554,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(unified);
             try {
               localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
-              if (unified.publisherName) {
-                localStorage.setItem('prople_preserved_publisher_name', unified.publisherName);
-                localStorage.setItem('prople_preserved_display_name', unified.publisherName);
-              }
             } catch {}
             syncUserProfileToFirestore(unified);
           } catch (e) {
@@ -582,7 +561,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // When not authenticated with Firebase, maintain any active verified email/OTP session or preserved publisher name
+        // When not authenticated with Firebase, maintain any active verified email/OTP session
         setUser((prev) => {
           if (prev && prev.isEmailVerified && prev.email) {
             return prev;
@@ -591,24 +570,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
             if (saved) {
               const parsed = JSON.parse(saved);
-              if (parsed && ((parsed.isEmailVerified && parsed.email) || parsed.publisherName)) {
+              if (parsed && parsed.isEmailVerified && parsed.email) {
                 return parsed;
               }
-            }
-            const preserved = localStorage.getItem('prople_preserved_publisher_name');
-            if (preserved && preserved.trim()) {
-              const guestUid = localStorage.getItem('prople_guest_uid') || `guest_${Date.now()}`;
-              return {
-                uid: guestUid,
-                email: '',
-                displayName: preserved.trim(),
-                publisherName: preserved.trim(),
-                publisherRole: 'Standard User',
-                isPublisher: true,
-                publishedAppIds: [],
-                isEmailVerified: false,
-                nameResetVersion: 'fresh_start_v1'
-              } as any;
             }
           } catch {}
           return null;
@@ -1473,31 +1437,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('SignOut error or offline:', err);
     } finally {
-      const preservedName = localStorage.getItem('prople_preserved_publisher_name') || '';
+      setUser(null);
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-      if (preservedName && preservedName.trim()) {
-        const guestUid = localStorage.getItem('prople_guest_uid') || `guest_${Date.now()}`;
-        try {
-          localStorage.setItem('prople_guest_uid', guestUid);
-        } catch {}
-        const guestProfile: UserProfile = {
-          uid: guestUid,
-          email: '',
-          displayName: preservedName.trim(),
-          publisherName: preservedName.trim(),
-          publisherRole: 'Standard User',
-          isPublisher: true,
-          publishedAppIds: [],
-          isEmailVerified: false,
-          ...({ nameResetVersion: 'fresh_start_v1' } as any)
-        };
-        setUser(guestProfile);
-        try {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(guestProfile));
-        } catch {}
-      } else {
-        setUser(null);
-      }
       setIsLoading(false);
     }
   };
@@ -1522,38 +1463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })();
 
-      if (!baseProfile) {
-        const guestUid = localStorage.getItem('prople_guest_uid') || `guest_${Date.now()}`;
-        try {
-          localStorage.setItem('prople_guest_uid', guestUid);
-        } catch {}
-        const createdGuest: UserProfile = {
-          uid: guestUid,
-          email: '',
-          displayName: newName || 'Guest Developer',
-          publisherName: newName || 'Guest Developer',
-          bio: data.bio || '',
-          age: data.age || '25',
-          gender: data.gender || 'Prefer not to say',
-          location: data.location || 'Global',
-          isEmailVerified: false,
-          isPublisher: true,
-          publisherRole: 'Standard User',
-          publishedAppIds: [],
-          lastNameChangedAt: data.lastNameChangedAt,
-          nameChangeSessionStartedAt: data.nameChangeSessionStartedAt,
-          ...({ nameResetVersion: 'fresh_start_v1' } as any)
-        };
-        try {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(createdGuest));
-          if (newName) {
-            localStorage.setItem('prople_preserved_publisher_name', newName);
-            localStorage.setItem('prople_preserved_display_name', newName);
-          }
-        } catch {}
-        resolvedUpdatedProfile = createdGuest;
-        return createdGuest;
-      }
+      if (!baseProfile) return null;
 
       previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || '').trim();
 
@@ -1571,10 +1481,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
-        if (newName) {
-          localStorage.setItem('prople_preserved_publisher_name', newName);
-          localStorage.setItem('prople_preserved_display_name', newName);
-        }
         if (updated.email) {
           localStorage.setItem('prople_saved_profile_' + updated.email.toLowerCase().trim(), JSON.stringify(updated));
         }

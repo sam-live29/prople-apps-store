@@ -1,4 +1,6 @@
 # Prople Store — Multi-Platform Application Marketplace
+
+[![CI](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-live2c/prople-apps-store-/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-v20%2B%20%7C%20v22%2B-brightgreen)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)

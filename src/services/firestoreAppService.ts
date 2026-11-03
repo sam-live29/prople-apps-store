@@ -402,9 +402,6 @@ export async function publishAppToFirestore(
   // Automatically optimize all media assets (icon, banner, screenshots) to ensure payload is well under 1MB limit
   const optimizedApp = await optimizeAppMediaForStorage(app) as AppDetails;
 
-  let backendSavedApp: AppDetails | null = null;
-  let backendIsNew = false;
-
   // 1. Primary: Production-grade Backend API with server-side validation and ownership checks
   try {
     const { ok, data: resData, error: fetchErr } = await safeFetchJson<{ success: boolean; app?: AppDetails; error?: string; isNew?: boolean }>(
@@ -423,78 +420,273 @@ export async function publishAppToFirestore(
       }
     );
 
-    if (ok && resData?.success && resData.app) {
-      backendSavedApp = resData.app;
-      backendIsNew = Boolean(resData.isNew);
-    } else {
-      console.warn('[publishAppToFirestore] Backend publish endpoint response:', resData?.error || fetchErr);
+    if (!ok || !resData?.success) {
+      const errorMsg = resData?.error || fetchErr || 'Failed to publish application';
+      // Propagate critical business and security rule failures
+      throw new Error(errorMsg);
     }
-  } catch (backendErr) {
-    console.warn('[publishAppToFirestore] Backend publish endpoint exception:', backendErr);
-  }
 
-  const savedApp: AppDetails = {
-    ...optimizedApp,
-    ...(backendSavedApp || {}),
-    isPublished: true
-  };
-  appDetailsMock[appId] = savedApp;
-
-  // 2. Persist directly via client Firestore SDK (firestore.rules permits write if name & developer are strings)
-  try {
-    const appRef = doc(db, 'apps', appId);
-    const existingSnap = await getDoc(appRef).catch(() => null);
-    const existingDocData = existingSnap && existingSnap.exists() ? existingSnap.data() : null;
-    const authUid = currentAuthUid || ownerUid;
-    const authEmail = currentAuthEmail || savedApp.developerEmail || savedApp.publisherEmail || '';
-
-    const clientPayload: Record<string, any> = {
-      ...savedApp,
-      owner: existingDocData?.owner || authUid || savedApp.owner,
-      developerId: existingDocData?.developerId || authUid || savedApp.developerId,
-      creatorUid: existingDocData?.creatorUid || authUid || savedApp.creatorUid,
-      developerEmail: authEmail || savedApp.developerEmail || '',
-      publisherEmail: authEmail || savedApp.publisherEmail || '',
-      updatedAt: serverTimestamp()
+    const savedApp: AppDetails = {
+      ...optimizedApp,
+      ...(resData.app || {}),
+      isPublished: true
     };
+    appDetailsMock[appId] = savedApp;
 
-    const isAdminUser = authUid ? AdminPermissionsService.hasPermission('UPDATE_APP', { uid: authUid, email: authEmail }) : false;
-    if (!isAdminUser) {
-      delete clientPayload.isVerified;
-      delete clientPayload.isEditorChoice;
-      delete clientPayload.isBanned;
-      delete clientPayload.quarantineStatus;
-      delete clientPayload.strikeCount;
+    // Also ensure the app document is persisted directly via client Firestore SDK
+    if (auth.currentUser) {
+      try {
+        const appRef = doc(db, 'apps', appId);
+        const existingSnap = await getDoc(appRef).catch(() => null);
+        const existingDocData = existingSnap && existingSnap.exists() ? existingSnap.data() : null;
+        const authUid = auth.currentUser.uid;
+        const authEmail = auth.currentUser.email || currentAuthEmail || '';
+
+        const clientPayload: Record<string, any> = {
+          ...savedApp,
+          owner: existingDocData?.owner || authUid || savedApp.owner,
+          developerId: existingDocData?.developerId || authUid || savedApp.developerId,
+          creatorUid: existingDocData?.creatorUid || authUid || savedApp.creatorUid,
+          developerEmail: authEmail || savedApp.developerEmail || '',
+          publisherEmail: authEmail || savedApp.publisherEmail || '',
+          updatedAt: serverTimestamp()
+        };
+
+        const isAdminUser = AdminPermissionsService.hasPermission('UPDATE_APP', { uid: authUid, email: authEmail });
+        if (!isAdminUser) {
+          delete clientPayload.isVerified;
+          delete clientPayload.isEditorChoice;
+          delete clientPayload.isBanned;
+          delete clientPayload.quarantineStatus;
+          delete clientPayload.strikeCount;
+        }
+
+        const clientSanitized = sanitizeForFirestore(clientPayload);
+        await setDoc(appRef, clientSanitized, { merge: true });
+      } catch (clientWriteErr) {
+        console.warn('Client Firestore app sync notice:', clientWriteErr);
+      }
     }
 
-    const clientSanitized = sanitizeForFirestore(clientPayload);
-    await setDoc(appRef, clientSanitized, { merge: true });
-  } catch (clientWriteErr) {
-    console.warn('Client Firestore app sync notice:', clientWriteErr);
-    if (!backendSavedApp) {
-      throw clientWriteErr;
+    // Sync user's publishedAppIds in user profile document in background
+    if (currentAuthUid) {
+      const userRef = doc(db, 'users', currentAuthUid);
+      setDoc(userRef, {
+        publishedAppIds: arrayUnion(appId),
+        isPublisher: true,
+        updatedAt: serverTimestamp()
+      }, { merge: true }).catch(e => {
+        console.warn('Could not sync publishedAppIds to user document:', e);
+      });
+    }
+
+    if (resData.isNew) {
+      notifyAppPublished(savedApp).catch(() => {});
+    } else {
+      notifyAppUpdated(savedApp).catch(() => {});
+    }
+    return savedApp;
+  } catch (backendErr: any) {
+    // If forbidden by ownership or rate-limit exhaustion, do not bypass
+    if (
+      backendErr.message && (
+        backendErr.message.includes('Forbidden') ||
+        backendErr.message.includes('own this application') ||
+        backendErr.message.includes('Rate limit') ||
+        backendErr.message.includes('frequency limit') ||
+        backendErr.message.includes('exhaustion') ||
+        backendErr.message.includes('Invalid')
+      )
+    ) {
+      throw backendErr;
+    }
+    console.warn('[StoreService] Backend route unreachable, utilizing direct Firestore client SDK:', backendErr.message);
+  }
+
+  // 2. Fallback: Direct Firestore client write
+  const appRef = doc(db, 'apps', appId);
+  const existing = await getDoc(appRef).catch(() => null);
+  const isNew = !existing || !existing.exists();
+
+  let finalDownloadsCount = 0;
+  let finalFormattedDownloads = '0+';
+  let finalOwner = currentAuthUid || ownerUid;
+  let finalDeveloperId = currentAuthUid || optimizedApp.developerId || ownerUid;
+  let finalCreatorUid = optimizedApp.creatorUid || currentAuthUid || ownerUid;
+  let finalDeveloperEmail = optimizedApp.developerEmail || currentAuthEmail || optimizedApp.developerInfo?.email || '';
+
+  if (!isNew && existing) {
+    const existingData = existing.data();
+    const devEmail = (existingData?.developerEmail || '').toLowerCase().trim();
+    const pubEmail = (existingData?.publisherEmail || '').toLowerCase().trim();
+    const ownerEmail = (existingData?.ownerEmail || '').toLowerCase().trim();
+    const devInfoEmail = (existingData?.developerInfo?.email || '').toLowerCase().trim();
+
+    const isMatchingEmail = Boolean(
+      (currentAuthEmail && (
+        devEmail === currentAuthEmail ||
+        pubEmail === currentAuthEmail ||
+        ownerEmail === currentAuthEmail ||
+        devInfoEmail === currentAuthEmail
+      )) ||
+      (optimizedApp.developerEmail && (
+        devEmail === optimizedApp.developerEmail.toLowerCase().trim() ||
+        pubEmail === optimizedApp.developerEmail.toLowerCase().trim() ||
+        devInfoEmail === optimizedApp.developerEmail.toLowerCase().trim()
+      ))
+    );
+
+    const isOwner = 
+      (currentAuthUid && (
+        existingData?.owner === currentAuthUid ||
+        existingData?.developerId === currentAuthUid ||
+        existingData?.creatorUid === currentAuthUid
+      )) ||
+      isMatchingEmail;
+
+    const canAdminUpdate = AdminPermissionsService.hasPermission('UPDATE_APP', { uid: currentAuthUid, email: currentAuthEmail });
+
+    if (!isOwner && !canAdminUpdate) {
+      throw new Error('Forbidden: You do not own this application and are not an authorized administrator.');
+    }
+
+    finalDownloadsCount = typeof existingData?.downloadsCount === 'number' 
+      ? existingData.downloadsCount 
+      : (optimizedApp.downloadsCount || parseDownloadCount(existingData?.downloads || optimizedApp.downloads));
+    finalFormattedDownloads = existingData?.downloads || formatDownloadCount(finalDownloadsCount);
+
+    // Transfer ownership to authenticated account
+    finalOwner = currentAuthUid || existingData?.owner || finalOwner;
+    finalDeveloperId = currentAuthUid || existingData?.developerId || finalDeveloperId;
+    finalCreatorUid = currentAuthUid || existingData?.creatorUid || finalCreatorUid;
+    finalDeveloperEmail = optimizedApp.developerEmail || currentAuthEmail || existingData?.developerEmail || finalDeveloperEmail;
+  }
+
+  const cleanDoc: Record<string, any> = {
+    id: appId,
+    name: optimizedApp.name.trim(),
+    developer: optimizedApp.developer.trim(),
+    developerId: finalDeveloperId,
+    developerEmail: finalDeveloperEmail,
+    creatorUid: finalCreatorUid,
+    owner: finalOwner,
+    isPublished: true,
+    category: optimizedApp.category || 'General',
+    rating: typeof optimizedApp.rating === 'number' ? optimizedApp.rating : 0,
+    ratingsCount: optimizedApp.ratingsCount || 0,
+    reviewsCount: optimizedApp.reviewsCount || '0 reviews',
+    downloadsCount: finalDownloadsCount,
+    downloads: finalFormattedDownloads,
+    size: optimizedApp.size || 'Varies with device',
+    contentRating: optimizedApp.contentRating || 'Rated for 3+',
+    price: optimizedApp.price || 'Free',
+    type: optimizedApp.type || 'github_release',
+    iconUrl: optimizedApp.iconUrl || '',
+    featureGraphicUrl: optimizedApp.featureGraphicUrl || '',
+    detailsBannerUrl: optimizedApp.detailsBannerUrl || '',
+    heroBannerUrl: optimizedApp.heroBannerUrl || '',
+    promoVideoUrl: optimizedApp.promoVideoUrl || '',
+    videoThumbnailUrl: optimizedApp.videoThumbnailUrl || '',
+    tagline: optimizedApp.tagline || '',
+    keystoreFingerprint: optimizedApp.keystoreFingerprint || '',
+    keystoreAlias: optimizedApp.keystoreAlias || '',
+    aboutText: optimizedApp.aboutText || '',
+    tags: optimizedApp.tags || [],
+    screenshots: optimizedApp.screenshots || [],
+    tabletScreenshots: optimizedApp.tabletScreenshots || [],
+    desktopScreenshots: optimizedApp.desktopScreenshots || [],
+    downloadUrl: optimizedApp.downloadUrl || '',
+    githubRepo: optimizedApp.githubRepo || '',
+    githubReleaseUrl: optimizedApp.githubReleaseUrl || '',
+    versionName: optimizedApp.versionName || '1.0.0',
+    releaseTag: optimizedApp.releaseTag || 'v1.0.0',
+    assetName: optimizedApp.assetName || `${optimizedApp.name.toLowerCase().replace(/\s+/g, '-')}.apk`,
+    sha256: optimizedApp.sha256 || '',
+    releaseNotes: optimizedApp.releaseNotes || '',
+    releaseDate: optimizedApp.releaseDate || 'Recently',
+    initialReleaseDate: optimizedApp.initialReleaseDate || optimizedApp.releaseDate || 'Recently',
+    minAndroid: optimizedApp.minAndroid || 'Android 8.0 and up',
+    platform: optimizedApp.platform || 'android',
+    packageFormat: optimizedApp.packageFormat || 'apk',
+    targetOs: optimizedApp.targetOs || optimizedApp.minAndroid || '',
+    interactiveElements: Array.isArray(optimizedApp.interactiveElements) ? optimizedApp.interactiveElements : [],
+    supportedArchitectures: Array.isArray(optimizedApp.supportedArchitectures) ? optimizedApp.supportedArchitectures : [],
+    minRam: optimizedApp.minRam || '',
+    permissions: Array.isArray(optimizedApp.permissions) ? optimizedApp.permissions : (optimizedApp.dataSafety?.permissions || []),
+    containsAds: Boolean(optimizedApp.containsAds),
+    inAppPurchases: Boolean(optimizedApp.inAppPurchases),
+    dataSafety: optimizedApp.dataSafety ? {
+      summaryText: optimizedApp.dataSafety.summaryText || '',
+      overview: optimizedApp.dataSafety.overview || '',
+      highlights: Array.isArray(optimizedApp.dataSafety.highlights) ? optimizedApp.dataSafety.highlights : [],
+      dataShared: optimizedApp.dataSafety.dataShared || '',
+      dataSharedDetails: optimizedApp.dataSafety.dataSharedDetails || '',
+      sharesDataWithThirdParties: Boolean(optimizedApp.dataSafety.sharesDataWithThirdParties),
+      dataCollected: Array.isArray(optimizedApp.dataSafety.dataCollected) ? optimizedApp.dataSafety.dataCollected : [],
+      securityPractices: Array.isArray(optimizedApp.dataSafety.securityPractices) ? optimizedApp.dataSafety.securityPractices : [],
+      permissions: Array.isArray(optimizedApp.dataSafety.permissions) ? optimizedApp.dataSafety.permissions : [],
+      deletionPolicy: optimizedApp.dataSafety.deletionPolicy || ''
+    } : null,
+    privacyPolicy: optimizedApp.privacyPolicy || optimizedApp.developerInfo?.privacyPolicy || '',
+    termsAndConditions: optimizedApp.termsAndConditions || optimizedApp.developerInfo?.termsAndConditions || optimizedApp.termsOfService || optimizedApp.developerInfo?.termsOfService || '',
+    termsOfService: optimizedApp.termsOfService || optimizedApp.developerInfo?.termsOfService || optimizedApp.termsAndConditions || optimizedApp.developerInfo?.termsAndConditions || '',
+    githubRepoOwner: optimizedApp.githubRepoOwner || optimizedApp.developerInfo?.githubRepoOwner || '',
+    publisherName: optimizedApp.publisherName || optimizedApp.developerInfo?.publisherName || '',
+    publisherEmail: optimizedApp.publisherEmail || finalDeveloperEmail || optimizedApp.developerInfo?.email || '',
+    developerInfo: optimizedApp.developerInfo ? sanitizeForFirestore(optimizedApp.developerInfo) : {},
+    updatedAt: serverTimestamp()
+  };
+
+  if (isNew) {
+    cleanDoc.createdAt = serverTimestamp();
+    cleanDoc.rating = 0;
+    cleanDoc.ratingsCount = 0;
+    cleanDoc.reviewsCount = '0 reviews';
+    cleanDoc.ratingBreakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  } else if (existing) {
+    const existingData = existing.data();
+    if (existingData?.createdAt) {
+      cleanDoc.createdAt = existingData.createdAt;
+    }
+    if (existingData?.owner) {
+      cleanDoc.owner = existingData.owner;
     }
   }
 
-  // Sync user's publishedAppIds in user profile document in background
-  if (currentAuthUid) {
-    const userRef = doc(db, 'users', currentAuthUid);
-    setDoc(userRef, {
-      publishedAppIds: arrayUnion(appId),
-      isPublisher: true,
-      updatedAt: serverTimestamp()
-    }, { merge: true }).catch(e => {
+  const sanitizedDoc = sanitizeForFirestore(cleanDoc);
+  await setDoc(appRef, sanitizedDoc, { merge: true });
+
+  // Update in-memory cache
+  const fullApp: AppDetails = {
+    ...app,
+    owner: cleanDoc.owner,
+    isPublished: true,
+    downloads: finalFormattedDownloads,
+    downloadsCount: finalDownloadsCount
+  };
+  appDetailsMock[appId] = fullApp;
+
+  // Sync user's publishedAppIds in user profile document
+  if (auth.currentUser?.uid) {
+    try {
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      await setDoc(userRef, {
+        publishedAppIds: arrayUnion(appId),
+        isPublisher: true,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
       console.warn('Could not sync publishedAppIds to user document:', e);
-    });
+    }
   }
 
-  if (backendIsNew) {
-    notifyAppPublished(savedApp).catch(() => {});
+  // Broadcast real store notification
+  if (isNew) {
+    notifyAppPublished(fullApp).catch(() => {});
   } else {
-    notifyAppUpdated(savedApp).catch(() => {});
+    notifyAppUpdated(fullApp).catch(() => {});
   }
-
-  return savedApp;
+  return fullApp;
 }
 
 /**
@@ -1045,3 +1237,4 @@ export async function getDeveloperConsoleConfig(
     return null;
   }
 }
+
