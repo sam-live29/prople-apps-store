@@ -25,13 +25,6 @@ import TermsPage from './TermsPage';
 import PrivacyPolicyPage from './PrivacyPolicyPage';
 import { usePreserveScroll } from '../services/scrollManager';
 import { auth } from '../firebase';
-import { useStoreConfig } from '../context/StoreConfigContext';
-import {
-  usePublisherNameValidation,
-  checkPublisherNameAvailability,
-  claimPublisherName,
-  recordNameChangeTimestamps
-} from '../services/publisherNameService';
 
 interface SplitOtpInputProps {
   value: string;
@@ -181,7 +174,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     updateUserProfile,
     isLoading 
   } = useAuth();
-  const { appsList } = useStoreConfig();
   const { showToast, dismissToast } = useToast();
   const { resetToHome } = useNavigation();
 
@@ -225,18 +217,10 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   usePreserveScroll(`auth-${mode}-${step}`, scrollRef);
 
   // Form Fields
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-
-  // Real-time publisher/display name availability validation on Sign Up
-  const signupNameValidation = usePublisherNameValidation(name, {
-    currentUserEmail: email.trim(),
-    allApps: appsList,
-    debounceMs: 250
-  });
 
   // Password Reset Fields
   const [resetCode, setResetCode] = useState('');
@@ -605,14 +589,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   // Handle Sign Up: Step 1 (Validate Optional Publisher/Display Name availability + Email + Password + Consent, then send real OTP via Resend)
   const handleInitiateSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: { name?: string; email?: string; password?: string; terms?: string; general?: string } = {};
-
-    const cleanName = name.trim();
-    if (cleanName && cleanName.length < 2) {
-      newErrors.name = 'Name must be at least 2 characters (or leave blank to set later).';
-    } else if (cleanName && (!signupNameValidation.isAvailable || signupNameValidation.isTaken)) {
-      newErrors.name = signupNameValidation.errorMessage || 'This name is already taken by another developer.';
-    }
+    const newErrors: { email?: string; password?: string; terms?: string; general?: string } = {};
 
     if (!email || !email.includes('@')) {
       newErrors.email = 'Please enter a valid email address.';
@@ -632,21 +609,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setIsSubmitting(true);
     setOtpPurpose('signup');
     try {
-      if (cleanName) {
-        const check = await checkPublisherNameAvailability(cleanName, {
-          currentUserEmail: email.trim(),
-          allApps: appsList
-        });
-        if (!check.available || check.isTaken) {
-          const takenMsg = check.message || 'This publisher/display name is already taken. Please choose a unique name or leave blank to set later.';
-          setFieldErrors({ name: takenMsg });
-          showToast(takenMsg, { type: 'error' });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      const res = await sendEmailOtp(email.trim(), cleanName || undefined);
+      const res = await sendEmailOtp(email.trim());
       if (res?.challengeToken) {
         setChallengeToken(res.challengeToken);
       }
@@ -685,10 +648,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       }
 
       // 2. If Sign-Up, create/link Firebase account
-      const cleanName = name.trim();
       if (password && password.length >= 6) {
         try {
-          await signup(email.trim(), password, cleanName);
+          await signup(email.trim(), password, '');
         } catch (signupErr: any) {
           if (signupErr?.code === 'auth/email-already-in-use') {
             try {
@@ -698,22 +660,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
             }
           }
         }
-      }
-
-      // 3. If a verified publisher/display name was provided on sign-up, claim it in publisher_registry immediately
-      if (cleanName && cleanName.length >= 2) {
-        try {
-          const effectiveUid = auth.currentUser?.uid || user?.uid || '';
-          const effectiveEmail = email.trim().toLowerCase();
-          const ts = recordNameChangeTimestamps(null);
-          await claimPublisherName(cleanName, effectiveUid, effectiveEmail, ts, false);
-          await updateUserProfile({
-            displayName: cleanName,
-            publisherName: cleanName,
-            lastNameChangedAt: ts.lastNameChangedAt,
-            nameChangeSessionStartedAt: ts.nameChangeSessionStartedAt
-          });
-        } catch {}
       }
 
       showToast('Account verified successfully! Welcome to Prople Store.');
@@ -1105,73 +1051,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               {/* Sign Up Form */}
               {mode === 'signup' && (
                 <form onSubmit={handleInitiateSignUp} className="w-full text-left space-y-3.5">
-                  <div>
-                    <div className="flex items-center justify-between mb-1 min-h-[16px]">
-                      <label className="block text-xs font-semibold text-gray-700 dark:text-neutral-300">
-                        Display Name / Publisher Name
-                      </label>
-                      <span className="text-[11px] text-gray-400">{name.length}/50</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        maxLength={50}
-                        disabled={isSubmitting}
-                        value={name}
-                        onChange={(e) => {
-                          setName(e.target.value.slice(0, 50));
-                          if (fieldErrors.name || fieldErrors.general) {
-                            setFieldErrors((prev) => ({ ...prev, name: undefined, general: undefined }));
-                          }
-                        }}
-                        placeholder="Display name or publisher handle"
-                        className={`w-full px-3.5 py-3 pr-10 rounded-[4px] border bg-white dark:bg-[#151619] text-sm text-gray-900 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500 transition-colors focus:outline-none disabled:opacity-60 ${
-                          fieldErrors.name || (name.trim().length > 0 && (!signupNameValidation.isAvailable || signupNameValidation.isTaken))
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
-                            : name.trim().length >= 2 && signupNameValidation.isAvailable && !signupNameValidation.isChecking
-                            ? 'border-emerald-500/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
-                            : 'border-gray-300 dark:border-neutral-700 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8]'
-                        }`}
-                      />
-                      {name.trim().length > 0 && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                          {signupNameValidation.isChecking ? (
-                            <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                          ) : signupNameValidation.isAvailable && !signupNameValidation.isTaken && name.trim().length >= 2 ? (
-                            <Check className="w-4 h-4 text-emerald-500" />
-                          ) : (
-                            <AlertCircle className="w-4 h-4 text-rose-500" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-1 min-h-[16px] flex items-center">
-                      {fieldErrors.name ? (
-                        <p className="text-[11px] text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>{fieldErrors.name}</span>
-                        </p>
-                      ) : name.trim().length > 0 ? (
-                        signupNameValidation.isChecking ? (
-                          <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                            <span>Checking name availability...</span>
-                          </p>
-                        ) : !signupNameValidation.isAvailable || signupNameValidation.isTaken ? (
-                          <p className="text-[11px] text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>{signupNameValidation.errorMessage || 'This name is already taken.'}</span>
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-emerald-500 font-medium flex items-center gap-1.5 animate-fadeIn">
-                            <Check className="w-3.5 h-3.5 shrink-0" />
-                            <span>{signupNameValidation.successMessage || 'Name is available!'}</span>
-                          </p>
-                        )
-                      ) : null}
-                    </div>
-                  </div>
-
                   <div>
                     <input
                       type="email"
