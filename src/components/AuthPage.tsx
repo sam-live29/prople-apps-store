@@ -36,12 +36,13 @@ import {
 interface SplitOtpInputProps {
   value: string;
   onChange: (val: string) => void;
+  onComplete?: (val: string) => void;
   disabled?: boolean;
   hasError?: boolean;
   autoFocus?: boolean;
 }
 
-function SplitOtpInput({ value, onChange, disabled, hasError, autoFocus }: SplitOtpInputProps) {
+function SplitOtpInput({ value, onChange, onComplete, disabled, hasError, autoFocus }: SplitOtpInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -50,24 +51,59 @@ function SplitOtpInput({ value, onChange, disabled, hasError, autoFocus }: Split
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
     onChange(digits);
+    if (digits.length === 6) {
+      onComplete?.(digits);
+    }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text/plain') || '';
     const digits = pasted.replace(/[^0-9]/g, '').slice(0, 6);
     if (digits) {
       onChange(digits);
+      if (digits.length === 6) {
+        onComplete?.(digits);
+      }
     }
   };
 
+  const handleContainerFocus = () => {
+    if (disabled) return;
+    if (inputRef.current) {
+      try {
+        inputRef.current.focus({ preventScroll: true });
+        const len = cleanDigits.length;
+        inputRef.current.setSelectionRange(len, len);
+      } catch {
+        inputRef.current.focus();
+      }
+    }
+    setIsFocused(true);
+  };
+
+  // Safe initial focus without scrolling the page or jumping layout
+  useEffect(() => {
+    if (autoFocus && !disabled) {
+      const timer = setTimeout(() => {
+        try {
+          inputRef.current?.focus({ preventScroll: true });
+        } catch {
+          inputRef.current?.focus();
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, disabled]);
+
   return (
     <div
-      onClick={() => inputRef.current?.focus()}
-      className="relative w-full max-w-[340px] mx-auto my-3 cursor-text select-none"
+      onClick={handleContainerFocus}
+      onPaste={handlePaste}
+      className="relative w-full max-w-[340px] mx-auto my-3 cursor-pointer select-none bg-transparent"
     >
-      {/* 6 Visual Split Boxes */}
-      <div className="flex items-center justify-between gap-2 sm:gap-2.5 w-full">
+      {/* 6 Visual Split Boxes with sharp edges and transparent background */}
+      <div className="flex items-center justify-between gap-2 sm:gap-2.5 w-full bg-transparent">
         {[0, 1, 2, 3, 4, 5].map((index) => {
           const char = cleanDigits[index] || '';
           const isCurrent = isFocused && index === Math.min(cleanDigits.length, 5);
@@ -76,29 +112,29 @@ function SplitOtpInput({ value, onChange, disabled, hasError, autoFocus }: Split
           return (
             <div
               key={index}
-              className={`relative flex-1 h-12 sm:h-14 max-w-[48px] flex items-center justify-center rounded-[4px] text-xl sm:text-2xl font-bold font-mono transition-all duration-150 ${
+              className={`relative flex-1 h-12 sm:h-14 max-w-[48px] flex items-center justify-center rounded-[4px] text-xl sm:text-2xl font-bold font-mono transition-colors duration-150 bg-transparent ${
                 hasError
-                  ? 'border-2 border-red-500 bg-red-500/5 text-red-500'
+                  ? 'border-2 border-red-500 text-red-500'
                   : isCurrent
-                  ? 'border-2 border-[#1a73e8] bg-white dark:bg-[#151619] text-theme-text shadow-xs ring-2 ring-[#1a73e8]/20'
+                  ? 'border-2 border-[#1a73e8] text-theme-text ring-1 ring-[#1a73e8]/30'
                   : isFilled
-                  ? 'border border-gray-400 dark:border-neutral-600 bg-white dark:bg-[#151619] text-theme-text shadow-xs'
-                  : 'border border-gray-300 dark:border-neutral-700 bg-white dark:bg-[#151619] text-theme-text-muted/40'
+                  ? 'border border-gray-400 dark:border-neutral-600 text-theme-text'
+                  : 'border border-gray-300 dark:border-neutral-700 text-theme-text'
               }`}
             >
               {char ? (
                 <span className="select-none leading-none">{char}</span>
               ) : isCurrent ? (
-                <span className="w-0.5 h-5 sm:h-6 bg-[#1a73e8] animate-pulse rounded-full" />
-              ) : (
-                <span className="text-gray-300 dark:text-neutral-700 text-sm select-none">&bull;</span>
-              )}
+                <span className="w-[2px] h-5 sm:h-6 bg-[#1a73e8] animate-pulse rounded-xs" />
+              ) : null}
             </div>
           );
         })}
       </div>
 
-      {/* Hidden single input overlay capturing all typing, autofill and paste */}
+      {/* Hidden single input capturing typing, paste and SMS autofill
+          Using pointer-events-none, caret-transparent, and center positioning
+          so Android never displays the blue cursor teardrop/dot handle or causes layout shifts */}
       <input
         ref={inputRef}
         type="text"
@@ -109,11 +145,13 @@ function SplitOtpInput({ value, onChange, disabled, hasError, autoFocus }: Split
         disabled={disabled}
         value={cleanDigits}
         onChange={handleInputChange}
-        onPaste={handlePaste}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
-        autoFocus={autoFocus}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-text text-transparent selection:bg-transparent -z-0"
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 opacity-0 pointer-events-none text-transparent bg-transparent border-0 outline-none caret-transparent select-none"
+        style={{
+          caretColor: 'transparent',
+          color: 'transparent',
+        }}
         aria-label="6-digit verification code"
       />
     </div>
@@ -500,9 +538,9 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   };
 
   // Validate OTP in step 1 of password reset against backend before transitioning to step 2 (Set new password)
-  const handleVerifyResetOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanCode = resetCode.trim();
+  const handleVerifyResetOtp = async (e?: React.FormEvent, overrideCode?: string) => {
+    if (e) e.preventDefault();
+    const cleanCode = (overrideCode || resetCode || '').trim();
     if (!cleanCode || !/^\d{6}$/.test(cleanCode)) {
       setFieldErrors({ resetCode: 'Please enter the 6-digit verification code.' });
       return;
@@ -625,9 +663,10 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
   };
 
   // Handle OTP Verification: works for both Instant Sign-In and New Sign-Up
-  const handleVerifyOtpAndCreateAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.trim().length < 6) {
+  const handleVerifyOtpAndCreateAccount = async (e?: React.FormEvent, overrideCode?: string) => {
+    if (e) e.preventDefault();
+    const codeToVerify = (overrideCode || otpCode || '').trim();
+    if (!codeToVerify || codeToVerify.length < 6) {
       setFieldErrors({ otp: 'Please enter the 6-digit verification code.' });
       return;
     }
@@ -636,7 +675,7 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
     setIsSubmitting(true);
     try {
       // 1. Verify OTP via server/client fallback
-      await verifyEmailOtp(email.trim(), otpCode.trim());
+      await verifyEmailOtp(email.trim(), codeToVerify);
 
       // If OTP was for signing in, we are already fully authenticated!
       if (otpPurpose === 'signin') {
@@ -907,7 +946,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       {/* Content Body - Natural unboxed responsive layout */}
       <div
         ref={scrollRef}
-        tabIndex={0}
         className="flex-1 overflow-y-auto w-full pb-safe outline-none focus:outline-none overscroll-y-contain"
         style={{
           WebkitOverflowScrolling: 'touch',
@@ -1459,6 +1497,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         setFieldErrors((prev) => ({ ...prev, otp: undefined, general: undefined }));
                       }
                     }}
+                    onComplete={(val) => {
+                      if (!isSubmitting) {
+                        handleVerifyOtpAndCreateAccount(undefined, val);
+                      }
+                    }}
                     disabled={isSubmitting}
                     hasError={Boolean(fieldErrors.otp || fieldErrors.general)}
                     autoFocus
@@ -1533,6 +1576,11 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                       setResetCode(val);
                       if (fieldErrors.resetCode || fieldErrors.general) {
                         setFieldErrors((prev) => ({ ...prev, resetCode: undefined, general: undefined }));
+                      }
+                    }}
+                    onComplete={(val) => {
+                      if (!isSubmitting) {
+                        handleVerifyResetOtp(undefined, val);
                       }
                     }}
                     disabled={isSubmitting}
