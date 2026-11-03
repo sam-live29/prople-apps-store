@@ -7,6 +7,7 @@ import {
   signOut, 
   signInWithPopup, 
   GoogleAuthProvider,
+  GithubAuthProvider,
   updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
@@ -35,6 +36,7 @@ interface AuthContextType {
   cancelPendingTwoFactor: () => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithGithub: () => Promise<void>;
   sendEmailOtp: (email: string, name?: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
   verifyEmailOtp: (email: string, code: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
@@ -1184,6 +1186,152 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loginWithGithub = async () => {
+    setIsLoading(true);
+    let resolvedUser: UserProfile | null = null;
+    try {
+      const provider = new GithubAuthProvider();
+      provider.addScope('read:user');
+      provider.addScope('user:email');
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const timeoutErr: any = new Error('GitHub sign-in timed out. Please try again.');
+          timeoutErr.code = 'auth/timeout';
+          reject(timeoutErr);
+        }, 45000);
+      });
+
+      const cred = await Promise.race([
+        signInWithPopup(auth, provider),
+        timeoutPromise
+      ]);
+
+      if (!cred || !cred.user) {
+        throw new Error('Please select a legitimate GitHub account to sign in.');
+      }
+
+      const email = (cred.user.email || `${cred.user.uid}@users.noreply.github.com`).toLowerCase().trim();
+
+      pendingTwoFactorRef.current = false;
+      try {
+        sessionStorage.removeItem(SESSION_PENDING_2FA_KEY);
+      } catch {}
+
+      let cachedProfile: Partial<UserProfile> = {};
+      try {
+        const persistentSaved = localStorage.getItem('prople_saved_profile_' + email);
+        if (persistentSaved) {
+          const p = JSON.parse(persistentSaved);
+          if (p && p.nameResetVersion === 'fresh_start_v1') {
+            cachedProfile = p;
+          }
+        }
+        if (!cachedProfile.publisherName) {
+          const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+          if (saved) {
+            const p = JSON.parse(saved);
+            if (p && p.nameResetVersion === 'fresh_start_v1' && p.email && p.email.toLowerCase() === email) {
+              cachedProfile = p;
+            }
+          }
+        }
+      } catch {}
+
+      const isAdminHardcoded = isAdminEmail(email);
+      const isDevHardcoded = isDeveloperEmail(email);
+
+      resolvedUser = {
+        uid: cred.user.uid,
+        email,
+        displayName: cachedProfile.publisherName || cachedProfile.displayName || cred.user.displayName || '',
+        photoURL: cred.user.photoURL || undefined,
+        age: cachedProfile.age || '25',
+        gender: cachedProfile.gender || 'Prefer not to say',
+        location: cachedProfile.location || 'Global',
+        bio: cachedProfile.bio || '',
+        isEmailVerified: Boolean(cred.user.emailVerified),
+        isPublisher: isDevHardcoded ? true : Boolean(cachedProfile.isPublisher),
+        publisherName: cachedProfile.publisherName || '',
+        publisherRole: isAdminHardcoded
+          ? 'Store Administrator'
+          : isDevHardcoded
+          ? 'Verified Developer'
+          : cachedProfile.publisherRole || 'Standard User',
+        publishedAppIds: cachedProfile.publishedAppIds || [],
+        developerKeystore: cachedProfile.developerKeystore || null,
+        publisherBio: cachedProfile.publisherBio || '',
+        publisherWebsite: cachedProfile.publisherWebsite || '',
+        publisherEmail: email,
+        publisherGithub: (cred.user as any)?.reloadUserInfo?.screenName || cachedProfile.publisherGithub || '',
+        publisherLocation: cachedProfile.publisherLocation || 'Global',
+        lastNameChangedAt: cachedProfile.lastNameChangedAt || null,
+        nameChangeSessionStartedAt: cachedProfile.nameChangeSessionStartedAt || null,
+        ...({ nameResetVersion: 'fresh_start_v1' } as any)
+      };
+
+      setUser(resolvedUser);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(resolvedUser));
+      } catch {}
+
+      setIsLoading(false);
+
+      (async () => {
+        let remoteData: Partial<UserProfile> = {};
+        try {
+          const snapPromise = getDoc(doc(db, 'users', cred.user.uid));
+          const snapTimeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500));
+          const snap = await Promise.race([snapPromise, snapTimeout]) as any;
+          if (snap && snap.exists()) {
+            remoteData = snap.data() as Partial<UserProfile>;
+          }
+        } catch (docErr) {
+          console.warn('[AuthContext] GitHub fast user doc check notice:', docErr);
+        }
+
+        try {
+          const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
+            ...resolvedUser,
+            ...remoteData
+          });
+          setUser(unified);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
+          } catch {}
+          syncUserProfileToFirestore(unified);
+        } catch (enrichErr) {
+          console.warn('[AuthContext] Background GitHub profile unification notice:', enrichErr);
+        }
+      })().catch(() => {});
+
+    } catch (err: any) {
+      console.warn('[AuthContext] GitHub sign-in notice:', err?.code || err?.message || err);
+      if (!resolvedUser) {
+        setUser(null);
+        try {
+          localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+        } catch {}
+      }
+
+      let message = 'GitHub sign-in could not be completed.';
+      if (err?.code === 'auth/popup-closed-by-user') {
+        message = 'GitHub authorization window was closed before signing in.';
+      } else if (err?.code === 'auth/popup-blocked') {
+        message = 'Popup window was blocked by your browser. Please allow popups to sign in with GitHub.';
+      } else if (err?.code === 'auth/account-exists-with-different-credential') {
+        message = 'An account already exists with this email address using Google or password. Please sign in with that method.';
+      } else if (err?.code === 'auth/operation-not-allowed') {
+        message = 'GitHub sign-in is currently undergoing configuration. Please sign in using Google or Email.';
+      } else if (err?.message) {
+        message = err.message;
+      }
+      throw new Error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const sendEmailOtp = async (email: string, name?: string) => {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
@@ -1637,6 +1785,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         cancelPendingTwoFactor,
         signup,
         loginWithGoogle,
+        loginWithGithub,
         sendEmailOtp,
         verifyEmailOtp,
         forgotPassword,
