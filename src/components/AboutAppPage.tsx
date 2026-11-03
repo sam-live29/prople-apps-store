@@ -207,9 +207,9 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                 <h1 className="text-[18px] sm:text-[20px] font-medium font-google-sans text-theme-text mb-3">
                   About this app
                 </h1>
-                <div className="text-[15px] text-theme-text leading-[1.65] whitespace-pre-line font-normal">
-                  {app.aboutText || `${app.name} is a verified package published to the app repository.`}
-                </div>
+                <p className="text-[15px] text-theme-text leading-[1.65] whitespace-pre-line font-normal">
+                  {app.aboutText || app.description || `${app.name} is a verified package published to the app repository.`}
+                </p>
 
                 {app.tags && app.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-4 mt-2">

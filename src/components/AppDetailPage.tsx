@@ -760,24 +760,12 @@ export default function AppDetailPage({
     };
   }, [resolvedRawApp, targetAppId]);
 
-  // Concise few words summary for About section, styled like Data Safety
+  // Unwrapped full article text for About section, styled like Data Safety
   const previewAboutText = useMemo(() => {
-    if (app?.tagline && app.tagline.trim().length > 0) {
-      return app.tagline.trim();
-    }
-    if (app?.shortDescription && app.shortDescription.trim().length > 0) {
-      return app.shortDescription.trim();
-    }
-    if (app?.aboutText && app.aboutText.trim().length > 0) {
-      const firstLine = app.aboutText.trim().split(/\r?\n+/)[0] || '';
-      const firstSentence = firstLine.split(/(?<=[.!?])\s+/)[0] || firstLine;
-      if (firstSentence.length > 140) {
-        return firstSentence.slice(0, 140).trim() + '...';
-      }
-      return firstSentence;
-    }
+    const raw = (app?.aboutText || app?.description || app?.shortDescription || app?.tagline || '').trim();
+    if (raw) return raw;
     return app?.name ? `${app.name} is a verified application on Prople Store.` : '';
-  }, [app?.tagline, app?.shortDescription, app?.aboutText, app?.name]);
+  }, [app?.aboutText, app?.description, app?.shortDescription, app?.tagline, app?.name]);
 
   // Dynamically update document title, OpenGraph, Twitter, and Schema.org JSON-LD for Google ranking & visibility
   useEffect(() => {
@@ -2113,7 +2101,7 @@ export default function AppDetailPage({
         )}
 
         {/* About this app */}
-        <div className="py-5">
+        <div className="py-5 lg:py-4">
           <div 
             className="flex items-center justify-between mb-3 cursor-pointer hover:opacity-80 transition-opacity" 
             onClick={() => setDetailView('about')}
@@ -2124,27 +2112,29 @@ export default function AppDetailPage({
              </button>
           </div>
           <p 
-            className="text-[15px] text-theme-text leading-relaxed mb-4 line-clamp-3 cursor-pointer hover:opacity-90 transition-opacity"
+            className="text-[15px] text-theme-text leading-relaxed mb-3 whitespace-pre-line line-clamp-4 cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setDetailView('about')}
           >
             {previewAboutText}
           </p>
-          <div className="flex flex-wrap gap-2.5">
-            {app.tags.map((tag, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  performSearch(tag);
-                }}
-                className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent hover:bg-theme-hover active:scale-95 transition-all text-[13px] font-medium text-theme-text cursor-pointer"
-                title={`Search for "${tag}"`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+          {app.tags && app.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2.5 mt-3">
+              {app.tags.map((tag, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    performSearch(tag);
+                  }}
+                  className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent hover:bg-theme-hover active:scale-95 transition-all text-[13px] font-medium text-theme-text cursor-pointer"
+                  title={`Search for "${tag}"`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Ratings and reviews */}
