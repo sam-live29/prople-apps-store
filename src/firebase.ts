@@ -1,10 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { 
-  initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager,
-  memoryLocalCache,
   getFirestore,
   setLogLevel,
   doc,
@@ -147,33 +143,8 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Safely configure local cache with multi-tab support and automatic fallback for sandboxed/iframe environments
-let firestoreInstance;
-try {
-  firestoreInstance = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-    experimentalLongPollingOptions: {
-      timeoutSeconds: 25,
-    },
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  }, config.firestoreDatabaseId || '(default)');
-} catch (e) {
-  try {
-    firestoreInstance = initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-      experimentalLongPollingOptions: {
-        timeoutSeconds: 25,
-      },
-      localCache: memoryLocalCache(),
-    }, config.firestoreDatabaseId || '(default)');
-  } catch {
-    firestoreInstance = getFirestore(app, config.firestoreDatabaseId || '(default)');
-  }
-}
-
-export const db = firestoreInstance;
+// Initialize Firestore with standard configuration
+export const db = getFirestore(app, config.firestoreDatabaseId || '(default)');
 
 export const auth = getAuth(app);
 export const rtdb = getDatabase(app, config.databaseURL);
@@ -185,7 +156,16 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+      // In sandboxed/iframe previews, allow a brief delay for the network channel to initialize
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        return;
+      } catch (retryError) {
+        if (retryError instanceof Error && retryError.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
     }
   }
 }

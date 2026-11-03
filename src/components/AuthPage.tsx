@@ -33,6 +33,93 @@ import {
   recordNameChangeTimestamps
 } from '../services/publisherNameService';
 
+interface SplitOtpInputProps {
+  value: string;
+  onChange: (val: string) => void;
+  disabled?: boolean;
+  hasError?: boolean;
+  autoFocus?: boolean;
+}
+
+function SplitOtpInput({ value, onChange, disabled, hasError, autoFocus }: SplitOtpInputProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const cleanDigits = (value || '').slice(0, 6);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+    onChange(digits);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text/plain') || '';
+    const digits = pasted.replace(/[^0-9]/g, '').slice(0, 6);
+    if (digits) {
+      onChange(digits);
+    }
+  };
+
+  return (
+    <div
+      onClick={() => inputRef.current?.focus()}
+      className="relative w-full max-w-[340px] mx-auto my-3 cursor-text select-none"
+    >
+      {/* 6 Visual Split Boxes */}
+      <div className="flex items-center justify-between gap-2 sm:gap-2.5 w-full">
+        {[0, 1, 2, 3, 4, 5].map((index) => {
+          const char = cleanDigits[index] || '';
+          const isCurrent = isFocused && index === Math.min(cleanDigits.length, 5);
+          const isFilled = Boolean(char);
+
+          return (
+            <div
+              key={index}
+              className={`relative flex-1 h-12 sm:h-14 max-w-[48px] flex items-center justify-center rounded-[4px] text-xl sm:text-2xl font-bold font-mono transition-all duration-150 ${
+                hasError
+                  ? 'border-2 border-red-500 bg-red-500/5 text-red-500'
+                  : isCurrent
+                  ? 'border-2 border-[#1a73e8] bg-white dark:bg-[#151619] text-theme-text shadow-xs ring-2 ring-[#1a73e8]/20'
+                  : isFilled
+                  ? 'border border-gray-400 dark:border-neutral-600 bg-white dark:bg-[#151619] text-theme-text shadow-xs'
+                  : 'border border-gray-300 dark:border-neutral-700 bg-white dark:bg-[#151619] text-theme-text-muted/40'
+              }`}
+            >
+              {char ? (
+                <span className="select-none leading-none">{char}</span>
+              ) : isCurrent ? (
+                <span className="w-0.5 h-5 sm:h-6 bg-[#1a73e8] animate-pulse rounded-full" />
+              ) : (
+                <span className="text-gray-300 dark:text-neutral-700 text-sm select-none">&bull;</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Hidden single input overlay capturing all typing, autofill and paste */}
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9]*"
+        maxLength={6}
+        disabled={disabled}
+        value={cleanDigits}
+        onChange={handleInputChange}
+        onPaste={handlePaste}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        autoFocus={autoFocus}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-text text-transparent selection:bg-transparent -z-0"
+        aria-label="6-digit verification code"
+      />
+    </div>
+  );
+}
+
 interface AuthPageProps {
   onClose?: () => void;
   onSuccess?: () => void;
@@ -1364,26 +1451,17 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
 
               <form onSubmit={handleVerifyOtpAndCreateAccount} className="w-full space-y-4">
                 <div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    required
-                    disabled={isSubmitting}
+                  <SplitOtpInput
                     value={otpCode}
-                    onChange={(e) => {
-                      setOtpCode(e.target.value.replace(/[^0-9]/g, ''));
+                    onChange={(val) => {
+                      setOtpCode(val);
                       if (fieldErrors.otp || fieldErrors.general) {
                         setFieldErrors((prev) => ({ ...prev, otp: undefined, general: undefined }));
                       }
                     }}
-                    placeholder="• • • • • •"
-                    className={`w-full text-center tracking-[12px] text-2xl font-mono py-3.5 bg-white dark:bg-[#151619] border rounded-[4px] text-theme-text focus:outline-none transition-all disabled:opacity-60 placeholder:tracking-[8px] ${
-                      fieldErrors.otp
-                        ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500'
-                        : 'border-gray-300 dark:border-neutral-700 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8]'
-                    }`}
+                    disabled={isSubmitting}
+                    hasError={Boolean(fieldErrors.otp || fieldErrors.general)}
+                    autoFocus
                   />
                   <div className="h-6 mt-1 flex items-center justify-center">
                     {(fieldErrors.otp || fieldErrors.general) ? (
@@ -1449,26 +1527,17 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
 
               <form onSubmit={handleVerifyResetOtp} className="w-full space-y-4">
                 <div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    required
-                    disabled={isSubmitting}
+                  <SplitOtpInput
                     value={resetCode}
-                    onChange={(e) => {
-                      setResetCode(e.target.value.replace(/[^0-9]/g, ''));
+                    onChange={(val) => {
+                      setResetCode(val);
                       if (fieldErrors.resetCode || fieldErrors.general) {
                         setFieldErrors((prev) => ({ ...prev, resetCode: undefined, general: undefined }));
                       }
                     }}
-                    placeholder="• • • • • •"
-                    className={`w-full text-center tracking-[12px] text-2xl font-mono py-3.5 bg-white dark:bg-[#151619] border rounded-[4px] text-theme-text focus:outline-none transition-all disabled:opacity-60 placeholder:tracking-[8px] ${
-                      fieldErrors.resetCode
-                        ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500'
-                        : 'border-gray-300 dark:border-neutral-700 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8]'
-                    }`}
+                    disabled={isSubmitting}
+                    hasError={Boolean(fieldErrors.resetCode || fieldErrors.general)}
+                    autoFocus
                   />
                   <div className="h-6 mt-1 flex items-center justify-center">
                     {(fieldErrors.resetCode || fieldErrors.general) ? (
