@@ -77,8 +77,8 @@ function pickMainAsset(rawAssets: any[], platform?: string) {
   if (!Array.isArray(rawAssets) || rawAssets.length === 0) return null;
 
   const valid = rawAssets.filter((a: any) => typeof a.name === 'string' && a.browser_download_url);
-  const clean = valid.filter((a: any) => !isBloatPackage(a.name) && !(typeof a.size === 'number' && a.size > 0 && a.size < 1024 * 1024));
-  const pool = clean.length > 0 ? clean : valid.filter((a: any) => !isBloatPackage(a.name));
+  const clean = valid.filter((a: any) => !isBloatPackage(a.name));
+  const pool = clean.length > 0 ? clean : valid;
 
   const p = (platform || '').toLowerCase();
 
@@ -563,7 +563,7 @@ export default async function handler(req: any, res: any) {
         probed.contentType.includes('application/json') ||
         probed.contentType.includes('text/plain');
 
-      if ((finalDetails.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
+      if ((finalDetails.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size > 0)) {
         const storageProvider = detectStorageProvider(cleanUrl);
         const sha256 = await computeCloudSha256(cleanUrl, probed.headers, bestCandidateName);
         return res.status(200).json({

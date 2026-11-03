@@ -5513,7 +5513,7 @@ async function startServer() {
       probed.contentType.includes('application/json') ||
       probed.contentType.includes('text/plain');
 
-    if ((probedPkg.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size >= 1024 * 1024)) {
+    if ((probedPkg.isBinary && !isHtmlOrJson) || (probed.reachable && !isHtmlOrJson && probed.size > 0)) {
       const sha256 = await computeCloudSha256(targetUrl, probed.headers, candidateName);
       return {
         resolvedUrl: targetUrl,
@@ -5876,40 +5876,6 @@ async function startServer() {
         mimeType = 'application/x-newton-compatible-pkg';
       } else if (lowerName.endsWith('.ipa')) {
         mimeType = 'application/x-itunes-ipa';
-      }
-
-      const ONE_MB = 1024 * 1024; // 1,048,576 bytes
-      const isExecutableBinary = (
-        lowerName.endsWith('.apk') ||
-        lowerName.endsWith('.aab') ||
-        lowerName.endsWith('.appimage') ||
-        lowerName.endsWith('.exe') ||
-        lowerName.endsWith('.msi') ||
-        lowerName.endsWith('.msix') ||
-        lowerName.endsWith('.appx') ||
-        lowerName.endsWith('.deb') ||
-        lowerName.endsWith('.rpm') ||
-        lowerName.endsWith('.dmg') ||
-        lowerName.endsWith('.pkg') ||
-        lowerName.endsWith('.ipa') ||
-        lowerName.endsWith('.run') ||
-        lowerName.endsWith('.bin') ||
-        lowerName.endsWith('.tar.gz') ||
-        lowerName.endsWith('.tgz') ||
-        lowerName.endsWith('.zip') ||
-        lowerName.endsWith('.7z')
-      );
-
-      const contentLength = upstreamRes.headers.get('content-length');
-      if (contentLength) {
-        const parsedLen = parseInt(contentLength, 10);
-        if (parsedLen < ONE_MB && isExecutableBinary) {
-          console.warn(`[Backend] Rejecting download for ${cleanSafeName}: size ${parsedLen} bytes is under 1MB threshold.`);
-          return res.status(422).json({
-            success: false,
-            error: `Application package size is under 1 MB (${(parsedLen / 1024).toFixed(1)} KB). Download prevented to avoid corrupted stubs.`
-          });
-        }
       }
 
       try {

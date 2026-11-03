@@ -216,7 +216,6 @@ export function getDirectDownloadUrl(downloadUrl?: string, fileName?: string, pl
  * - Zero Prople Store window navigation, zero GitHub redirect tabs, zero address bar loading interruptions
  * - Streams directly with Content-Disposition: attachment for immediate native OS notification tray download
  * - Uses only the exact package filename (no bloat fallback files)
- * - Strictly rejects downloads for package sizes under 1 MB to prevent corrupted stubs
  */
 export function dispatchInstantNativeDownload(
   targetUrl: string,
@@ -229,17 +228,6 @@ export function dispatchInstantNativeDownload(
     const err = 'Missing download URL.';
     onError?.(err);
     return { success: false, error: err };
-  }
-
-  // Strictly block package sizes less than 1 MB to prevent 10.33 KB apk bloat download
-  if (sizeString) {
-    const parsedBytes = parseSizeToBytes(sizeString);
-    if (parsedBytes > 0 && parsedBytes < 1024 * 1024) {
-      const err = `Package size is under 1 MB (${sizeString}). Download prevented to avoid corrupted stubs.`;
-      console.warn('[InstallContext]', err);
-      onError?.(err);
-      return { success: false, error: err };
-    }
   }
 
   const cleanUrl = targetUrl.trim();
@@ -946,12 +934,6 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     const appName = opts.appName || current?.appName || 'Application';
     const sizeString = opts.sizeString || current?.sizeFormatted;
     const totalBytes = parseSizeToBytes(sizeString);
-
-    // Strictly prevent downloading apps with sizes less than 1 MB to prevent 10.33 KB apk bloat download
-    if (totalBytes > 0 && totalBytes < 1024 * 1024) {
-      showToast(`Download prevented: package size (${sizeString}) is less than 1 MB.`);
-      return;
-    }
 
     const downloadUrl = (opts.downloadUrl || current?.downloadUrl || '').trim();
     const sha256 = opts.sha256 || current?.sha256;

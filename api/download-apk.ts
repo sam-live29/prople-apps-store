@@ -280,8 +280,8 @@ function isBinaryPackage(filenameOrUrl: string): boolean {
 function selectMainPackageAsset(rawAssets: any[], platform?: string) {
   if (!Array.isArray(rawAssets) || rawAssets.length === 0) return null;
   const valid = rawAssets.filter((a) => typeof a?.name === 'string' && (a.browser_download_url || a.downloadUrl));
-  const clean = valid.filter((a) => !isBloatOrSecondaryAsset(a.name) && !(typeof a.size === 'number' && a.size > 0 && a.size < 1024 * 1024));
-  const pool = clean.length > 0 ? clean : valid.filter((a) => !isBloatOrSecondaryAsset(a.name));
+  const clean = valid.filter((a) => !isBloatOrSecondaryAsset(a.name));
+  const pool = clean.length > 0 ? clean : valid;
   const p = (platform || '').toLowerCase().trim();
 
   if (p === 'linux') {
@@ -532,41 +532,6 @@ export default async function handler(req: any, res: any) {
         await upstreamRes.body.cancel();
       } catch {}
       return res.status(204).end();
-    }
-
-    const ONE_MB = 1024 * 1024;
-    const VERCEL_STREAM_THRESHOLD = 4 * 1024 * 1024; // Avoid Vercel 4.5 MB Lambda response payload cap
-    const isExecutableBinary =
-      lowerName.endsWith('.apk') ||
-      lowerName.endsWith('.aab') ||
-      lowerName.endsWith('.appimage') ||
-      lowerName.endsWith('.exe') ||
-      lowerName.endsWith('.msi') ||
-      lowerName.endsWith('.msix') ||
-      lowerName.endsWith('.appx') ||
-      lowerName.endsWith('.deb') ||
-      lowerName.endsWith('.rpm') ||
-      lowerName.endsWith('.dmg') ||
-      lowerName.endsWith('.pkg') ||
-      lowerName.endsWith('.ipa') ||
-      lowerName.endsWith('.run') ||
-      lowerName.endsWith('.bin') ||
-      lowerName.endsWith('.tar.gz') ||
-      lowerName.endsWith('.tgz') ||
-      lowerName.endsWith('.zip') ||
-      lowerName.endsWith('.7z');
-
-    const contentLength = upstreamRes.headers.get('content-length');
-    const parsedLen = contentLength ? parseInt(contentLength, 10) : 0;
-
-    if (contentLength && parsedLen < ONE_MB && isExecutableBinary) {
-      try {
-        await upstreamRes.body.cancel();
-      } catch {}
-      return res.status(422).json({
-        success: false,
-        error: `Application package size is under 1 MB (${(parsedLen / 1024).toFixed(1)} KB). Download prevented to avoid corrupted stubs.`,
-      });
     }
 
     try {

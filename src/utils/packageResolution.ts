@@ -159,9 +159,9 @@ export function selectMainPackageAsset(
 
   if (validAssets.length === 0) return null;
 
-  // 2. Filter out bloat assets and packages under 1 MB
-  const nonBloat = validAssets.filter(a => !isBloatOrSecondaryAsset(a.name) && !(typeof a.size === 'number' && a.size > 0 && a.size < 1024 * 1024));
-  const pool = nonBloat.length > 0 ? nonBloat : validAssets.filter(a => !isBloatOrSecondaryAsset(a.name));
+  // 2. Filter out non-binary bloat assets
+  const nonBloat = validAssets.filter(a => !isBloatOrSecondaryAsset(a.name));
+  const pool = nonBloat.length > 0 ? nonBloat : validAssets;
 
   const targetPlat = (platform || '').toLowerCase().trim();
 
