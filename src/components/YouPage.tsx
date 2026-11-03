@@ -51,6 +51,7 @@ import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AppListing } from '../types';
 import StoreCircleLoader from './StoreCircleLoader';
 import VerifiedBadge from './VerifiedBadge';
+import { getPreservedClaimedName } from '../services/publisherNameService';
 
 export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClick?: (id: string) => void; onOpenNotifications?: () => void }) {
   const { unreadNotificationsCount, markAllNotificationsAsRead, openAuthDialog } = useInstall();
@@ -159,8 +160,9 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
     return () => clearTimeout(timer);
   }, [isAuthLoading, user, activeView, showToast, hasActiveToast]);
 
-  const userEmail = user?.email || "Guest User";
-  const userName = user?.publisherName || user?.displayName || "Guest";
+  const preservedClaimedName = getPreservedClaimedName();
+  const userEmail = user?.email || (preservedClaimedName ? "Guest Session" : "Guest User");
+  const userName = user?.publisherName || user?.displayName || preservedClaimedName || "Guest";
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
@@ -291,17 +293,15 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
           )}
 
           <div className="w-full flex-col flex">
-            {/* Dedicated Edit Profile option in Settings */}
-            {user && (
-              <MenuItem 
-                onClick={() => setActiveView('edit-profile')}
-                icon={<User className="w-5 h-5 text-theme-text-muted" />} 
-                label="Edit Profile" 
-                sublabel="Display name, bio & preferences"
-                hasBorder={false}
-                rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
-              />
-            )}
+            {/* Dedicated Edit Profile option in Settings: accessible to both logged-in and guest users */}
+            <MenuItem 
+              onClick={() => setActiveView('edit-profile')}
+              icon={<User className="w-5 h-5 text-theme-text-muted" />} 
+              label="Edit Profile" 
+              sublabel={userName !== "Guest" ? `Publisher name: ${userName}` : "Display name, bio & preferences"}
+              hasBorder={false}
+              rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
+            />
             
             {/* Sustain Prople Platform Donation Modal Option */}
             <MenuItem 
@@ -628,18 +628,31 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
           </div>
         ) : (
           <div className="p-4 sm:p-5 bg-theme-card rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-full bg-theme-hover flex items-center justify-center shrink-0">
-                <User className="w-6 h-6 text-theme-text-muted" />
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
+                userName !== 'Guest' ? 'bg-blue-600 text-white font-bold text-lg' : 'bg-theme-hover'
+              }`}>
+                {userName !== 'Guest' ? (
+                  userName.charAt(0).toUpperCase()
+                ) : (
+                  <User className="w-6 h-6 text-theme-text-muted" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-base sm:text-lg font-semibold text-theme-text">Sign in to Prople Store</h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-base sm:text-lg font-semibold text-theme-text truncate">
+                    {userName !== 'Guest' ? `Hi, ${userName}!` : 'Sign in to Prople Store'}
+                  </h2>
+                  {userName !== 'Guest' && isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
+                </div>
                 <p className="text-xs text-theme-text-muted line-clamp-1">
-                  Access developer tools, sync apps, and write reviews
+                  {userName !== 'Guest' 
+                    ? 'Claimed publisher • Sign in to sync across devices' 
+                    : 'Access developer tools, sync apps, and write reviews'}
                 </p>
               </div>
             </div>
-            <div className="w-full sm:w-auto">
+            <div className="w-full sm:w-auto flex items-center gap-2">
               <button
                 type="button"
                 id="you-open-signin-btn"

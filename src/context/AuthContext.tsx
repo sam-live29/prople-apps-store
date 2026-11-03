@@ -15,7 +15,12 @@ import { UserProfile, DeveloperKeystore } from '../types';
 import { generateDeveloperKeystore } from '../services/keystoreService';
 import { safeFetchJson } from '../utils/safeFetch';
 import { sanitizeErrorMessage } from '../utils/errorUtils';
-import { propagatePublisherNameToAllReleases } from '../services/publisherNameService';
+import { 
+  propagatePublisherNameToAllReleases, 
+  getPreservedClaimedName, 
+  setPreservedClaimedName, 
+  getOrCreateGuestUid 
+} from '../services/publisherNameService';
 import { AdminPermissionsService, DEFAULT_ADMIN_EMAILS } from '../services/adminPermissionsService';
 
 interface AuthContextType {
@@ -1432,6 +1437,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     setIsLoading(true);
+    // Explicitly preserve the claimed publisher name across logout
+    const currentName = (user?.publisherName || user?.displayName || getPreservedClaimedName() || '').trim();
+    if (currentName) {
+      setPreservedClaimedName(currentName);
+    }
     try {
       await signOut(auth);
     } catch (err) {
@@ -1439,12 +1449,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null);
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      if (currentName) {
+        setPreservedClaimedName(currentName);
+      }
       setIsLoading(false);
     }
   };
 
   const updateUserProfile = async (data: Partial<UserProfile>): Promise<void> => {
     const newName = (data.publisherName || data.displayName || '').trim();
+    if (newName) {
+      setPreservedClaimedName(newName);
+    }
 
     if (auth.currentUser && newName) {
       updateProfile(auth.currentUser, { displayName: newName }).catch(() => {});
@@ -1454,6 +1470,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let previousPublisherName = '';
 
     setUser((prev) => {
+      const fallbackGuestUid = getOrCreateGuestUid();
+      const preservedName = getPreservedClaimedName();
       const baseProfile = prev || (() => {
         try {
           const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -1461,11 +1479,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           return null;
         }
-      })();
+      })() || {
+        uid: fallbackGuestUid,
+        email: '',
+        displayName: newName || preservedName || '',
+        publisherName: newName || preservedName || '',
+        isPublisher: true,
+        publisherRole: 'Standard User',
+        publishedAppIds: [],
+        nameResetVersion: 'fresh_start_v1'
+      };
 
-      if (!baseProfile) return null;
-
-      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || '').trim();
+      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || preservedName || '').trim();
 
       const updated: UserProfile = { 
         ...baseProfile, 

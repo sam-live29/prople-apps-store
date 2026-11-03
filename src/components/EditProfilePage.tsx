@@ -11,7 +11,10 @@ import {
   checkPublisherNameAvailability, 
   claimPublisherName,
   getNameChangeStatus,
-  recordNameChangeTimestamps
+  recordNameChangeTimestamps,
+  getPreservedClaimedName,
+  setPreservedClaimedName,
+  getOrCreateGuestUid
 } from '../services/publisherNameService';
 import { usePreserveScroll } from '../services/scrollManager';
 import VerifiedBadge from './VerifiedBadge';
@@ -25,8 +28,9 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
 
   usePreserveScroll('edit-profile', containerRef);
 
-  // Publisher name takes highest priority; do not auto-fill from email prefix so user can set and verify a unique name
-  const currentActiveName = (user?.publisherName || user?.displayName || '').trim();
+  // Publisher name takes highest priority; falls back to preserved claimed name across guest/logout sessions
+  const preservedName = getPreservedClaimedName();
+  const currentActiveName = (user?.publisherName || user?.displayName || preservedName || '').trim();
   const [displayName, setDisplayName] = useState(currentActiveName);
   const [age, setAge] = useState(user?.age || '25');
   const [gender, setGender] = useState(user?.gender || 'Prefer not to say');
@@ -179,16 +183,15 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
           nameChangeSessionStartedAt: calculated.nameChangeSessionStartedAt
         };
 
-        const effectiveUid = user?.uid || auth.currentUser?.uid || '';
+        const effectiveUid = user?.uid || auth.currentUser?.uid || getOrCreateGuestUid();
         const effectiveEmail = user?.email || auth.currentUser?.email || '';
-        if (effectiveUid || effectiveEmail) {
-          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
-          if (!claimRes.success) {
-            showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
-            setIsSaving(false);
-            return;
-          }
+        const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
+        if (!claimRes.success) {
+          showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
+          setIsSaving(false);
+          return;
         }
+        setPreservedClaimedName(cleanName);
       }
 
       await updateUserProfile({

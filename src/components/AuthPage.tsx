@@ -808,9 +808,17 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               {mode === 'signin' && (
                 <form onSubmit={handleSignIn} className="w-full text-left space-y-3.5">
                   <div>
-                    <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                      Email address
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                      <label className="block text-xs font-semibold text-theme-text-muted">
+                        Email address
+                      </label>
+                      {fieldErrors.email && (
+                        <span className="text-[11px] text-rose-500 font-medium truncate max-w-[240px] text-right flex items-center gap-1 animate-fadeIn">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{fieldErrors.email}</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <input
                         type="email"
@@ -831,23 +839,26 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         }`}
                       />
                     </div>
-                    {fieldErrors.email && (
-                      <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                        {fieldErrors.email}
-                      </p>
-                    )}
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-theme-text-muted">
-                        Password
-                      </label>
+                    <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <label className="block text-xs font-semibold text-theme-text-muted shrink-0">
+                          Password
+                        </label>
+                        {fieldErrors.password && (
+                          <span className="text-[11px] text-rose-500 font-medium truncate max-w-[150px] flex items-center gap-1 animate-fadeIn">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{fieldErrors.password}</span>
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={handleForgotPasswordClick}
                         disabled={isSubmitting}
-                        className="text-xs text-blue-500 hover:text-blue-400 font-medium transition-colors cursor-pointer disabled:opacity-50"
+                        className="text-xs text-blue-500 hover:text-blue-400 font-medium transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                       >
                         Forgot password?
                       </button>
@@ -881,18 +892,16 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    {fieldErrors.password && (
-                      <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                        {fieldErrors.password}
-                      </p>
-                    )}
                   </div>
 
-                  {fieldErrors.general && (
-                    <p className="text-xs text-red-500 font-medium text-center py-1 animate-fadeIn">
-                      {fieldErrors.general}
-                    </p>
-                  )}
+                  <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
+                    {fieldErrors.general ? (
+                      <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{fieldErrors.general}</span>
+                      </p>
+                    ) : null}
+                  </div>
 
                   {/* Animated Sign In Button */}
                   <button
@@ -910,11 +919,19 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
               {mode === 'signup' && (
                 <form onSubmit={handleInitiateSignUp} className="w-full text-left space-y-3.5">
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-theme-text-muted">
-                        Publisher / Display Name <span className="font-normal text-theme-text-muted/70">(Optional — or set later)</span>
-                      </label>
-                      <span className="text-[11px] text-theme-text-muted">
+                    <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <label className="block text-xs font-semibold text-theme-text-muted shrink-0">
+                          Publisher / Display Name
+                        </label>
+                        {fieldErrors.name && (
+                          <span className="text-[11px] text-rose-500 font-medium truncate max-w-[170px] flex items-center gap-1 animate-fadeIn">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{fieldErrors.name}</span>
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-theme-text-muted shrink-0">
                         {name.length}/50
                       </span>
                     </div>
@@ -951,35 +968,47 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         </div>
                       )}
                     </div>
-                    {fieldErrors.name ? (
-                      <p className="mt-1.5 text-xs text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>{fieldErrors.name}</span>
-                      </p>
-                    ) : name.trim().length > 0 ? (
-                      signupNameValidation.isChecking ? (
-                        <p className="mt-1.5 text-xs text-theme-text-muted flex items-center gap-1.5">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                          <span>Checking name availability...</span>
-                        </p>
-                      ) : !signupNameValidation.isAvailable || signupNameValidation.isTaken ? (
-                        <p className="mt-1.5 text-xs text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
+                    <div className="mt-1 min-h-[18px] flex items-center">
+                      {fieldErrors.name ? (
+                        <p className="text-[11px] text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>{signupNameValidation.errorMessage || 'This name is already taken.'}</span>
+                          <span>{fieldErrors.name}</span>
                         </p>
+                      ) : name.trim().length > 0 ? (
+                        signupNameValidation.isChecking ? (
+                          <p className="text-[11px] text-theme-text-muted flex items-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            <span>Checking name availability...</span>
+                          </p>
+                        ) : !signupNameValidation.isAvailable || signupNameValidation.isTaken ? (
+                          <p className="text-[11px] text-rose-500 font-medium flex items-center gap-1.5 animate-fadeIn">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{signupNameValidation.errorMessage || 'This name is already taken.'}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-emerald-500 font-medium flex items-center gap-1.5 animate-fadeIn">
+                            <Check className="w-3.5 h-3.5 shrink-0" />
+                            <span>{signupNameValidation.successMessage || 'Name is available and will be claimed on sign up.'}</span>
+                          </p>
+                        )
                       ) : (
-                        <p className="mt-1.5 text-xs text-emerald-500 font-medium flex items-center gap-1.5 animate-fadeIn">
-                          <Check className="w-3.5 h-3.5 shrink-0" />
-                          <span>{signupNameValidation.successMessage || 'Name is available and will be claimed on sign up.'}</span>
-                        </p>
-                      )
-                    ) : null}
+                        <span className="text-[11px] text-theme-text-muted">Optional &mdash; leave blank to set later</span>
+                      )}
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                      Email address
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                      <label className="block text-xs font-semibold text-theme-text-muted">
+                        Email address
+                      </label>
+                      {fieldErrors.email && (
+                        <span className="text-[11px] text-rose-500 font-medium truncate max-w-[240px] text-right flex items-center gap-1 animate-fadeIn">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{fieldErrors.email}</span>
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="email"
                       required
@@ -998,17 +1027,20 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                           : 'border-theme-border focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                       }`}
                     />
-                    {fieldErrors.email && (
-                      <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                        {fieldErrors.email}
-                      </p>
-                    )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                      Password (min. 6 characters)
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                      <label className="block text-xs font-semibold text-theme-text-muted">
+                        Password (min. 6 characters)
+                      </label>
+                      {fieldErrors.password && (
+                        <span className="text-[11px] text-rose-500 font-medium truncate max-w-[220px] text-right flex items-center gap-1 animate-fadeIn">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{fieldErrors.password}</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
@@ -1039,18 +1071,16 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    {fieldErrors.password && (
-                      <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                        {fieldErrors.password}
-                      </p>
-                    )}
                   </div>
 
-                  {fieldErrors.general && (
-                    <p className="text-xs text-red-500 font-medium text-center py-1 animate-fadeIn">
-                      {fieldErrors.general}
-                    </p>
-                  )}
+                  <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
+                    {fieldErrors.general ? (
+                      <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{fieldErrors.general}</span>
+                      </p>
+                    ) : null}
+                  </div>
 
                   {/* Terms of Service and Privacy Policy Consent Checkbox */}
                   <div className="pt-1">
@@ -1092,11 +1122,14 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         </button>
                       </span>
                     </label>
-                    {fieldErrors.terms && (
-                      <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn text-left">
-                        {fieldErrors.terms}
-                      </p>
-                    )}
+                    <div className="min-h-[18px] mt-1 flex items-center">
+                      {fieldErrors.terms ? (
+                        <p className="text-[11px] text-rose-500 font-medium flex items-center gap-1 animate-fadeIn text-left">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span>{fieldErrors.terms}</span>
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* Continue Button */}
@@ -1155,9 +1188,17 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                 className="w-full text-left space-y-4"
               >
                 <div>
-                  <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                    Email address
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                    <label className="block text-xs font-semibold text-theme-text-muted">
+                      Email address
+                    </label>
+                    {fieldErrors.email && (
+                      <span className="text-[11px] text-rose-500 font-medium truncate max-w-[240px] text-right flex items-center gap-1 animate-fadeIn">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{fieldErrors.email}</span>
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="email"
                     required
@@ -1176,18 +1217,16 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-theme-border focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                     }`}
                   />
-                  {fieldErrors.email && (
-                    <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                      {fieldErrors.email}
-                    </p>
-                  )}
                 </div>
 
-                {fieldErrors.general && (
-                  <p className="text-xs text-red-500 font-medium text-center py-1 animate-fadeIn">
-                    {fieldErrors.general}
-                  </p>
-                )}
+                <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
+                  {fieldErrors.general ? (
+                    <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{fieldErrors.general}</span>
+                    </p>
+                  ) : null}
+                </div>
 
                 <button
                   type="submit"
@@ -1250,16 +1289,14 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-theme-border focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                     }`}
                   />
-                  {fieldErrors.otp && (
-                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
-                      {fieldErrors.otp}
-                    </p>
-                  )}
-                  {fieldErrors.general && !fieldErrors.otp && (
-                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
-                      {fieldErrors.general}
-                    </p>
-                  )}
+                  <div className="h-6 mt-1 flex items-center justify-center">
+                    {(fieldErrors.otp || fieldErrors.general) ? (
+                      <p className="text-xs text-red-500 font-medium text-center flex items-center justify-center gap-1.5 animate-fadeIn">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{fieldErrors.otp || fieldErrors.general}</span>
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <button
@@ -1337,16 +1374,14 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-theme-border focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                     }`}
                   />
-                  {fieldErrors.resetCode && (
-                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
-                      {fieldErrors.resetCode}
-                    </p>
-                  )}
-                  {fieldErrors.general && !fieldErrors.resetCode && (
-                    <p className="mt-2 text-xs text-red-500 font-medium text-center animate-fadeIn">
-                      {fieldErrors.general}
-                    </p>
-                  )}
+                  <div className="h-6 mt-1 flex items-center justify-center">
+                    {(fieldErrors.resetCode || fieldErrors.general) ? (
+                      <p className="text-xs text-red-500 font-medium text-center flex items-center justify-center gap-1.5 animate-fadeIn">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{fieldErrors.resetCode || fieldErrors.general}</span>
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <button
@@ -1393,9 +1428,17 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
 
               <form onSubmit={handleResetPasswordSubmit} className="w-full text-left space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                    New password (min. 6 characters)
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                    <label className="block text-xs font-semibold text-theme-text-muted">
+                      New password (min. 6 characters)
+                    </label>
+                    {fieldErrors.newPassword && (
+                      <span className="text-[11px] text-rose-500 font-medium truncate max-w-[220px] text-right flex items-center gap-1 animate-fadeIn">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{fieldErrors.newPassword}</span>
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
@@ -1426,17 +1469,20 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                       {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  {fieldErrors.newPassword && (
-                    <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                      {fieldErrors.newPassword}
-                    </p>
-                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-theme-text-muted mb-1.5">
-                    Confirm new password
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                    <label className="block text-xs font-semibold text-theme-text-muted">
+                      Confirm new password
+                    </label>
+                    {fieldErrors.confirmNewPassword && (
+                      <span className="text-[11px] text-rose-500 font-medium truncate max-w-[220px] text-right flex items-center gap-1 animate-fadeIn">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{fieldErrors.confirmNewPassword}</span>
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="password"
                     required
@@ -1456,18 +1502,16 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-theme-border focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                     }`}
                   />
-                  {fieldErrors.confirmNewPassword && (
-                    <p className="mt-1.5 text-xs text-red-500 font-medium animate-fadeIn">
-                      {fieldErrors.confirmNewPassword}
-                    </p>
-                  )}
                 </div>
 
-                {fieldErrors.general && (
-                  <p className="text-xs text-red-500 font-medium text-center py-1 animate-fadeIn">
-                    {fieldErrors.general}
-                  </p>
-                )}
+                <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
+                  {fieldErrors.general ? (
+                    <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{fieldErrors.general}</span>
+                    </p>
+                  ) : null}
+                </div>
 
                 <button
                   type="submit"

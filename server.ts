@@ -582,7 +582,9 @@ async function startServer() {
 
     // 7. Content-Security-Policy (CSP): Cross-site scripting & injection mitigation
     const isDev = process.env.NODE_ENV !== 'production';
-    const frameAncestors = "'self' https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com";
+    const frameAncestors = isDev
+      ? "'self' * https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com"
+      : "'self' https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com";
 
     const scriptSrc = "script-src 'self' 'unsafe-inline' https://apis.google.com https://*.firebaseio.com https://*.googleapis.com https://www.youtube.com https://s.ytimg.com";
 

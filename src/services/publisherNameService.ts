@@ -518,9 +518,57 @@ export async function propagatePublisherNameToAllReleases(
   return updatedCount;
 }
 
+export const PRESERVED_CLAIMED_NAME_KEY = 'prople_preserved_claimed_name';
+export const GUEST_UID_KEY = 'prople_guest_uid';
+
+/**
+ * Returns a stable guest UID persisted in localStorage across sessions
+ */
+export function getOrCreateGuestUid(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      let id = localStorage.getItem(GUEST_UID_KEY);
+      if (!id) {
+        id = 'guest_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem(GUEST_UID_KEY, id);
+      }
+      return id;
+    }
+  } catch {}
+  return 'guest_' + Date.now().toString(36);
+}
+
+/**
+ * Returns the preserved claimed publisher name (persisted even after log out)
+ */
+export function getPreservedClaimedName(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const name = localStorage.getItem(PRESERVED_CLAIMED_NAME_KEY);
+      if (name && name.trim()) return name.trim();
+    }
+  } catch {}
+  return '';
+}
+
+/**
+ * Persists a claimed publisher name into localStorage so it survives logout and guest sessions
+ */
+export function setPreservedClaimedName(name: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const clean = (name || '').trim();
+      if (clean) {
+        localStorage.setItem(PRESERVED_CLAIMED_NAME_KEY, clean);
+      }
+    }
+  } catch {}
+}
+
 /**
  * Claim or update a publisher name in the indexed database registry
  * and universally apply it across all published apps/releases owned by the user.
+ * Preserves the claimed name across sessions and after logout.
  */
 export async function claimPublisherName(
   name: string,
@@ -543,7 +591,10 @@ export async function claimPublisherName(
     return { success: false, message: 'Publisher name must include letters or numbers.' };
   }
 
-  const curUid = (auth.currentUser?.uid || userId || '').trim();
+  // Preserve the claimed name immediately in local storage so it survives logout and tab closing
+  setPreservedClaimedName(trimmed);
+
+  const curUid = (auth.currentUser?.uid || userId || getOrCreateGuestUid()).trim();
   const curEmail = (auth.currentUser?.email || userEmail || '').toLowerCase().trim();
 
   let clientClaimed = false;

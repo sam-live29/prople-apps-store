@@ -103,7 +103,7 @@ import { usePreserveScroll } from '../services/scrollManager';
 import AppMediaUploader from './MediaUpload/AppMediaUploader';
 import { safeFetchJson } from '../utils/safeFetch';
 import PackageFormatIcon from './PackageFormatIcon';
-import { checkPublisherNameAvailability, claimPublisherName } from '../services/publisherNameService';
+import { checkPublisherNameAvailability, claimPublisherName, getPreservedClaimedName } from '../services/publisherNameService';
 import { computeDeterministicSha256, extractSha256FromText } from '../utils/securityUtils';
 
 export function detectStorageProviderLabel(urlStr?: string): string {
@@ -1056,6 +1056,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
   // Navigate user to a specific step and scroll directly to its target section / field
   const navigateToStepAndSection = useCallback((targetStep: 1 | 2 | 3 | 4 | 5 | 6, targetId?: string) => {
+    setShowValidationErrors(true);
     if (!targetId) {
       setStep(targetStep);
       return;
@@ -1134,7 +1135,8 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   
   // Section 1: Basic Info & Branding
   const [name, setName] = useState(() => initialDraft?.name || '');
-  const currentGoogleName = (user?.publisherName || user?.displayName || '').trim();
+  const currentPreservedName = getPreservedClaimedName();
+  const currentGoogleName = (user?.publisherName || user?.displayName || currentPreservedName || '').trim();
   const currentGoogleEmail = user?.email || 'support@prople.co.in';
   const [developerName, setDeveloperName] = useState(() => {
     const draftDev = (initialDraft?.developerName || '').trim();
@@ -1152,9 +1154,10 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [inAppPurchases, setInAppPurchases] = useState(() => Boolean(initialDraft?.inAppPurchases));
   const [tags, setTags] = useState(() => initialDraft?.tags || '');
   const [interactiveElements, setInteractiveElements] = useState<string[]>(() => initialDraft?.interactiveElements || []);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
   // Publisher Name conflict detection and real-time availability validation
-  const activePublisherName = (developerName || user?.publisherName || user?.displayName || '').trim();
+  const activePublisherName = (developerName || user?.publisherName || user?.displayName || currentPreservedName || '').trim();
   const [isPublisherNameConflict, setIsPublisherNameConflict] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const [isCheckingPublisherField, setIsCheckingPublisherField] = useState(false);
@@ -2111,6 +2114,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     setReleaseUrlError(null);
     setPublishButtonState('idle');
     setShowCancelModal(false);
+    setShowValidationErrors(false);
   }, [currentGoogleName, currentGoogleEmail]);
 
   const applyDraftToForm = useCallback((d: any, targetEditingAppId: string | null) => {
@@ -4142,9 +4146,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       if (releaseUrlError) setReleaseUrlError(null);
                     }}
                     className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2.5 text-xs font-mono text-theme-text outline-none transition-colors ${
-                      releaseUrlError || (!isValidHttpsUrl(githubUrl) && !isValidHttpsUrl(downloadUrl))
+                      releaseUrlError || (showValidationErrors && (!isValidHttpsUrl(githubUrl) && !isValidHttpsUrl(downloadUrl)))
                         ? 'border-rose-500/80 focus:border-rose-500'
-                        : 'border-emerald-500/60 focus:border-emerald-500'
+                        : (isValidHttpsUrl(githubUrl) || isValidHttpsUrl(downloadUrl))
+                        ? 'border-emerald-500/60 focus:border-emerald-500'
+                        : 'border-theme-border/60 focus:border-blue-500'
                     }`}
                   />
                   <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4152,11 +4158,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                         <Check className="w-3 h-3 shrink-0" /> Valid HTTPS Binary or Release URL provided
                       </span>
-                    ) : (
+                    ) : (showValidationErrors || releaseUrlError) ? (
                       <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a valid https:// binary or release URL
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {releaseUrlError && (
@@ -4215,9 +4221,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     value={name} 
                     onChange={e => setName(e.target.value.slice(0, 50))}
                     className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
-                      name.trim()
+                      showValidationErrors && !name.trim()
+                        ? 'border-rose-500/80 focus:border-rose-500'
+                        : name.trim()
                         ? 'border-emerald-500/60 focus:border-emerald-500'
-                        : 'border-rose-500/80 focus:border-rose-500'
+                        : 'border-theme-border/60 focus:border-blue-500'
                     }`}
                   />
                   <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4225,11 +4233,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                         <Check className="w-3 h-3 shrink-0" /> App Name provided
                       </span>
-                    ) : (
+                    ) : showValidationErrors ? (
                       <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter your application name
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -4238,46 +4246,47 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     <div className="flex items-center justify-between mb-1 min-h-[20px] gap-1">
                       <label className="block text-xs font-medium text-theme-text flex items-center gap-1.5 truncate" title="Publisher Name">
                         <UserCheck className="w-3.5 h-3.5 text-theme-text-muted shrink-0" />
-                        <span className="truncate">Publisher Name *</span>
+                        <span className="truncate">Publisher Name</span>
                       </label>
-                      {activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available && (
-                        <span className="text-[10px] font-medium text-emerald-500 shrink-0">Verified Unique</span>
-                      )}
+                      <span className="text-[10px] font-medium text-theme-text-muted shrink-0 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> Immutable in form
+                      </span>
                     </div>
                     <div className="relative">
                       <input 
                         id="input-publisher-name"
                         type="text" 
-                        required
-                        maxLength={50}
-                        placeholder="Enter unique publisher / studio name"
-                        value={developerName || user?.publisherName || user?.displayName || ''} 
-                        onChange={e => setDeveloperName(e.target.value.slice(0, 50))}
-                        className={`w-full rounded-lg px-3 py-2 text-xs sm:text-sm text-theme-text bg-theme-hover/40 border outline-none transition-colors ${
-                          activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available
-                            ? 'border-emerald-500/60 focus:border-emerald-500'
-                            : 'border-rose-500/80 focus:border-rose-500'
-                        }`}
+                        readOnly
+                        disabled
+                        value={activePublisherName || 'No publisher name claimed'} 
+                        className="w-full rounded-lg px-3 py-2 text-xs sm:text-sm text-theme-text bg-theme-hover/20 border border-theme-border/60 outline-none cursor-not-allowed select-none opacity-85"
                       />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-theme-text-muted pointer-events-none">
+                        <Lock className="w-3.5 h-3.5" />
+                      </div>
                     </div>
                     <div className="mt-1 px-1 flex items-center justify-between gap-1.5 flex-wrap">
-                      {isCheckingPublisherField ? (
-                        <span className="text-[11px] font-medium text-blue-400 flex items-center gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin shrink-0" /> Verifying publisher name availability...
+                      {activePublisherName ? (
+                        <span className="text-[11px] text-theme-text-muted flex items-center gap-1">
+                          <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                          <span>Managed in Settings &rarr; Edit Profile</span>
                         </span>
-                      ) : activePublisherName.trim().length >= 2 && publisherFieldStatusMsg?.available ? (
-                        <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
-                          <Check className="w-3 h-3 shrink-0" /> {publisherFieldStatusMsg.message}
-                        </span>
-                      ) : activePublisherName.trim().length >= 2 && publisherFieldStatusMsg && !publisherFieldStatusMsg.available ? (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3 shrink-0" /> {publisherFieldStatusMsg.message}
+                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Please claim a publisher name in Edit Profile
                         </span>
                       ) : (
-                        <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter and verify a unique Publisher Name
+                        <span className="text-[11px] text-theme-text-muted flex items-center gap-1">
+                          <span>Set in Settings &rarr; Edit Profile</span>
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={handleGoToSettingsForName}
+                        className="text-[11px] text-blue-500 hover:text-blue-400 font-medium underline cursor-pointer"
+                      >
+                        Edit in Profile
+                      </button>
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -4289,9 +4298,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       value={category}
                       onChange={e => setCategory(e.target.value)}
                       className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
-                        category.trim()
+                        showValidationErrors && !category.trim()
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : category.trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     >
                       {appCategories && appCategories.length > 0 ? (
@@ -4318,11 +4329,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Category selected
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Select a store category
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -4341,9 +4352,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     value={tagline} 
                     onChange={e => setTagline(e.target.value.slice(0, 80))}
                     className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
-                      tagline.trim()
+                      showValidationErrors && !tagline.trim()
+                        ? 'border-rose-500/80 focus:border-rose-500'
+                        : tagline.trim()
                         ? 'border-emerald-500/60 focus:border-emerald-500'
-                        : 'border-rose-500/80 focus:border-rose-500'
+                        : 'border-theme-border/60 focus:border-blue-500'
                     }`}
                   />
                   <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4351,11 +4364,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                         <Check className="w-3 h-3 shrink-0" /> Short tagline summary provided
                       </span>
-                    ) : (
+                    ) : showValidationErrors ? (
                       <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a short tagline summary
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -4468,7 +4481,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-xs font-mono text-theme-text outline-none transition-colors ${
                       isValidHttpsUrl(downloadUrl)
                         ? 'border-emerald-500/60 focus:border-emerald-500'
-                        : 'border-rose-500/80 focus:border-rose-500'
+                        : showValidationErrors
+                        ? 'border-rose-500/80 focus:border-rose-500'
+                        : 'border-theme-border/60 focus:border-blue-500'
                     }`}
                   />
                   <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4476,10 +4491,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                         <Check className="w-3 h-3 shrink-0" /> Valid HTTPS Direct Binary Download URL provided
                       </span>
-                    ) : (
+                    ) : showValidationErrors ? (
                       <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a valid https:// Direct Binary Download URL
                       </span>
+                    ) : (
+                      <span className="text-[11px] text-theme-text-muted">Enter a direct binary download URL (APK, EXE, AppImage, DMG, etc.)</span>
                     )}
                   </div>
 
@@ -4524,7 +4541,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
                         (versionName || '').trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4532,10 +4551,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Version number set
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter version number
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">e.g. 1.0.0</span>
                       )}
                     </div>
                   </div>
@@ -4561,7 +4582,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full bg-theme-hover/40 border rounded-lg px-3 py-2 text-sm text-theme-text outline-none transition-colors ${
                         (version || '').trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -4569,10 +4592,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Version tag set
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter version tag
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">e.g. v1.0.0</span>
                       )}
                     </div>
                   </div>
@@ -5051,7 +5076,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                   className={`w-full bg-theme-hover/40 border rounded-lg p-3 text-xs text-theme-text outline-none resize-y min-h-[140px] leading-relaxed transition-colors ${
                     description.trim()
                       ? 'border-emerald-500/60 focus:border-emerald-500'
-                      : 'border-rose-500/80 focus:border-rose-500'
+                      : showValidationErrors
+                      ? 'border-rose-500/80 focus:border-rose-500'
+                      : 'border-theme-border/60 focus:border-blue-500'
                   }`}
                 />
                 <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -5059,10 +5086,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                     <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                       <Check className="w-3 h-3 shrink-0" /> Full store description provided
                     </span>
-                  ) : (
+                  ) : showValidationErrors ? (
                     <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter a comprehensive app description
                     </span>
+                  ) : (
+                    <span className="text-[11px] text-theme-text-muted">Detailed overview shown on the &ldquo;About this app&rdquo; page</span>
                   )}
                 </div>
               </div>
@@ -5102,7 +5131,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
                         dataSafetyOverview.trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -5110,10 +5141,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Data safety overview provided
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter data safety overview
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">High-level summary of privacy and data safety practices</span>
                       )}
                     </div>
                   </div>
@@ -5136,7 +5169,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
                         customDataCollected.trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -5144,10 +5179,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Data collection declaration provided
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Declare what data is collected (or state none)
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">Describe what data is collected off-device, or specify none</span>
                       )}
                     </div>
                   </div>
@@ -5170,7 +5207,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
                         dataShared.trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -5178,10 +5217,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Third-party data sharing declaration provided
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Declare third-party data sharing (or state none)
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">Describe third-party sharing, or state no data is shared</span>
                       )}
                     </div>
                   </div>
@@ -5204,7 +5245,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                       className={`w-full h-[120px] sm:h-[130px] min-h-[120px] sm:min-h-[130px] bg-transparent border rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-theme-text outline-none resize-none leading-relaxed transition-colors ${
                         dataDeletionPolicy.trim()
                           ? 'border-emerald-500/60 focus:border-emerald-500'
-                          : 'border-rose-500/80 focus:border-rose-500'
+                          : showValidationErrors
+                          ? 'border-rose-500/80 focus:border-rose-500'
+                          : 'border-theme-border/60 focus:border-blue-500'
                       }`}
                     />
                     <div className="mt-1 px-1 flex items-center gap-1.5">
@@ -5212,10 +5255,12 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                         <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
                           <Check className="w-3 h-3 shrink-0" /> Data deletion & retention policy provided
                         </span>
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 shrink-0" /> Mandatory: Enter data deletion & retention policy
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">Policy regarding data retention and user deletion requests</span>
                       )}
                     </div>
                   </div>
@@ -5302,7 +5347,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                             ? 'border-rose-500 focus:border-rose-500'
                             : privacyPolicyUrl.trim() && checkAuthorizedLink(privacyPolicyUrl).isAuthorized
                             ? 'border-emerald-500/80 focus:border-emerald-500'
-                            : 'border-theme-border focus:border-blue-500'
+                            : showValidationErrors
+                            ? 'border-rose-500/80 focus:border-rose-500'
+                            : 'border-theme-border/60 focus:border-blue-500'
                         }`}
                       />
                     </div>
@@ -5321,11 +5368,13 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                             <span className="truncate">{checkAuthorizedLink(privacyPolicyUrl).statusText}</span>
                           </span>
                         )
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-rose-500/90 font-medium flex items-center gap-1.5 truncate">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate">Mandatory: Please provide an authorized link</span>
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">Enter a public HTTPS privacy policy URL</span>
                       )}
                     </div>
                   </div>
@@ -5350,7 +5399,9 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                             ? 'border-rose-500 focus:border-rose-500'
                             : termsAndConditionsUrl.trim() && checkAuthorizedLink(termsAndConditionsUrl).isAuthorized
                             ? 'border-emerald-500/80 focus:border-emerald-500'
-                            : 'border-theme-border focus:border-blue-500'
+                            : showValidationErrors
+                            ? 'border-rose-500/80 focus:border-rose-500'
+                            : 'border-theme-border/60 focus:border-blue-500'
                         }`}
                       />
                     </div>
@@ -5369,11 +5420,13 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                             <span className="truncate">{checkAuthorizedLink(termsAndConditionsUrl).statusText}</span>
                           </span>
                         )
-                      ) : (
+                      ) : showValidationErrors ? (
                         <span className="text-rose-500/90 font-medium flex items-center gap-1.5 truncate">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate">Mandatory: Please provide an authorized link</span>
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-theme-text-muted">Enter a public HTTPS terms of service URL</span>
                       )}
                     </div>
                   </div>
