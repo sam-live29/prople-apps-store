@@ -316,7 +316,8 @@ export default function AppDetailPage({
     openPrivacyPolicy,
     openTermsOfService,
     openWishlist,
-    openBookmarkedApps
+    openBookmarkedApps,
+    performSearch
   } = useNavigation();
 
   const { showToast } = useToast();
@@ -2092,21 +2093,36 @@ export default function AppDetailPage({
         )}
 
         {/* About this app */}
-        <div className="py-5 cursor-pointer hover:bg-theme-hover/40 rounded-2xl transition-colors" onClick={() => setDetailView('about')}>
-          <div className="flex items-center justify-between mb-3">
+        <div className="py-5">
+          <div 
+            className="flex items-center justify-between mb-3 cursor-pointer hover:opacity-80 transition-opacity" 
+            onClick={() => setDetailView('about')}
+          >
              <h2 className="text-[18px] sm:text-[19px] font-medium font-google-sans text-theme-text">About this app</h2>
              <button className="w-8 h-8 flex items-center justify-center rounded-full bg-theme-hover/70 text-theme-text pointer-events-none border-0">
                <ArrowRight className="w-4.5 h-4.5" />
              </button>
           </div>
-          <p className="text-[15px] text-theme-text leading-relaxed mb-4">
+          <p 
+            className="text-[15px] text-theme-text leading-relaxed mb-4 whitespace-pre-line line-clamp-4 cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setDetailView('about')}
+          >
             {app.aboutText}
           </p>
           <div className="flex flex-wrap gap-2.5">
             {app.tags.map((tag, i) => (
-              <span key={i} className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent text-[13px] font-medium text-theme-text">
+              <button
+                key={i}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  performSearch(tag);
+                }}
+                className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent hover:bg-theme-hover active:scale-95 transition-all text-[13px] font-medium text-theme-text cursor-pointer"
+                title={`Search for "${tag}"`}
+              >
                 {tag}
-              </span>
+              </button>
             ))}
           </div>
         </div>

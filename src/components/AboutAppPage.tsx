@@ -30,7 +30,7 @@ import AppPermissionsPage from './AppPermissionsPage';
 import { extractPermissionGroups } from '../utils/permissionUtils';
 
 export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack: () => void }) {
-  const { openTermsOfService, openPrivacyPolicy } = useNavigation();
+  const { openTermsOfService, openPrivacyPolicy, performSearch } = useNavigation();
   const { showToast } = useToast();
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -214,12 +214,18 @@ export default function AboutAppPage({ app, onBack }: { app: AppDetails; onBack:
                 {app.tags && app.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-4 mt-2">
                     {app.tags.map((tag, i) => (
-                      <span 
+                      <button 
                         key={i} 
-                        className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent text-[13px] font-medium text-theme-text"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          performSearch(tag);
+                        }}
+                        className="px-3 py-1 rounded-full border border-theme-border dark:border-[#3c4043] bg-transparent hover:bg-theme-hover active:scale-95 transition-all text-[13px] font-medium text-theme-text cursor-pointer"
+                        title={`Search for "${tag}"`}
                       >
                         {tag}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 )}
