@@ -820,11 +820,17 @@ export default function AppRatingsReviewsPage({
 
       {/* Relevance Sort Modal */}
       {activeModal === 'relevance' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-           <div className="w-full max-w-sm bg-theme-bg rounded-t-3xl sm:rounded-2xl border border-theme-border/60 p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-theme-border/40 pb-3">
+        <div 
+          onClick={() => setActiveModal(null)}
+          className="fixed inset-0 z-50 bg-transparent flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+        >
+           <div 
+             onClick={(e) => e.stopPropagation()}
+             className="w-full max-w-sm bg-theme-bg rounded-t-3xl sm:rounded-2xl border-0 p-5 shadow-[0_-4px_30px_rgba(0,0,0,0.4)] sm:shadow-2xl space-y-4"
+           >
+              <div className="flex items-center justify-between pb-1">
                  <h3 className="font-semibold text-theme-text text-base">Sort reviews by</h3>
-                 <button onClick={() => setActiveModal(null)} className="p-1 rounded-full hover:bg-theme-hover">
+                 <button onClick={() => setActiveModal(null)} className="p-1 rounded-full hover:bg-theme-hover cursor-pointer" aria-label="Close">
                     <X className="w-5 h-5 text-theme-text-muted" />
                  </button>
               </div>
@@ -840,7 +846,7 @@ export default function AppRatingsReviewsPage({
                        setSortBy(item.id as any);
                        setActiveModal(null);
                      }}
-                     className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors ${
+                     className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                        sortBy === item.id ? 'bg-blue-500/15 text-blue-400' : 'hover:bg-theme-hover text-theme-text'
                      }`}
                    >
@@ -855,11 +861,17 @@ export default function AppRatingsReviewsPage({
 
       {/* Star Filter Modal */}
       {activeModal === 'rating' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-           <div className="w-full max-w-sm bg-theme-bg rounded-t-3xl sm:rounded-2xl border border-theme-border/60 p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-theme-border/40 pb-3">
+        <div 
+          onClick={() => setActiveModal(null)}
+          className="fixed inset-0 z-50 bg-transparent flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+        >
+           <div 
+             onClick={(e) => e.stopPropagation()}
+             className="w-full max-w-sm bg-theme-bg rounded-t-3xl sm:rounded-2xl border-0 p-5 shadow-[0_-4px_30px_rgba(0,0,0,0.4)] sm:shadow-2xl space-y-4"
+           >
+              <div className="flex items-center justify-between pb-1">
                  <h3 className="font-semibold text-theme-text text-base">Filter by rating</h3>
-                 <button onClick={() => setActiveModal(null)} className="p-1 rounded-full hover:bg-theme-hover">
+                 <button onClick={() => setActiveModal(null)} className="p-1 rounded-full hover:bg-theme-hover cursor-pointer" aria-label="Close">
                     <X className="w-5 h-5 text-theme-text-muted" />
                  </button>
               </div>
@@ -869,7 +881,7 @@ export default function AppRatingsReviewsPage({
                      setFilterRating(null);
                      setActiveModal(null);
                    }}
-                   className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors ${
+                   className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                      filterRating === null ? 'bg-blue-500/15 text-blue-400' : 'hover:bg-theme-hover text-theme-text'
                    }`}
                  >
@@ -883,7 +895,7 @@ export default function AppRatingsReviewsPage({
                        setFilterRating(stars);
                        setActiveModal(null);
                      }}
-                     className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors ${
+                     className={`flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                        filterRating === stars ? 'bg-blue-500/15 text-blue-400' : 'hover:bg-theme-hover text-theme-text'
                      }`}
                    >

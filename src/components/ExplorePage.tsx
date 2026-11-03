@@ -1062,8 +1062,8 @@ export default function ExplorePage({
       {/* Fallback Empty State if total available apps are not enough to show sections */}
       {!distribution.hasEnoughContent && (
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-          <div className="w-16 h-16 rounded-3xl bg-theme-card border border-theme-border/40 flex items-center justify-center mb-4 text-theme-text-muted shadow-xs">
-            <Search className="w-8 h-8 text-blue-500" />
+          <div className="w-16 h-16 rounded-3xl bg-theme-card flex items-center justify-center mb-4 text-theme-text-muted shadow-xs">
+            <Search className="w-8 h-8 text-theme-text-muted" />
           </div>
           <h3 className="text-base font-medium text-theme-text mb-1.5">
             Discover apps & games

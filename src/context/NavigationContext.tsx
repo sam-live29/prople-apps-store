@@ -1011,8 +1011,26 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [pushStep, current.writeReviewRating]);
 
   const closeDetailSubView = useCallback(() => {
-    goBack();
-  }, [goBack]);
+    setCurrent(prev => {
+      if (prev.detailView === 'none') return prev;
+      return {
+        ...prev,
+        detailView: 'none',
+        writeReviewRating: 0,
+        targetReviewId: null,
+      };
+    });
+
+    if (stackRef.current.length > 1) {
+      const top = stackRef.current[stackRef.current.length - 1];
+      if (top.detailView !== 'none') {
+        stackRef.current.pop();
+        try {
+          window.history.back();
+        } catch {}
+      }
+    }
+  }, []);
 
   const openAppReviews = useCallback((appId: string, reviewId?: string) => {
     pushStep({

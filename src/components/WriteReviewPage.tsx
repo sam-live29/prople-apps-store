@@ -271,35 +271,7 @@ export default function WriteReviewPage({
         <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 pt-4 pb-20 space-y-7">
           <div className="lg:grid lg:grid-cols-12 lg:gap-12 items-start">
             <div className="lg:col-span-8 flex flex-col min-w-0 space-y-7">
-        {/* Banner when editing a review for another app */}
-        {isEditingOtherApp && (
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex items-center gap-2.5 min-w-0">
-              {targetApp.iconUrl ? (
-                <img src={targetApp.iconUrl} alt={targetApp.name} className="w-7 h-7 rounded-lg object-cover shrink-0 border border-theme-border/30" />
-              ) : (
-                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                  {targetApp.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex flex-col min-w-0">
-                <span className="text-theme-text truncate font-medium">
-                  Editing review for <span className="text-blue-600 dark:text-[#8ab4f8]">{targetApp.name}</span>
-                </span>
-                <span className="text-[11px] text-theme-text-muted">
-                  Update stars, comments, or photos above
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleSwitchBackToOriginalApp}
-              className="px-3 py-1.5 text-xs text-theme-text-muted hover:text-theme-text font-medium shrink-0 cursor-pointer rounded-full hover:bg-theme-hover active:bg-theme-border/40 transition-colors"
-            >
-              Back to {app.name}
-            </button>
-          </div>
-        )}
+
         {/* User Identity Info */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shrink-0">

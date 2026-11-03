@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, ChevronDown, Check, AlertCircle, Loader2, Lock, Clock } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Check, AlertCircle, Loader2, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStoreConfig } from '../context/StoreConfigContext';
 import { useToast } from '../context/ToastContext';
@@ -280,8 +280,8 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                 {isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
                 <span className="text-red-500">*</span>
                 {isNameLocked && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                    <Lock className="w-2.5 h-2.5" /> Locked
+                  <span className="text-[11px] font-medium text-amber-400/90">
+                    (Locked)
                   </span>
                 )}
               </label>
@@ -298,7 +298,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value.slice(0, 50))}
                 placeholder="Enter your unique publisher name"
-                className={`w-full border rounded-xl text-sm text-theme-text placeholder-theme-text-muted/50 px-3.5 py-2.5 pr-10 focus:outline-none transition-all ${
+                className={`w-full border rounded-xl text-sm text-theme-text placeholder-theme-text-muted/50 px-3.5 py-2.5 ${isNameLocked ? 'pr-3.5' : 'pr-10'} focus:outline-none transition-all ${
                   isNameLocked 
                     ? 'bg-theme-hover/20 border-theme-border/40 text-theme-text/75 cursor-not-allowed'
                     : nameValidation.isTaken || nameValidation.errorMessage
@@ -309,9 +309,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
                 }`}
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                {isNameLocked ? (
-                  <Lock className="w-4 h-4 text-theme-text-muted/60" />
-                ) : nameValidation.isChecking ? (
+                {isNameLocked ? null : nameValidation.isChecking ? (
                   <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 ) : nameValidation.isTaken || nameValidation.errorMessage ? (
                   <AlertCircle className="w-4 h-4 text-red-500" />
@@ -323,21 +321,15 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
 
             {/* Waiting Period Alert, Grace Period Notice, or Real-time Status */}
             {isNameLocked ? (
-              <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 mt-1">
-                <Lock className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                <div className="flex-1 space-y-0.5">
-                  <p className="font-medium text-amber-200">15-Day Name Change Waiting Period</p>
-                  <p className="text-amber-300/90 leading-relaxed">{nameChangeStatus.statusMessage}</p>
-                  <p className="text-[11px] text-amber-400/80">You can still freely update your bio, age group, gender, and location below.</p>
-                </div>
+              <div className="space-y-1 pt-1 text-xs">
+                <p className="font-medium text-amber-400">15-Day Name Change Waiting Period</p>
+                <p className="text-theme-text-muted leading-relaxed">{nameChangeStatus.statusMessage}</p>
+                <p className="text-[11px] text-theme-text-muted/80">You can still freely update your bio, age group, gender, and location below.</p>
               </div>
             ) : nameChangeStatus.isInGracePeriod ? (
-              <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 rounded-xl text-xs text-blue-300 mt-1">
-                <Clock className="w-4 h-4 shrink-0 mt-0.5 text-blue-400" />
-                <div className="flex-1 space-y-0.5">
-                  <p className="font-medium text-blue-200">Active 30-Minute Edit Window</p>
-                  <p className="text-blue-300/90 leading-relaxed">{nameChangeStatus.statusMessage}</p>
-                </div>
+              <div className="space-y-1 pt-1 text-xs">
+                <p className="font-medium text-blue-400">Active 30-Minute Edit Window</p>
+                <p className="text-theme-text-muted leading-relaxed">{nameChangeStatus.statusMessage}</p>
               </div>
             ) : nameValidation.isChecking ? (
               <p className="text-xs text-blue-500 flex items-center gap-1 pt-0.5 animate-fadeIn">

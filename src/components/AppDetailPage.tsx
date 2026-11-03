@@ -309,6 +309,7 @@ export default function AppDetailPage({
   const { 
     detailView, 
     openDetailSubView, 
+    closeDetailSubView,
     goBack: navGoBack, 
     writeReviewRating: contextRating,
     targetReviewId,
@@ -366,15 +367,60 @@ export default function AppDetailPage({
   const [isScrolled, setIsScrolled] = useState(false);
   const [isAppSupportOpen, setIsAppSupportOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const bannerMenuRef = useRef<HTMLDivElement>(null);
+  const noBannerMenuRef = useRef<HTMLDivElement>(null);
+  const desktopMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close 3-dots menu reliably when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const handleClickOutside = (event: Event) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+
+      const isInside =
+        (bannerMenuRef.current && bannerMenuRef.current.contains(target)) ||
+        (noBannerMenuRef.current && noBannerMenuRef.current.contains(target)) ||
+        (desktopMenuRef.current && desktopMenuRef.current.contains(target));
+
+      if (!isInside) {
+        setShowMenu(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showMenu]);
+
   const [writeReviewRating, setWriteReviewRating] = useState<number>(0);
 
   const setDetailView = (view: 'none' | 'about' | 'data-safety' | 'reviews' | 'write-review' | 'permissions') => {
     if (view === 'none') {
-      navGoBack();
+      closeDetailSubView();
     } else {
       openDetailSubView(view);
     }
   };
+
+  // Ensure subview is reset to 'none' when leaving this app details page or when appId changes
+  useEffect(() => {
+    return () => {
+      closeDetailSubView();
+    };
+  }, [appId, closeDetailSubView]);
+
 
   const [copiedHash, setCopiedHash] = useState(false);
   const lastDownloadClickRef = useRef<number>(0);
@@ -713,6 +759,25 @@ export default function AppDetailPage({
       dataSafety: resolvedRawApp.dataSafety
     };
   }, [resolvedRawApp, targetAppId]);
+
+  // Concise few words summary for About section, styled like Data Safety
+  const previewAboutText = useMemo(() => {
+    if (app?.tagline && app.tagline.trim().length > 0) {
+      return app.tagline.trim();
+    }
+    if (app?.shortDescription && app.shortDescription.trim().length > 0) {
+      return app.shortDescription.trim();
+    }
+    if (app?.aboutText && app.aboutText.trim().length > 0) {
+      const firstLine = app.aboutText.trim().split(/\r?\n+/)[0] || '';
+      const firstSentence = firstLine.split(/(?<=[.!?])\s+/)[0] || firstLine;
+      if (firstSentence.length > 140) {
+        return firstSentence.slice(0, 140).trim() + '...';
+      }
+      return firstSentence;
+    }
+    return app?.name ? `${app.name} is a verified application on Prople Store.` : '';
+  }, [app?.tagline, app?.shortDescription, app?.aboutText, app?.name]);
 
   // Dynamically update document title, OpenGraph, Twitter, and Schema.org JSON-LD for Google ranking & visibility
   useEffect(() => {
@@ -1117,6 +1182,9 @@ export default function AppDetailPage({
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     setIsScrolled(e.currentTarget.scrollTop > 50);
+    if (showMenu) {
+      setShowMenu(false);
+    }
   };
 
   const handleCopySha256 = (hash: string) => {
@@ -1261,62 +1329,46 @@ export default function AppDetailPage({
                   >
                      <Share2 className="w-5 h-5" />
                   </button>
-                  <div className="relative flex items-center justify-center w-9 h-9 -translate-x-[7px]">
+                  <div ref={bannerMenuRef} className="relative flex items-center justify-center w-9 h-9 -translate-x-[7px]">
                     <button 
                       id="app-detail-more-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowMenu(!showMenu);
-                      }} 
+                      type="button"
+                      onClick={() => setShowMenu(prev => !prev)} 
                       className="w-9 h-9 flex items-center justify-center rounded-full text-white hover:bg-white/15 active:bg-white/25 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] transition-colors cursor-pointer" 
                       aria-label="More options"
                       title="More options"
+                      aria-expanded={showMenu}
                     >
                        <MoreVertical className="w-5 h-5" />
                     </button>
                     {showMenu && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-40 bg-transparent" 
-                          onClick={(e) => {
-                            e.stopPropagation();
+                      <div className="absolute right-2 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text border border-theme-border/30 animate-in fade-in zoom-in-95 duration-100">
+                        <button 
+                          type="button"
+                          onClick={() => {
                             setShowMenu(false);
-                          }} 
-                          onTouchStart={(e) => {
-                            e.stopPropagation();
-                            setShowMenu(false);
+                            handleToggleBookmark();
                           }}
-                        />
-                        <div className="absolute right-2 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text animate-in fade-in zoom-in-95 duration-100">
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowMenu(false);
-                              handleToggleBookmark();
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center gap-2.5"
-                          >
-                            {isCurrentAppBookmarked ? (
-                              <BookmarkCheck className="w-4 h-4 text-blue-500 dark:text-[#8ab4f8]" />
-                            ) : (
-                              <BookmarkPlus className="w-4 h-4 text-theme-text-muted" />
-                            )}
-                            <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowMenu(false);
-                              setIsFlagAppModalOpen(true);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer"
-                          >
-                            Flag as inappropriate
-                          </button>
-                        </div>
-                      </>
+                          className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center gap-2.5"
+                        >
+                          {isCurrentAppBookmarked ? (
+                            <BookmarkCheck className="w-4 h-4 text-blue-500 dark:text-[#8ab4f8]" />
+                          ) : (
+                            <BookmarkPlus className="w-4 h-4 text-theme-text-muted" />
+                          )}
+                          <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            setIsFlagAppModalOpen(true);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer"
+                        >
+                          Flag as inappropriate
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1369,62 +1421,46 @@ export default function AppDetailPage({
                 >
                    <Share2 className="w-5 h-5" />
                 </button>
-                <div className="relative flex items-center justify-center w-9 h-9 -translate-x-[7px]">
+                <div ref={noBannerMenuRef} className="relative flex items-center justify-center w-9 h-9 -translate-x-[7px]">
                   <button 
                     id="app-detail-more-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMenu(!showMenu);
-                    }} 
+                    type="button"
+                    onClick={() => setShowMenu(prev => !prev)} 
                     className="w-9 h-9 flex items-center justify-center text-[#444746] dark:text-theme-text hover:bg-theme-hover rounded-full transition-colors cursor-pointer" 
                     aria-label="More options"
                     title="More options"
+                    aria-expanded={showMenu}
                   >
                      <MoreVertical className="w-5 h-5" />
                   </button>
                   {showMenu && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40 bg-transparent" 
-                        onClick={(e) => {
-                          e.stopPropagation();
+                    <div className="absolute right-2 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text border border-theme-border/30 animate-in fade-in zoom-in-95 duration-100">
+                      <button 
+                        type="button"
+                        onClick={() => {
                           setShowMenu(false);
+                          handleToggleBookmark();
                         }} 
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
+                        className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center gap-2.5"
+                      >
+                        {isCurrentAppBookmarked ? (
+                          <BookmarkCheck className="w-4 h-4 text-blue-600 dark:text-[#8ab4f8]" />
+                        ) : (
+                          <BookmarkPlus className="w-4 h-4 text-theme-text-muted" />
+                        )}
+                        <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
                           setShowMenu(false);
-                        }}
-                      />
-                      <div className="absolute right-2 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text animate-in fade-in zoom-in-95 duration-100">
-                        <button 
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowMenu(false);
-                            handleToggleBookmark();
-                          }} 
-                          className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer flex items-center gap-2.5"
-                        >
-                          {isCurrentAppBookmarked ? (
-                            <BookmarkCheck className="w-4 h-4 text-blue-600 dark:text-[#8ab4f8]" />
-                          ) : (
-                            <BookmarkPlus className="w-4 h-4 text-theme-text-muted" />
-                          )}
-                          <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowMenu(false);
-                            setIsFlagAppModalOpen(true);
-                          }} 
-                          className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer"
-                        >
-                          Flag as inappropriate
-                        </button>
-                      </div>
-                    </>
+                          setIsFlagAppModalOpen(true);
+                        }} 
+                        className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        Flag as inappropriate
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1495,62 +1531,46 @@ export default function AppDetailPage({
                 <span>Share</span>
               </button>
 
-              <div className="relative flex items-center justify-center -translate-x-[7px]">
+              <div ref={desktopMenuRef} className="relative flex items-center justify-center -translate-x-[7px]">
                 <button 
                   id="app-detail-desktop-more-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMenu(!showMenu);
-                  }} 
+                  type="button"
+                  onClick={() => setShowMenu(prev => !prev)} 
                   className="w-8 h-8 flex items-center justify-center rounded-full text-theme-text hover:bg-theme-hover transition-colors cursor-pointer" 
                   aria-label="More options"
                   title="More options"
+                  aria-expanded={showMenu}
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>
                 {showMenu && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40 bg-transparent" 
-                      onClick={(e) => {
-                        e.stopPropagation();
+                  <div className="absolute right-0 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text border border-theme-border/30 animate-in fade-in zoom-in-95 duration-100">
+                    <button 
+                      type="button"
+                      onClick={() => {
                         setShowMenu(false);
+                        handleToggleBookmark();
                       }} 
-                      onTouchStart={(e) => {
-                        e.stopPropagation();
+                      className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-xs font-medium transition-colors cursor-pointer flex items-center gap-2.5"
+                    >
+                      {isCurrentAppBookmarked ? (
+                        <BookmarkCheck className="w-3.5 h-3.5 text-blue-500 dark:text-[#8ab4f8]" />
+                      ) : (
+                        <BookmarkPlus className="w-3.5 h-3.5 text-theme-text-muted" />
+                      )}
+                      <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
                         setShowMenu(false);
-                      }}
-                    />
-                    <div className="absolute right-0 top-full mt-1 w-52 bg-theme-card rounded-xl shadow-xl py-1.5 z-50 text-theme-text border border-theme-border/30 animate-in fade-in zoom-in-95 duration-100">
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowMenu(false);
-                          handleToggleBookmark();
-                        }} 
-                        className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-xs font-medium transition-colors cursor-pointer flex items-center gap-2.5"
-                      >
-                        {isCurrentAppBookmarked ? (
-                          <BookmarkCheck className="w-3.5 h-3.5 text-blue-500 dark:text-[#8ab4f8]" />
-                        ) : (
-                          <BookmarkPlus className="w-3.5 h-3.5 text-theme-text-muted" />
-                        )}
-                        <span>{isCurrentAppBookmarked ? 'Remove from wishlist' : 'Add to wishlist'}</span>
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowMenu(false);
-                          setIsFlagAppModalOpen(true);
-                        }} 
-                        className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-xs font-medium transition-colors cursor-pointer"
-                      >
-                        Flag as inappropriate
-                      </button>
-                    </div>
-                  </>
+                        setIsFlagAppModalOpen(true);
+                      }} 
+                      className="w-full text-left px-4 py-2 hover:bg-theme-hover text-theme-text text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Flag as inappropriate
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -2104,10 +2124,10 @@ export default function AppDetailPage({
              </button>
           </div>
           <p 
-            className="text-[15px] text-theme-text leading-relaxed mb-4 whitespace-pre-line line-clamp-4 cursor-pointer hover:opacity-90 transition-opacity"
+            className="text-[15px] text-theme-text leading-relaxed mb-4 line-clamp-3 cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setDetailView('about')}
           >
-            {app.aboutText}
+            {previewAboutText}
           </p>
           <div className="flex flex-wrap gap-2.5">
             {app.tags.map((tag, i) => (

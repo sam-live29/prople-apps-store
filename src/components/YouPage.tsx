@@ -629,24 +629,18 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
         ) : (
           <div className="p-4 sm:p-5 bg-theme-card rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-                userName !== 'Guest' ? 'bg-blue-600 text-white font-bold text-lg' : 'bg-theme-hover'
-              }`}>
-                {userName !== 'Guest' ? (
-                  userName.charAt(0).toUpperCase()
-                ) : (
-                  <User className="w-6 h-6 text-theme-text-muted" />
-                )}
+              <div className="w-12 h-12 rounded-full bg-theme-hover border border-theme-border/60 flex items-center justify-center shrink-0">
+                <User className="w-6 h-6 text-theme-text-muted" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h2 className="text-base sm:text-lg font-semibold text-theme-text truncate">
-                    {userName !== 'Guest' ? `Hi, ${userName}!` : 'Sign in to Prople Store'}
+                    {preservedClaimedName?.trim() ? `Hi, ${preservedClaimedName.trim()}!` : 'Sign in to Prople Store'}
                   </h2>
-                  {userName !== 'Guest' && isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
+                  {preservedClaimedName?.trim() && isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
                 </div>
                 <p className="text-xs text-theme-text-muted line-clamp-1">
-                  {userName !== 'Guest' 
+                  {preservedClaimedName?.trim() 
                     ? 'Claimed publisher • Sign in to sync across devices' 
                     : 'Access developer tools, sync apps, and write reviews'}
                 </p>
