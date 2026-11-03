@@ -971,7 +971,11 @@ export async function addAppReviewToFirestore(appId: string, review: Omit<Review
       createdAt: serverTimestamp()
     });
   } catch (clientErr: any) {
-    console.warn('[StoreService] Client review write notice:', clientErr.message);
+    if (clientErr?.message?.includes('Missing or insufficient permissions') || clientErr?.code === 'permission-denied') {
+      console.info('[StoreService] Client review write notice: Firestore rules restricted, saved via backend.');
+    } else {
+      console.warn('[StoreService] Client review write notice:', clientErr?.message || clientErr);
+    }
   }
 
   // Recalculate app aggregates

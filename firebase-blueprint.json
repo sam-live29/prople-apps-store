@@ -314,6 +314,12 @@
       },
       "description": "User reviews and developer replies for a specific app listing"
     },
+    "/reviews/{reviewId}": {
+      "schema": {
+        "$ref": "#/entities/Review"
+      },
+      "description": "Direct root collection user reviews index"
+    },
     "/users/{userId}/notifications/{notificationId}": {
       "schema": {
         "$ref": "#/entities/Notification"

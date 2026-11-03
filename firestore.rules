@@ -98,9 +98,15 @@ service cloud.firestore {
 
       match /reviews/{reviewId} {
         allow read: if true;
-        allow create: if isAdmin() || reviewId.size() <= 128;
+        allow create: if true;
         allow update, delete: if isAdmin() || reviewId.size() <= 128;
       }
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin() || reviewId.size() <= 128;
     }
 
     match /console_configs/{userId} {

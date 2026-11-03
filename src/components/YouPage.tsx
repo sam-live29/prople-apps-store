@@ -161,13 +161,13 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
   }, [isAuthLoading, user, activeView, showToast, hasActiveToast]);
 
   const preservedClaimedName = getPreservedClaimedName();
-  const userEmail = user?.email || (preservedClaimedName ? "Guest Session" : "Guest User");
-  const userName = user?.publisherName || user?.displayName || preservedClaimedName || "Guest";
+  const userEmail = user?.email || "Guest User";
+  const userName = user?.publisherName || user?.displayName || "";
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
     (user?.displayName && AdminModerationService.isPublisherVerified(user.displayName)) ||
-    AdminModerationService.isPublisherVerified(userName)
+    (userName && AdminModerationService.isPublisherVerified(userName))
   );
 
   const handleGoogleSignIn = async () => {
