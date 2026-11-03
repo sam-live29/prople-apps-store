@@ -833,8 +833,19 @@ export default function ExplorePage({
 
                 {/* Rating Tag */}
                 <div className="flex items-center gap-1 text-[11px] text-theme-text-muted font-normal">
-                  <span>{typeof app.rating === 'number' && app.rating > 0 ? `${app.rating.toFixed(1)}` : '0.0'}</span>
-                  <Star className="w-2.5 h-2.5 fill-theme-text text-theme-text" />
+                  {(() => {
+                    const liveRating = (apps[app.id]?.rating && apps[app.id].rating > 0)
+                      ? apps[app.id].rating
+                      : (typeof app.rating === 'number' && app.rating > 0 ? app.rating : null);
+                    return liveRating ? (
+                      <>
+                        <span>{liveRating.toFixed(1)}</span>
+                        <Star className="w-2.5 h-2.5 fill-theme-text text-theme-text" />
+                      </>
+                    ) : (
+                      <span>Unrated</span>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

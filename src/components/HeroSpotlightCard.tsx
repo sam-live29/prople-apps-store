@@ -62,7 +62,13 @@ export default function HeroSpotlightCard({
     });
   };
 
-  const rawRating = Number(item.appRating || (details as any)?.rating || 0);
+  const rawRating = Number(
+    (fullApp?.rating && fullApp.rating > 0)
+      ? fullApp.rating
+      : (details as any)?.rating && (details as any).rating > 0
+      ? (details as any).rating
+      : (item.appRating || 0)
+  );
   const isRated = rawRating > 0;
   const formattedRating = rawRating.toFixed(1);
 

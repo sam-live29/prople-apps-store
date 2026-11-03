@@ -108,9 +108,9 @@ export default function TopCharts({ onAppClick, initialCategory }: TopChartsProp
     const reviews = getAppReviews(listing.id);
     const ratingCalc = calculateAppRatingAndReviews(
       reviews,
-      listing.rating ?? fullApp?.rating,
-      listing.ratingsCount ?? fullApp?.ratingsCount,
-      (listing as any).reviewsCount ?? fullApp?.reviewsCount
+      (fullApp?.rating && fullApp.rating > 0) ? fullApp.rating : (listing.rating && listing.rating > 0 ? listing.rating : 0),
+      (fullApp?.ratingsCount && fullApp.ratingsCount > 0) ? fullApp.ratingsCount : (listing.ratingsCount || 0),
+      (fullApp?.reviewsCount && fullApp.reviewsCount > 0) ? fullApp.reviewsCount : ((listing as any).reviewsCount || 0)
     );
 
     const rawDownloads = listing.downloadsCount ?? fullApp?.downloadsCount ?? parseDownloadCount(listing.downloads ?? fullApp?.downloads);

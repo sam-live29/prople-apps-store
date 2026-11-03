@@ -22,6 +22,7 @@ import {
   notifyUserReviewHelpful
 } from '../services/firestoreNotificationService';
 import { AdminModerationService } from '../services/adminModerationService';
+import { calculateAppRatingAndReviews } from '../utils/appMetricsAlgorithm';
 
 interface ReviewWithAppInfo extends Review {
   appId: string;
@@ -323,6 +324,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     };
 
     // Optimistic local update
+    const updatedReviewsList = [newReview, ...(reviewsMap[appId] || []).filter(r => r.id !== reviewId)];
     setReviewsMap(prev => {
       const existing = prev[appId] || [];
       return {
@@ -330,6 +332,28 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         [appId]: [newReview, ...existing.filter(r => r.id !== reviewId)]
       };
     });
+
+    // Realtime calculation and immediate storefront broadcast
+    const ratingCalc = calculateAppRatingAndReviews(updatedReviewsList);
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:rating:updated', {
+          detail: {
+            appId,
+            rating: ratingCalc.averageRating,
+            ratingsCount: ratingCalc.totalReviews,
+            reviewsCount: ratingCalc.reviewsCountFormatted,
+            ratingBreakdown: {
+              1: ratingCalc.breakdown[1].count,
+              2: ratingCalc.breakdown[2].count,
+              3: ratingCalc.breakdown[3].count,
+              4: ratingCalc.breakdown[4].count,
+              5: ratingCalc.breakdown[5].count,
+            }
+          }
+        }));
+      }
+    } catch {}
 
     // Realtime Firestore persistence
     try {
@@ -362,19 +386,48 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     let updatedReviewObj: Review | undefined;
 
     // Optimistic local update
+    const updatedReviewsList = (reviewsMap[appId] || []).map(r => {
+      if (r.id === reviewId) {
+        updatedReviewObj = { ...r, ...sanitizedPartial };
+        return updatedReviewObj;
+      }
+      return r;
+    });
+
     setReviewsMap(prev => {
       const existing = prev[appId] || [];
       return {
         ...prev,
         [appId]: existing.map(r => {
           if (r.id === reviewId) {
-            updatedReviewObj = { ...r, ...sanitizedPartial };
-            return updatedReviewObj;
+            return { ...r, ...sanitizedPartial };
           }
           return r;
         })
       };
     });
+
+    // Realtime calculation and immediate storefront broadcast
+    const ratingCalc = calculateAppRatingAndReviews(updatedReviewsList);
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:rating:updated', {
+          detail: {
+            appId,
+            rating: ratingCalc.averageRating,
+            ratingsCount: ratingCalc.totalReviews,
+            reviewsCount: ratingCalc.reviewsCountFormatted,
+            ratingBreakdown: {
+              1: ratingCalc.breakdown[1].count,
+              2: ratingCalc.breakdown[2].count,
+              3: ratingCalc.breakdown[3].count,
+              4: ratingCalc.breakdown[4].count,
+              5: ratingCalc.breakdown[5].count,
+            }
+          }
+        }));
+      }
+    } catch {}
 
     // Realtime Firestore persistence
     try {
@@ -413,6 +466,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       (appDetailsMock[appId]?.reviews || []).find(r => r.id === reviewId);
 
     // Optimistic local update
+    const updatedReviewsList = (reviewsMap[appId] || []).filter(r => r.id !== reviewId);
     setReviewsMap(prev => {
       const existing = prev[appId] || [];
       return {
@@ -420,6 +474,28 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         [appId]: existing.filter(r => r.id !== reviewId)
       };
     });
+
+    // Realtime calculation and immediate storefront broadcast
+    const ratingCalc = calculateAppRatingAndReviews(updatedReviewsList);
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:rating:updated', {
+          detail: {
+            appId,
+            rating: ratingCalc.averageRating,
+            ratingsCount: ratingCalc.totalReviews,
+            reviewsCount: ratingCalc.reviewsCountFormatted,
+            ratingBreakdown: {
+              1: ratingCalc.breakdown[1].count,
+              2: ratingCalc.breakdown[2].count,
+              3: ratingCalc.breakdown[3].count,
+              4: ratingCalc.breakdown[4].count,
+              5: ratingCalc.breakdown[5].count,
+            }
+          }
+        }));
+      }
+    } catch {}
 
     // Realtime Firestore persistence
     try {

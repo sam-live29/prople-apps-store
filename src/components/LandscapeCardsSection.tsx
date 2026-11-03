@@ -377,7 +377,7 @@ export default function LandscapeCardsSection({
             full.featureGraphicUrl ||
             (ytId ? getYouTubeThumbnail(ytId, 'maxres') || getYouTubeThumbnail(ytId, 'hq') : '') ||
             '';
-          const ratingNum = typeof app.rating === 'number' ? app.rating : (typeof full.rating === 'number' ? full.rating : 0);
+          const ratingNum = (full?.rating && full.rating > 0) ? full.rating : (typeof app.rating === 'number' && app.rating > 0 ? app.rating : 0);
           const ratingVal = ratingNum > 0 ? ratingNum.toFixed(1) : null;
           const sizeVal = getUnifiedAppSize(app);
           const genreStr = app.category || full.category || displayTag || 'Productivity';

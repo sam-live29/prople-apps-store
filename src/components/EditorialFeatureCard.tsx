@@ -33,7 +33,15 @@ function EditorialCardItem({
   hasDraggedRef,
 }: EditorialCardItemProps) {
   const details = fullApp || (appsMap && appsMap[app.id]) || app;
-  const rating = app.rating ?? details.rating;
+  const rating = Number(
+    (fullApp?.rating && fullApp.rating > 0)
+      ? fullApp.rating
+      : (appsMap && appsMap[app.id]?.rating && appsMap[app.id].rating > 0)
+      ? appsMap[app.id].rating
+      : (details as any)?.rating && (details as any).rating > 0
+      ? (details as any).rating
+      : (app.rating && app.rating > 0 ? app.rating : 0)
+  );
   const description =
     (details as any).shortDescription ||
     (details as any).tagline ||
@@ -194,10 +202,16 @@ function EditorialCardItem({
 
             {/* Rating & Content Rating: 4.1 ★ • [7+] Rated for 7+ */}
             <div className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-[#9aa0a6] mt-1">
-              <span className="flex items-center gap-0.5 font-medium text-neutral-900 dark:text-white">
-                {rating && rating > 0 ? rating.toFixed(1) : '4.5'}
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline -mt-0.5" />
-              </span>
+              {rating > 0 ? (
+                <span className="flex items-center gap-0.5 font-medium text-neutral-900 dark:text-white">
+                  {rating.toFixed(1)}
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400 inline -mt-0.5" />
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-neutral-500 dark:text-[#9aa0a6]">
+                  Unrated
+                </span>
+              )}
               <span className="text-neutral-400 dark:text-neutral-500">•</span>
               <span className="border border-neutral-400 dark:border-neutral-500/60 text-[9px] font-bold px-1 py-[0.5px] rounded-[3px] text-neutral-700 dark:text-neutral-300 leading-none">
                 {getContentRatingBadge((details as any)?.contentRating || app.contentRating)}

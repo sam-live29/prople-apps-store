@@ -159,10 +159,10 @@ export default function SquircleRowSection({
           const appReviews = reviewsMap[app.id];
           const ratingCalc = calculateAppRatingAndReviews(
             appReviews,
-            app.rating ?? full.rating,
-            app.ratingsCount ?? full.ratingsCount,
-            app.reviewsCount ?? full.reviewsCount,
-            app.ratingBreakdown ?? full.ratingBreakdown
+            (full?.rating && full.rating > 0) ? full.rating : (app.rating && app.rating > 0 ? app.rating : 0),
+            (full?.ratingsCount && full.ratingsCount > 0) ? full.ratingsCount : (app.ratingsCount || 0),
+            (full?.reviewsCount && full.reviewsCount > 0) ? full.reviewsCount : (app.reviewsCount || 0),
+            full?.ratingBreakdown || app.ratingBreakdown
           );
           const rating = ratingCalc.isRated ? ratingCalc.averageRating : 0;
           const rawDownloads = app.downloadsCount ?? full.downloadsCount ?? parseDownloadCount(app.downloads ?? full.downloads);

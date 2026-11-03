@@ -253,6 +253,62 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('publisher:name:updated', handlePublisherNameUpdated);
   }, []);
 
+  // Immediately reflect app ratings & reviews changes across all catalog items and banners
+  useEffect(() => {
+    const handleRatingUpdated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail;
+      if (!detail || !detail.appId) return;
+      const { appId, rating, ratingsCount, reviewsCount, ratingBreakdown } = detail;
+
+      setApps((prevApps) => {
+        const currentApp = prevApps[appId];
+        if (!currentApp) return prevApps;
+
+        const updatedApp: AppDetails = {
+          ...currentApp,
+          rating: typeof rating === 'number' ? rating : currentApp.rating,
+          ratingsCount: typeof ratingsCount === 'number' ? ratingsCount : currentApp.ratingsCount,
+          reviewsCount: typeof reviewsCount === 'number' ? reviewsCount : currentApp.reviewsCount,
+          ratingBreakdown: ratingBreakdown || currentApp.ratingBreakdown,
+        };
+
+        const updated = {
+          ...prevApps,
+          [appId]: updatedApp,
+          ...(currentApp.slug ? { [currentApp.slug]: updatedApp } : {})
+        };
+
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+          }
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(ACTIVE_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+          }
+        } catch {}
+
+        return updated;
+      });
+
+      setBanners((prevBanners) =>
+        prevBanners.map((b) => {
+          if (b.appId === appId || (b.appName && b.appName.toLowerCase() === appId.toLowerCase())) {
+            return {
+              ...b,
+              appRating: typeof rating === 'number' ? rating : b.appRating,
+              appRatingsCount: typeof ratingsCount === 'number' ? ratingsCount : b.appRatingsCount,
+              appReviewsCount: typeof reviewsCount === 'number' ? reviewsCount : b.appReviewsCount,
+            };
+          }
+          return b;
+        })
+      );
+    };
+
+    window.addEventListener('app:rating:updated', handleRatingUpdated);
+    return () => window.removeEventListener('app:rating:updated', handleRatingUpdated);
+  }, []);
+
   // Subscribe to real-time Firestore apps
   useEffect(() => {
     initializeFirestoreCatalogue();
@@ -744,8 +800,22 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
         }
       }
       return true;
+    }).map((b) => {
+      const appObj = b.appId ? apps[b.appId] : (Object.values(apps) as AppDetails[]).find(a => a.name?.toLowerCase() === b.appName?.toLowerCase());
+      const liveRating = (appObj?.rating && appObj.rating > 0) ? appObj.rating : b.appRating;
+      const liveRatingsCount = (appObj?.ratingsCount && appObj.ratingsCount > 0) ? appObj.ratingsCount : b.appRatingsCount;
+      const liveReviewsCount = (appObj?.reviewsCount && appObj.reviewsCount > 0) ? appObj.reviewsCount : b.appReviewsCount;
+      const liveDeveloper = appObj?.developer || b.appDeveloper;
+
+      return {
+        ...b,
+        appRating: liveRating,
+        appRatingsCount: liveRatingsCount,
+        appReviewsCount: liveReviewsCount,
+        appDeveloper: liveDeveloper,
+      };
     });
-  }, [banners, rawAllAppListings, allAppListings]);
+  }, [banners, rawAllAppListings, allAppListings, apps]);
 
   const refreshCatalogue = async (): Promise<void> => {
     setIsPullRefreshing(true);

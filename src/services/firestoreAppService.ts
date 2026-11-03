@@ -33,18 +33,51 @@ import { safeFetchJson } from '../utils/safeFetch';
 export { formatDownloadCount, parseDownloadCount };
 
 /**
- * Recalculate and update rating aggregates for an app in Firestore
+ * Recalculate and update rating aggregates for an app in Firestore, syncing both apps and banners
  */
-export async function syncAppRatingsAndReviews(appId: string): Promise<void> {
+export async function syncAppRatingsAndReviews(appId: string, knownReviews?: Review[]): Promise<void> {
+  if (!appId) return;
   try {
-    const reviewsRef = collection(db, 'apps', appId, 'reviews');
-    const snap = await getDocs(reviewsRef);
-    const reviews: Review[] = [];
-    snap.forEach(d => {
-      reviews.push({ id: d.id, ...d.data() } as Review);
-    });
+    const reviewsMap = new Map<string, Review>();
 
-    const calculation = calculateAppRatingAndReviews(reviews);
+    // 1. Incorporate caller-supplied known reviews (prevents zero-wipes during async Firestore latencies)
+    if (Array.isArray(knownReviews)) {
+      knownReviews.forEach(r => {
+        if (r && r.id) reviewsMap.set(r.id, r);
+      });
+    }
+
+    // 2. Fetch fresh server-authoritative reviews
+    try {
+      const res = await safeFetchJson<{ success: boolean; reviews?: Review[] }>(`/api/apps/${encodeURIComponent(appId)}/reviews`);
+      if (res.ok && res.data?.success && Array.isArray(res.data.reviews)) {
+        res.data.reviews.forEach(r => {
+          if (r && r.id) reviewsMap.set(r.id, r);
+        });
+      }
+    } catch {}
+
+    // 3. Fallback check direct Firestore subcollection
+    try {
+      const reviewsRef = collection(db, 'apps', appId, 'reviews');
+      const snap = await getDocs(reviewsRef);
+      snap.forEach(d => {
+        reviewsMap.set(d.id, { id: d.id, ...d.data() } as Review);
+      });
+    } catch {}
+
+    const reviews = Array.from(reviewsMap.values());
+    const existingMock = appDetailsMock[appId];
+
+    // Calculate rating using reviews, or fall back to existing non-zero values if reviews query returned empty
+    const calculation = calculateAppRatingAndReviews(
+      reviews,
+      existingMock?.rating,
+      existingMock?.ratingsCount,
+      existingMock?.reviewsCount,
+      existingMock?.ratingBreakdown
+    );
+
     const avgRating = calculation.averageRating;
     const total = calculation.totalReviews;
     const formattedReviewsCount = calculation.reviewsCountFormatted;
@@ -56,23 +89,53 @@ export async function syncAppRatingsAndReviews(appId: string): Promise<void> {
       5: calculation.breakdown[5].count,
     };
 
+    // Update in-memory mock cache immediately
+    if (existingMock) {
+      existingMock.rating = avgRating;
+      existingMock.ratingsCount = total;
+      existingMock.reviewsCount = formattedReviewsCount;
+      existingMock.ratingBreakdown = breakdownCounts;
+    }
+
+    // Update Firestore apps/{appId}
     const appRef = doc(db, 'apps', appId);
-    await updateDoc(appRef, {
+    const updateData: Record<string, any> = {
       rating: avgRating,
       ratingsCount: total,
       reviewsCount: formattedReviewsCount,
       ratingBreakdown: breakdownCounts,
       updatedAt: serverTimestamp()
-    }).catch(async () => {
+    };
+
+    await updateDoc(appRef, updateData).catch(async () => {
       // If doc does not exist yet, set with merge
-      await setDoc(appRef, {
-        rating: avgRating,
-        ratingsCount: total,
-        reviewsCount: formattedReviewsCount,
-        ratingBreakdown: breakdownCounts,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      await setDoc(appRef, updateData, { merge: true }).catch(() => {});
     });
+
+    // CRITICAL: Update corresponding spotlight banner document so hero illustration banners instantly show the rating
+    try {
+      const bannerRef = doc(db, 'banners', `banner-${appId}`);
+      await setDoc(bannerRef, {
+        rating: avgRating,
+        appRating: avgRating,
+        updatedAt: serverTimestamp()
+      }, { merge: true }).catch(() => {});
+    } catch {}
+
+    // Broadcast globally so all active React components and explore sections re-render with fresh rating
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:rating:updated', {
+          detail: {
+            appId,
+            rating: avgRating,
+            ratingsCount: total,
+            reviewsCount: formattedReviewsCount,
+            ratingBreakdown: breakdownCounts
+          }
+        }));
+      }
+    } catch {}
   } catch (err) {
     console.warn(`Could not update aggregates for app ${appId}:`, err);
   }
@@ -932,7 +995,14 @@ export async function addAppReviewToFirestore(appId: string, review: Omit<Review
 
   // 1. Primary: Server-authoritative review API
   try {
-    const res = await safeFetchJson<{ success: boolean; reviewId?: string }>(`/api/apps/${encodeURIComponent(appId)}/reviews`, {
+    const res = await safeFetchJson<{
+      success: boolean;
+      reviewId?: string;
+      appRating?: number;
+      ratingsCount?: number;
+      reviewsCount?: string;
+      ratingBreakdown?: Record<number, number>;
+    }>(`/api/apps/${encodeURIComponent(appId)}/reviews`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -942,7 +1012,27 @@ export async function addAppReviewToFirestore(appId: string, review: Omit<Review
       })
     });
     if (res.ok && res.data?.success) {
-      syncAppRatingsAndReviews(appId).catch(() => {});
+      if (typeof res.data.appRating === 'number') {
+        const mock = appDetailsMock[appId];
+        if (mock) {
+          mock.rating = res.data.appRating;
+          mock.ratingsCount = res.data.ratingsCount ?? (mock.ratingsCount || 0) + 1;
+          mock.reviewsCount = res.data.reviewsCount || formatReviewsCountText(mock.ratingsCount || 1);
+          if (res.data.ratingBreakdown) mock.ratingBreakdown = res.data.ratingBreakdown;
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('app:rating:updated', {
+            detail: {
+              appId,
+              rating: res.data.appRating,
+              ratingsCount: res.data.ratingsCount,
+              reviewsCount: res.data.reviewsCount,
+              ratingBreakdown: res.data.ratingBreakdown
+            }
+          }));
+        }
+      }
+      syncAppRatingsAndReviews(appId, [{ id: reviewId, ...review } as Review]).catch(() => {});
       return res.data.reviewId || reviewId;
     }
   } catch (backendErr: any) {
@@ -979,7 +1069,7 @@ export async function addAppReviewToFirestore(appId: string, review: Omit<Review
   }
 
   // Recalculate app aggregates
-  await syncAppRatingsAndReviews(appId).catch(() => {});
+  await syncAppRatingsAndReviews(appId, [{ id: reviewId, ...review } as Review]).catch(() => {});
   return reviewId;
 }
 
@@ -990,7 +1080,7 @@ export async function updateAppReviewInFirestore(appId: string, reviewId: string
   const currentAuth = getCurrentAuthInfo();
 
   try {
-    await safeFetchJson(`/api/apps/${encodeURIComponent(appId)}/reviews/${encodeURIComponent(reviewId)}`, {
+    const res = await safeFetchJson<{ success: boolean; appRating?: number; ratingsCount?: number; reviewsCount?: string }>(`/api/apps/${encodeURIComponent(appId)}/reviews/${encodeURIComponent(reviewId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -999,6 +1089,18 @@ export async function updateAppReviewInFirestore(appId: string, reviewId: string
         userEmail: currentAuth.email
       })
     });
+    if (res.ok && res.data?.success && typeof res.data.appRating === 'number') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:rating:updated', {
+          detail: {
+            appId,
+            rating: res.data.appRating,
+            ratingsCount: res.data.ratingsCount,
+            reviewsCount: res.data.reviewsCount
+          }
+        }));
+      }
+    }
   } catch {}
 
   try {

@@ -219,13 +219,22 @@ export function computeExploreDistribution(
   const scoredSuggested = [...prioritizedListings].sort((a, b) => {
     const fullA = apps[a.id];
     const fullB = apps[b.id];
-    const rA = a.rating ?? fullA?.rating ?? 0;
-    const rB = b.rating ?? fullB?.rating ?? 0;
+    const rA = (fullA?.rating && fullA.rating > 0) ? fullA.rating : (a.rating && a.rating > 0 ? a.rating : 0);
+    const rB = (fullB?.rating && fullB.rating > 0) ? fullB.rating : (b.rating && b.rating > 0 ? b.rating : 0);
     const scoreA = (rA * 1000) * getDaypartScore(a, clientHour) + ((fullA?.downloadsCount || 0) * 0.1);
     const scoreB = (rB * 1000) * getDaypartScore(b, clientHour) + ((fullB?.downloadsCount || 0) * 0.1);
     return scoreB - scoreA;
   });
-  const suggestedApps = scoredSuggested.slice(0, 15);
+  const suggestedApps = scoredSuggested.slice(0, 15).map((app) => {
+    const full = apps[app.id];
+    const liveRating = (full?.rating && full.rating > 0) ? full.rating : (app.rating && app.rating > 0 ? app.rating : 0);
+    return {
+      ...app,
+      rating: liveRating,
+      ratingsCount: full?.ratingsCount ?? app.ratingsCount,
+      reviewsCount: full?.reviewsCount ?? app.reviewsCount,
+    };
+  });
 
   // 4. Trending Searches
   const trendingItems: TrendingSearchItem[] = [];

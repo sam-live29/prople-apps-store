@@ -21,7 +21,7 @@ export default function SimilarAppsPage({
   title?: string; 
   appsList?: AppListing[];
 }) {
-  const { allAppListings, refreshCatalogue, isPullRefreshing } = useStoreConfig();
+  const { allAppListings, apps, refreshCatalogue, isPullRefreshing } = useStoreConfig();
   const [isScrolled, setIsScrolled] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -252,13 +252,20 @@ export default function SimilarAppsPage({
                         {app.name}
                       </h4>
                       <div className="flex items-center gap-1 text-[11px] text-theme-text-muted mt-0.5 truncate w-full">
-                        {app.rating ? (
-                          <span className="flex items-center gap-0.5 text-theme-text font-medium">
-                            <span>{app.rating.toFixed(1)}</span>
-                            <span className="text-[10px] text-amber-400">★</span>
-                          </span>
-                        ) : null}
-                        {app.rating ? <span>•</span> : null}
+                        {(() => {
+                          const liveRating = (apps[app.id]?.rating && apps[app.id].rating > 0)
+                            ? apps[app.id].rating
+                            : (app.rating && app.rating > 0 ? app.rating : null);
+                          return liveRating ? (
+                            <>
+                              <span className="flex items-center gap-0.5 text-theme-text font-medium">
+                                <span>{liveRating.toFixed(1)}</span>
+                                <span className="text-[10px] text-amber-400">★</span>
+                              </span>
+                              <span>•</span>
+                            </>
+                          ) : null;
+                        })()}
                         <span className="truncate">{getUnifiedAppSize(app)}</span>
                       </div>
                     </a>

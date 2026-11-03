@@ -864,7 +864,11 @@ export function getIndexedSpotlightBanners(
       const effectiveImage = !isIconOrPlaceholder ? rawImage : '';
       const effectiveHeadline = b.headline || fullApp?.tagline || matchingApp?.tagline || `Experience ${effectiveName} on Prople Play`;
       const effectiveBadge = b.titleBadge || (b as any).badge || (fullApp as any)?.spotlightBadge || (matchingApp as any)?.spotlightBadge || fullApp?.category || matchingApp?.category || 'Featured';
-      const effectiveRating = fullApp?.rating ?? matchingApp?.rating ?? b.appRating ?? 0;
+      const effectiveRating = (fullApp?.rating && fullApp.rating > 0)
+        ? fullApp.rating
+        : (matchingApp?.rating && matchingApp.rating > 0)
+        ? matchingApp.rating
+        : (b.appRating && b.appRating > 0 ? b.appRating : 0);
       const effectiveDownloads = fullApp?.downloads || matchingApp?.downloads || b.appDownloads || '0+';
       const effectiveSize = getUnifiedAppSize(fullApp) || getUnifiedAppSize(matchingApp) || fullApp?.size || matchingApp?.size || '';
       const effectiveAbout = (fullApp as any)?.aboutText || (fullApp as any)?.shortDescription || (fullApp as any)?.description || (matchingApp as any)?.aboutText || (matchingApp as any)?.shortDescription || fullApp?.tagline || matchingApp?.tagline || '';
@@ -925,7 +929,9 @@ export function getIndexedSpotlightBanners(
 
       const effectiveHeadline = fullApp.tagline || app.tagline || `Discover ${effectiveName} on the marketplace.`;
       const effectiveBadge = (fullApp as any)?.spotlightBadge || (app as any)?.spotlightBadge || fullApp.category || app.category || 'Featured';
-      const effectiveRating = fullApp.rating ?? app.rating ?? 0;
+      const effectiveRating = (fullApp?.rating && fullApp.rating > 0)
+        ? fullApp.rating
+        : (app?.rating && app.rating > 0 ? app.rating : 0);
       const effectiveDownloads = fullApp.downloads || app.downloads || '0+';
       const effectiveSize = getUnifiedAppSize(fullApp) || getUnifiedAppSize(app) || fullApp.size || app.size || '';
       const effectiveAbout = (fullApp as any)?.aboutText || (fullApp as any)?.shortDescription || (fullApp as any)?.description || (app as any)?.aboutText || (app as any)?.shortDescription || fullApp.tagline || app.tagline || '';

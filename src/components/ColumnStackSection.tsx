@@ -9,6 +9,7 @@ import { getAppFormatBadgeLabel } from '../services/osDetectionService';
 import { saveSectionScroll, getSectionScroll } from '../services/sectionScrollMemoryService';
 import { slugifyAppName } from '../utils/shareUtils';
 import { useReviews } from '../context/ReviewContext';
+import { useStoreConfig } from '../context/StoreConfigContext';
 
 interface ColumnStackSectionProps {
   title?: string;
@@ -29,6 +30,7 @@ export default function ColumnStackSection({
 }: ColumnStackSectionProps) {
   const activeSectionId = sectionId || title || 'column_stack_section';
   const { reviewsMap } = useReviews();
+  const { apps: appsMap } = useStoreConfig();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
   const startXRef = useRef(0);
@@ -174,13 +176,14 @@ export default function ColumnStackSection({
             className="w-[calc(100vw-32px)] max-w-[340px] sm:w-[340px] md:w-[360px] shrink-0 space-y-3.5"
           >
             {col.map((app) => {
+              const full = appsMap?.[app.id] || app;
               const appReviews = reviewsMap[app.id];
               const ratingCalc = calculateAppRatingAndReviews(
                 appReviews,
-                app.rating,
-                app.ratingsCount,
-                app.reviewsCount,
-                app.ratingBreakdown
+                (full.rating && full.rating > 0) ? full.rating : (app.rating && app.rating > 0 ? app.rating : 0),
+                (full.ratingsCount && full.ratingsCount > 0) ? full.ratingsCount : (app.ratingsCount || 0),
+                (full.reviewsCount && full.reviewsCount > 0) ? full.reviewsCount : (app.reviewsCount || 0),
+                full.ratingBreakdown || app.ratingBreakdown
               );
               const sizeVal = getUnifiedAppSize(app);
               const priceOrFree = app.price && app.price !== 'Free' && app.price !== '$0.00' ? app.price : sizeVal;
