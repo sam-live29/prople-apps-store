@@ -107,6 +107,7 @@ body,
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 /* Major headings, app titles, hero spotlights, and primary branding */
@@ -155,7 +156,7 @@ li,
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     overscroll-behavior-y: auto !important;
-    touch-action: pan-x pan-y;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
@@ -196,7 +197,7 @@ li,
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto !important;
-  touch-action: pan-x pan-y;
+  touch-action: pan-x pan-y pinch-zoom;
 }
 
 /* Ensure headings have deep, crisp contrast in light mode */

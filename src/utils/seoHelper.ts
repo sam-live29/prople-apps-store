@@ -63,12 +63,14 @@ export function updateAppPageSeo(app: Partial<AppDetails>) {
   const platformLogoUrl = `${window.location.origin}/logo.png`;
   const fullUrl = getAppShareUrl(app as any);
 
-  // 1. Title
-  document.title = `${appName} - Download for ${platform} | Prople Store`;
+  const pkgFormat = ((app as any).packageFormat || 'APK').toUpperCase();
+
+  // 1. Title formatted for search engines
+  document.title = `${appName} (${pkgFormat}) Download — ${platform} App | Prople Store`;
 
   // 2. Standard Meta Tags
   setMetaTag('description', description);
-  setMetaTag('keywords', `${appName}, ${category}, ${platform} app, download ${appName}, free download, app market, ${appName} apk`);
+  setMetaTag('keywords', `${appName}, ${appName} ${pkgFormat}, ${appName} download, ${appName} prople, ${category}, ${platform} app, download ${appName}, free download, app market, ${appName} apk`);
   setMetaTag('author', app.developer || 'Prople Store');
 
   // 3. OpenGraph Social Metadata

@@ -546,10 +546,8 @@ async function startServer() {
     res.setHeader('Permissions-Policy', 'camera=(), microphone=*, geolocation=(), payment=()');
 
     // 7. Content-Security-Policy (CSP): Cross-site scripting & injection mitigation
-    const isDev = process.env.NODE_ENV !== 'production';
-    const frameAncestors = isDev
-      ? "'self' * https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com"
-      : "'self' https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com";
+    // Allow AI Studio, device testing tools, and responsive previewers to embed the website
+    const frameAncestors = "'self' * https://*.run.app https://*.google.com https://*.googleusercontent.com https://*.aistudio.google.com";
 
     const scriptSrc = "script-src 'self' 'unsafe-inline' https://apis.google.com https://*.firebaseio.com https://*.googleapis.com https://www.youtube.com https://s.ytimg.com";
 
@@ -6042,37 +6040,125 @@ async function startServer() {
   let serverAppsCatalogCache: any[] = [];
   let serverAppsCatalogCacheTime = 0;
 
-  let isFetchingAllApps = false;
-  async function getAllAppsServer(maxWaitMs = 1200): Promise<any[]> {
+  function parseFirestoreRestField(val: any): any {
+    if (!val || typeof val !== 'object') return undefined;
+    if (val.stringValue !== undefined) return val.stringValue;
+    if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+    if (val.doubleValue !== undefined) return parseFloat(val.doubleValue);
+    if (val.booleanValue !== undefined) return val.booleanValue;
+    if (val.timestampValue !== undefined) return val.timestampValue;
+    if (val.nullValue !== undefined) return null;
+    if (val.arrayValue !== undefined) {
+      return (val.arrayValue.values || []).map((v: any) => parseFirestoreRestField(v));
+    }
+    if (val.mapValue !== undefined) {
+      const obj: Record<string, any> = {};
+      for (const [k, v] of Object.entries<any>(val.mapValue.fields || {})) {
+        obj[k] = parseFirestoreRestField(v);
+      }
+      return obj;
+    }
+    return undefined;
+  }
+
+  function indexAppIntoSeoCache(app: any) {
+    if (!app || typeof app !== 'object') return;
     const now = Date.now();
-    if (serverAppsCatalogCache.length > 0 && now - serverAppsCatalogCacheTime < 60000) {
+    if (app.id) {
+      seoAppsCache.set(app.id.toLowerCase(), { data: app, timestamp: now });
+      seoAppsCache.set(app.id.toLowerCase().replace(/[^a-z0-9]/g, ''), { data: app, timestamp: now });
+    }
+    if (app.slug) {
+      seoAppsCache.set(app.slug.toLowerCase(), { data: app, timestamp: now });
+      seoAppsCache.set(app.slug.toLowerCase().replace(/[^a-z0-9]/g, ''), { data: app, timestamp: now });
+    }
+    if (app.name) {
+      const slug = slugifyAppName(app.name);
+      if (slug) seoAppsCache.set(slug, { data: app, timestamp: now });
+      seoAppsCache.set(app.name.toLowerCase(), { data: app, timestamp: now });
+      seoAppsCache.set(app.name.toLowerCase().replace(/[^a-z0-9]/g, ''), { data: app, timestamp: now });
+    }
+    if (app.packageName) {
+      seoAppsCache.set(app.packageName.toLowerCase(), { data: app, timestamp: now });
+    }
+  }
+
+  let isFetchingAllApps = false;
+  async function getAllAppsServer(maxWaitMs = 2500): Promise<any[]> {
+    const now = Date.now();
+    // Cache valid for 3 minutes
+    if (serverAppsCatalogCache.length > 0 && now - serverAppsCatalogCacheTime < 180000) {
       return serverAppsCatalogCache;
     }
-    if (!serverDb) return serverAppsCatalogCache;
 
     const fetchPromise = (async () => {
       if (isFetchingAllApps) return serverAppsCatalogCache;
       isFetchingAllApps = true;
       try {
-        const snap = await serverGetDocs(serverCollection(serverDb, "apps"));
-        const list: any[] = [];
-        snap.forEach(d => {
-          const data = d.data();
-          if (data && !data.isDeleted && data.status !== 'deleted' && data.isPublished !== false) {
-            list.push({ id: d.id, ...data });
+        const fbConfig = getServerFirebaseConfig();
+        const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
+        const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
+
+        // Method 1: Ultra-fast direct HTTP REST fetch (< 100ms, no gRPC handshake delays)
+        if (projectId) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps?pageSize=500`;
+            const restRes = await fetch(restUrl, { signal: controller.signal }).catch(() => null);
+            clearTimeout(timeoutId);
+
+            if (restRes && restRes.ok) {
+              const data = await restRes.json().catch(() => null);
+              if (data && Array.isArray(data.documents)) {
+                const list: any[] = [];
+                for (const doc of data.documents) {
+                  const id = doc.name.split('/').pop();
+                  const fields = doc.fields || {};
+                  const parsed: any = { id };
+                  if (doc.createTime) parsed.createdAt = doc.createTime;
+                  if (doc.updateTime) parsed.updatedAt = doc.updateTime;
+                  for (const [key, val] of Object.entries<any>(fields)) {
+                    const fieldVal = parseFirestoreRestField(val);
+                    if (fieldVal !== undefined) parsed[key] = fieldVal;
+                  }
+                  if (!parsed.isDeleted && parsed.status !== 'deleted' && parsed.isPublished !== false) {
+                    list.push(parsed);
+                    indexAppIntoSeoCache(parsed);
+                  }
+                }
+                if (list.length > 0) {
+                  serverAppsCatalogCache = list;
+                  serverAppsCatalogCacheTime = Date.now();
+                  return serverAppsCatalogCache;
+                }
+              }
+            }
+          } catch (restErr: any) {
+            // Fall through to SDK query
           }
-        });
-        if (list.length > 0) {
-          serverAppsCatalogCache = list;
-          serverAppsCatalogCacheTime = Date.now();
+        }
+
+        // Method 2: Fallback to Server SDK query
+        if (serverDb) {
+          const snap = await serverGetDocs(serverCollection(serverDb, "apps"));
+          const list: any[] = [];
+          snap.forEach(d => {
+            const data = d.data();
+            if (data && !data.isDeleted && data.status !== 'deleted' && data.isPublished !== false) {
+              const fullApp = { id: d.id, ...data };
+              list.push(fullApp);
+              indexAppIntoSeoCache(fullApp);
+            }
+          });
+          if (list.length > 0) {
+            serverAppsCatalogCache = list;
+            serverAppsCatalogCacheTime = Date.now();
+          }
         }
         return serverAppsCatalogCache;
       } catch (e: any) {
-        if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
-          console.info("[Server] Firestore permission notice: apps query restricted by cloud rules.");
-        } else {
-          console.warn("[Server] Notice getting all apps:", e.message);
-        }
+        console.warn("[Server] Notice getting all apps:", e.message);
         return serverAppsCatalogCache;
       } finally {
         isFetchingAllApps = false;
@@ -6094,9 +6180,20 @@ async function startServer() {
     if (!appId || typeof appId !== 'string') return null;
     const cleanId = appId.trim().toLowerCase();
     const cleanSlug = cleanId.replace(/[^a-z0-9]/g, '');
-    const cached = seoAppsCache.get(cleanId);
+    
+    // Check instant cache
+    const cached = seoAppsCache.get(cleanId) || (cleanSlug ? seoAppsCache.get(cleanSlug) : null);
     if (cached && Date.now() - cached.timestamp < 300000) {
       return cached.data;
+    }
+
+    // Ensure catalog is populated via high-speed REST endpoint
+    if (serverAppsCatalogCache.length === 0) {
+      await getAllAppsServer();
+      const freshCached = seoAppsCache.get(cleanId) || (cleanSlug ? seoAppsCache.get(cleanSlug) : null);
+      if (freshCached) {
+        return freshCached.data;
+      }
     }
 
     if (serverDb) {
@@ -6523,7 +6620,7 @@ async function startServer() {
           }
 
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
           return res.send(transformedHtml);
         }
       }
@@ -6551,7 +6648,7 @@ async function startServer() {
 
         const transformedHtml = injectCategorySeoIntoHtml(rawHtml, matchedCategory, baseUrl, categoryApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
         return res.send(transformedHtml);
       }
 
@@ -6573,7 +6670,7 @@ async function startServer() {
 
         const transformedHtml = injectDeveloperSeoIntoHtml(rawHtml, developerName, baseUrl, devApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
         return res.send(transformedHtml);
       }
 
@@ -6609,7 +6706,7 @@ async function startServer() {
 
         const transformedHtml = injectPlatformSeoIntoHtml(rawHtml, platformParam, baseUrl, platformApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
         return res.send(transformedHtml);
       }
 
@@ -6620,7 +6717,7 @@ async function startServer() {
           const allApps = await getAllAppsServer(400);
           const transformedHtml = injectHomeSeoIntoHtml(rawHtml, baseUrl, allApps, [], { injectBodyShell: isCrawler });
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
           return res.send(transformedHtml);
         }
       }

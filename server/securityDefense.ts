@@ -528,6 +528,10 @@ export function getSecureCorsHeaders(origin?: string): Record<string, string> {
   if (trusted && origin) {
     headers["Access-Control-Allow-Origin"] = origin;
     headers["Access-Control-Allow-Credentials"] = "true";
+  } else if (origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  } else {
+    headers["Access-Control-Allow-Origin"] = "*";
   }
 
   return headers;

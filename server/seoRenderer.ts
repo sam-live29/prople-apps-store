@@ -117,7 +117,8 @@ export function injectAppSeoIntoHtml(
   const socialFeatureGraphicUrl = app.featureGraphicUrl 
     ? resolveSocialShareImageUrl(app.featureGraphicUrl, baseUrl, '/logo.png')
     : socialShareIconUrl;
-  const canonicalUrl = `${baseUrl}/apps/${encodeURIComponent(canonicalSlug)}`;
+  const prodCanonicalBase = 'https://www.prople.co.in';
+  const canonicalUrl = `${prodCanonicalBase}/apps/${encodeURIComponent(canonicalSlug)}`;
   
   const exactAsset = app.assetName || `${slugifyAppName(app.name)}.${(app.packageFormat || 'apk').toLowerCase()}`;
   const safeDownloadHref = app.downloadUrl 
@@ -131,8 +132,9 @@ export function injectAppSeoIntoHtml(
   const version = escapeHtml(app.versionName || '1.0.0');
   const pkgFormat = escapeHtml(app.packageFormat || 'APK').toUpperCase();
 
-  // Page title format: "VLC Media Player — Download & Software Details | Prople Store"
-  const pageTitle = `${name} — Download & Software Details | Prople Store`;
+  // Page title formatted for high-intent search engine queries: "Termux (APK) Download — Android App | Prople Store"
+  const pageTitle = `${name} (${pkgFormat}) Download — ${platform} App | Prople Store`;
+  const metaDescription = escapeHtml(`Download ${app.name} (${pkgFormat}) for ${platform} on Prople Store. Free, verified, and safe release published by ${app.developer || 'Verified Publisher'}. ${rawDesc.slice(0, 110)}`.replace(/[\r\n]+/g, ' ').trim());
 
   // 1. SoftwareApplication Schema.org JSON-LD
   const softwareAppJsonLd: any = {
@@ -211,8 +213,8 @@ export function injectAppSeoIntoHtml(
   const headInject = `
     <!-- Dynamic Pre-Rendered SEO Tags for ${name} -->
     <title>${pageTitle}</title>
-    <meta name="description" content="${description}" />
-    <meta name="keywords" content="${name}, ${name} download, ${category} app, ${platform} application, free download, verified installer, prople store" />
+    <meta name="description" content="${metaDescription}" />
+    <meta name="keywords" content="${name}, ${name} ${pkgFormat}, ${name} download, ${name} prople, ${name} prople store, ${category} app, ${platform} application, free download, verified installer, prople store" />
     <meta name="author" content="${developer}" />
     <link rel="canonical" href="${canonicalUrl}" />
 
@@ -220,7 +222,7 @@ export function injectAppSeoIntoHtml(
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Prople Store" />
     <meta property="og:title" content="${pageTitle}" />
-    <meta property="og:description" content="${description}" />
+    <meta property="og:description" content="${metaDescription}" />
     <meta property="og:image" content="${socialShareIconUrl}" />
     <meta property="og:image:secure_url" content="${socialShareIconUrl}" />
     <meta property="og:image:alt" content="${name} Icon" />
@@ -230,7 +232,7 @@ export function injectAppSeoIntoHtml(
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:site" content="@PropleStore" />
     <meta name="twitter:title" content="${pageTitle}" />
-    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:description" content="${metaDescription}" />
     <meta name="twitter:image" content="${socialShareIconUrl}" />
 
     <!-- Schema.org SoftwareApplication & BreadcrumbList -->
@@ -863,13 +865,14 @@ export function renderNotFoundHtml(html: string, attemptedResource: string, base
 function cleanAndInjectHtml(html: string, headInject: string, bodyContent: string): string {
   let result = html;
 
-  // Clean existing title and meta tags that would duplicate
+  // Clean existing title, meta tags, and structured data that would duplicate
   result = result.replace(/<title>[\s\S]*?<\/title>/gi, '');
   result = result.replace(/<meta\s+name=["']description["'][\s\S]*?>/gi, '');
   result = result.replace(/<meta\s+name=["']keywords["'][\s\S]*?>/gi, '');
   result = result.replace(/<meta\s+property=["']og:[^"']+["'][\s\S]*?>/gi, '');
   result = result.replace(/<meta\s+name=["']twitter:[^"']+["'][\s\S]*?>/gi, '');
   result = result.replace(/<link\s+rel=["']canonical["'][\s\S]*?>/gi, '');
+  result = result.replace(/<script\s+type=["']application\/ld\+json["'][\s\S]*?>[\s\S]*?<\/script>/gi, '');
 
   // Inject into <head>
   if (result.includes('</head>')) {
