@@ -72,24 +72,31 @@ if ('serviceWorker' in navigator && typeof window !== 'undefined') {
   });
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <StoreConfigProvider>
-              <NavigationProvider>
-                <InstallProvider>
-                  <ReviewProvider>
-                    <App />
-                  </ReviewProvider>
-                </InstallProvider>
-              </NavigationProvider>
-            </StoreConfigProvider>
-          </AuthProvider>
-        </ToastProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  </StrictMode>,
-);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  // Clear any pre-rendered crawler shell markup before React client mounts
+  if (rootElement.hasChildNodes()) {
+    rootElement.innerHTML = '';
+  }
+  createRoot(rootElement).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <StoreConfigProvider>
+                <NavigationProvider>
+                  <InstallProvider>
+                    <ReviewProvider>
+                      <App />
+                    </ReviewProvider>
+                  </InstallProvider>
+                </NavigationProvider>
+              </StoreConfigProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+}

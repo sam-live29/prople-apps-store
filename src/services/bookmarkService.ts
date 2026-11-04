@@ -1,7 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 
 const BOOKMARKS_STORAGE_KEY = 'prople_store_bookmarks_v1';
 const BOOKMARKS_EVENT_NAME = 'prople_bookmarks_changed';
+
+/**
+ * In-memory snapshot cache for synchronous React hook subscription
+ */
+let cachedBookmarkedIds: string[] = [];
 
 /**
  * Get the current list of bookmarked application IDs from local storage.
@@ -19,6 +24,15 @@ export function getBookmarkedAppIds(): string[] {
   }
 }
 
+// Prime the in-memory cache
+try {
+  cachedBookmarkedIds = getBookmarkedAppIds();
+} catch {}
+
+function refreshCachedBookmarks(): void {
+  cachedBookmarkedIds = getBookmarkedAppIds();
+}
+
 /**
  * Save the bookmarked application IDs to local storage and dispatch update event.
  */
@@ -26,6 +40,7 @@ function saveBookmarkedAppIds(ids: string[]): void {
   if (typeof window === 'undefined') return;
   try {
     const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+    cachedBookmarkedIds = uniqueIds;
     localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(uniqueIds));
     window.dispatchEvent(
       new CustomEvent(BOOKMARKS_EVENT_NAME, {
@@ -35,6 +50,29 @@ function saveBookmarkedAppIds(ids: string[]): void {
   } catch (e) {
     console.warn('[BookmarkService] Failed to persist bookmarks to storage:', e);
   }
+}
+
+function subscribeBookmarks(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handleUpdate = () => {
+    refreshCachedBookmarks();
+    callback();
+  };
+  window.addEventListener(BOOKMARKS_EVENT_NAME, handleUpdate);
+  window.addEventListener('storage', handleUpdate);
+  return () => {
+    window.removeEventListener(BOOKMARKS_EVENT_NAME, handleUpdate);
+    window.removeEventListener('storage', handleUpdate);
+  };
+}
+
+function getBookmarksSnapshot(): string[] {
+  return cachedBookmarkedIds;
+}
+
+const emptyBookmarksSnapshot: string[] = [];
+function getBookmarksServerSnapshot(): string[] {
+  return emptyBookmarksSnapshot;
 }
 
 /**
@@ -101,21 +139,11 @@ export function toggleBookmark(appId: string): boolean {
  * React hook for consuming and updating bookmarks across the application.
  */
 export function useBookmarks() {
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => getBookmarkedAppIds());
-
-  useEffect(() => {
-    const handleUpdate = () => {
-      setBookmarkedIds(getBookmarkedAppIds());
-    };
-
-    window.addEventListener(BOOKMARKS_EVENT_NAME, handleUpdate);
-    window.addEventListener('storage', handleUpdate);
-
-    return () => {
-      window.removeEventListener(BOOKMARKS_EVENT_NAME, handleUpdate);
-      window.removeEventListener('storage', handleUpdate);
-    };
-  }, []);
+  const bookmarkedIds = useSyncExternalStore(
+    subscribeBookmarks,
+    getBookmarksSnapshot,
+    getBookmarksServerSnapshot
+  );
 
   const checkIsBookmarked = useCallback(
     (appId: string): boolean => {

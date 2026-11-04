@@ -6421,6 +6421,8 @@ async function startServer() {
     const host = req.get('host') || `localhost:${PORT}`;
     const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : req.protocol) || 'https';
     const baseUrl = `${proto}://${host}`;
+    const userAgent = String(req.headers['user-agent'] || '');
+    const isCrawler = /bot|crawler|spider|slurp|facebookexternalhit|whatsapp|telegrambot|twitterbot|discordbot|linkedinbot|slackbot|embedly|quora|pinterest|redditbot|applebot|bingbot|googlebot|yandex|duckduckbot|baiduspider|ia_archiver|curl|wget|lighthouse|gtmetrix|headless/i.test(userAgent);
 
     // 0. Trailing slash normalization (e.g. /apps/vlc/ -> /apps/vlc)
     if (rawPath.length > 1 && rawPath.endsWith('/')) {
@@ -6476,8 +6478,6 @@ async function startServer() {
       if (appRouteMatch && appRouteMatch[1]) {
         const requestedSlug = decodeURIComponent(appRouteMatch[1]);
         if (!PLATFORM_KEYWORDS.has(requestedSlug.toLowerCase())) {
-          const userAgent = String(req.headers['user-agent'] || '');
-          const isCrawler = /bot|crawler|spider|slurp|facebookexternalhit|whatsapp|telegrambot|twitterbot|discordbot|linkedinbot|slackbot|embedly|quora|pinterest|redditbot|applebot|bingbot|googlebot|yandex|duckduckbot|baiduspider|ia_archiver|curl|wget|lighthouse|gtmetrix|headless/i.test(userAgent);
           const appData = await getAppForSeo(requestedSlug);
           const rawHtml = await getBaseTemplate();
           if (!rawHtml) return next();
@@ -6539,7 +6539,7 @@ async function startServer() {
         const rawHtml = await getBaseTemplate();
         if (!rawHtml) return next();
 
-        const transformedHtml = injectCategorySeoIntoHtml(rawHtml, matchedCategory, baseUrl, categoryApps);
+        const transformedHtml = injectCategorySeoIntoHtml(rawHtml, matchedCategory, baseUrl, categoryApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         return res.send(transformedHtml);
@@ -6561,7 +6561,7 @@ async function startServer() {
         const rawHtml = await getBaseTemplate();
         if (!rawHtml) return next();
 
-        const transformedHtml = injectDeveloperSeoIntoHtml(rawHtml, developerName, baseUrl, devApps);
+        const transformedHtml = injectDeveloperSeoIntoHtml(rawHtml, developerName, baseUrl, devApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         return res.send(transformedHtml);
@@ -6597,7 +6597,7 @@ async function startServer() {
         const rawHtml = await getBaseTemplate();
         if (!rawHtml) return next();
 
-        const transformedHtml = injectPlatformSeoIntoHtml(rawHtml, platformParam, baseUrl, platformApps);
+        const transformedHtml = injectPlatformSeoIntoHtml(rawHtml, platformParam, baseUrl, platformApps, { injectBodyShell: isCrawler });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         return res.send(transformedHtml);
@@ -6608,7 +6608,7 @@ async function startServer() {
         const rawHtml = await getBaseTemplate();
         if (rawHtml) {
           const allApps = await getAllAppsServer(400);
-          const transformedHtml = injectHomeSeoIntoHtml(rawHtml, baseUrl, allApps);
+          const transformedHtml = injectHomeSeoIntoHtml(rawHtml, baseUrl, allApps, [], { injectBodyShell: isCrawler });
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
           return res.send(transformedHtml);

@@ -350,7 +350,8 @@ export function injectCategorySeoIntoHtml(
   html: string, 
   categoryName: string, 
   baseUrl: string, 
-  categoryApps: SeoAppMetadata[] = []
+  categoryApps: SeoAppMetadata[] = [],
+  options?: { injectBodyShell?: boolean }
 ): string {
   const cat = escapeHtml(categoryName);
   const catSlug = slugifyAppName(categoryName);
@@ -439,7 +440,7 @@ export function injectCategorySeoIntoHtml(
     </main>
   `;
 
-  return cleanAndInjectHtml(html, headInject, preRenderedContent);
+  return cleanAndInjectHtml(html, headInject, options?.injectBodyShell === true ? preRenderedContent : '');
 }
 
 /**
@@ -449,7 +450,8 @@ export function injectDeveloperSeoIntoHtml(
   html: string,
   developerName: string,
   baseUrl: string,
-  developerApps: SeoAppMetadata[] = []
+  developerApps: SeoAppMetadata[] = [],
+  options?: { injectBodyShell?: boolean }
 ): string {
   const dev = escapeHtml(developerName);
   const devSlug = slugifyAppName(developerName);
@@ -513,7 +515,7 @@ export function injectDeveloperSeoIntoHtml(
     </main>
   `;
 
-  return cleanAndInjectHtml(html, headInject, preRenderedContent);
+  return cleanAndInjectHtml(html, headInject, options?.injectBodyShell === true ? preRenderedContent : '');
 }
 
 /**
@@ -523,7 +525,8 @@ export function injectPlatformSeoIntoHtml(
   html: string,
   platform: 'android' | 'windows' | 'linux' | 'mac' | 'apple' | 'ios' | 'web' | 'all',
   baseUrl: string,
-  platformApps: SeoAppMetadata[] = []
+  platformApps: SeoAppMetadata[] = [],
+  options?: { injectBodyShell?: boolean }
 ): string {
   const platformName = platform === 'all' 
     ? 'All Platforms' 
@@ -589,7 +592,7 @@ export function injectPlatformSeoIntoHtml(
     </main>
   `;
 
-  return cleanAndInjectHtml(html, headInject, preRenderedContent);
+  return cleanAndInjectHtml(html, headInject, options?.injectBodyShell === true ? preRenderedContent : '');
 }
 
 /**
@@ -599,7 +602,8 @@ export function injectHomeSeoIntoHtml(
   html: string,
   baseUrl: string,
   allApps: SeoAppMetadata[] = [],
-  allCategories: { id: string; name: string }[] = []
+  allCategories: { id: string; name: string }[] = [],
+  options?: { injectBodyShell?: boolean }
 ): string {
   const title = "Prople Store – Multi-Platform App Store & Application Marketplace (Android, Apple, Mac, Linux, Windows)";
   const desc = "Discover apps and games on Prople Store, a multi-platform app store and application marketplace supporting Android, Apple (iOS/iPadOS), Mac, Linux, and Windows operated by Cloaktail Industries. Verified downloads, web apps, ratings, and developer publishing.";
@@ -813,7 +817,7 @@ export function injectHomeSeoIntoHtml(
     </div>
   `;
 
-  return cleanAndInjectHtml(html, headInject, preRenderedContent);
+  return cleanAndInjectHtml(html, headInject, options?.injectBodyShell === true ? preRenderedContent : '');
 }
 
 /**
