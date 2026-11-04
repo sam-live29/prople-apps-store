@@ -10,10 +10,6 @@
 
 **Prople Store** is an independent, consumer-grade multi-platform application store and application marketplace operated by **Cloaktail Industries**. It provides verified software distribution across Android, Apple (iOS/iPadOS), Mac (macOS), Linux, Windows, and Web/PWA platforms.
 
-<a href="https://www.prople.co.in/apps/prople-apps-store"><img src="public/logo.png" alt="Get Prople Apps Store on Prople Store" width="180"></a>
-
-**[Get Prople Apps Store for Android](https://www.prople.co.in/apps/prople-apps-store)** — Visit its official Prople Store listing to download the app.
-
 - **Official Marketplace**: [www.prople.co.in](https://www.prople.co.in)
 - **Publishing, Browsing & Data Guide**: [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
 - **Legal & Intermediary Safe Harbor Notice**: [NOTICE](NOTICE)
@@ -40,14 +36,14 @@
 
 ## Key Features
 
-- **Zero-Byte Directory Pointer & Intermediary Safe Harbor**: Prople Store operates as a discovery index and directory pointer. Downloads issue immediate HTTP `302 Found` redirects to creator-hosted files, without storing or proxying compiled binaries.
-- **Cloud-Authoritative SHA-256 Verification**: Automatic cryptographic verification using cloud headers, `.sha256` sidecar files, or ephemeral streaming hash checks.
-- **Multi-Source Binary Publishing (Cloud & GitHub)**: Distribute untouched binaries through direct HTTPS links from Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs, or GitHub Releases.
-- **Global Publisher Identity & Immutability**: Globally unique Publisher Names managed in **Settings → Edit Profile** propagate across published apps and releases.
-- **Zero-Barrier Browsing & Contained In-App Downloads**: Browse Home, Explore, Top Charts, Categories, and search with no login wall. Direct binary downloads start within the app session.
-- **Complete Package & Data Transparency**: Listings surface SHA-256 checksums, CPU architectures, OS/RAM requirements, Data Safety disclosures, permissions, and verified download counts.
-- **Developer Publishing Console**: A six-step release wizard with draft persistence, media gallery uploads, abuse protection, and per-account ownership isolation.
-- **Dual-Layer Authentication & 2FA**: Secure password hashing with PBKDF2-SHA512, six-digit email OTP verification, and Google OAuth integration.
+- **Zero-Byte Directory Pointer & Intermediary Safe Harbor**: Prople Store operates purely as a discovery index and directory pointer. Downloads issue immediate HTTP `302 Found` pointer redirects (`Cache-Control: no-store`, `Referrer-Policy: no-referrer`) directly to creator upstream hosts (Cloudflare R2, AWS S3, GitHub Releases, or developer VPS). Zero bytes of compiled executable binaries are proxy-streamed or hosted on Prople Store servers, ensuring strict intermediary compliance under Section 79 of the Indian IT Act 2000, EU DSA, and US § 230.
+- **Cloud-Authoritative SHA-256 Verification**: Automatic cryptographic verification under the hood via cloud headers (`x-amz-checksum-sha256`, `Digest`), sidecar files (`.sha256`), or ephemeral streaming hash checks without storing bytes to disk. The 64-character SHA-256 checksum is immutable and auto-copies to the clipboard on click.
+- **Multi-Source Binary Publishing (Cloud & GitHub)**: Distribute untouched binaries via direct HTTPS links from **Cloudflare R2, AWS S3, self-hosted VPS, custom CDNs**, or **GitHub Releases**—supporting both open-source projects and proprietary private-repository builds across 22+ package formats.
+- **Global Publisher Identity & Immutability**: Globally unique Publisher Names managed in **Settings → Edit Profile** universally propagate across all published apps and releases (with a 30-minute adjustment grace window and 15-day cooldown), while remaining locked and immutable inside individual release forms to prevent per-release spoofing.
+- **Zero-Barrier Browsing & Contained In-App Downloads**: Browse Home, Explore, Top Charts, Categories, and instant Meilisearch/fuzzy search with zero login walls. Direct binary downloads initiate within the app session without jarring new-tab redirects.
+- **Complete Package & Data Transparency**: Every listing surfaces verified SHA-256 checksums, CPU architectures, OS/RAM requirements, Data Safety disclosures, categorized permissions, and authentic `0+`-baseline verified download counts with Bayesian star ratings.
+- **Developer Publishing Console**: 6-step release wizard with isolated draft persistence, S3 media gallery uploads, rate-limited abuse protection (3 new apps / 15m, 5 updates / 1h), and strict per-account ownership isolation.
+- **Dual-Layer Authentication & 2FA**: Secure password hashing with PBKDF2-SHA512, 6-digit email OTP verification codes, and Google OAuth integration.
 - **Search & Generative Engine Optimization (GEO)**: Automated XML sitemaps, OpenGraph/Twitter cards, Schema.org `SoftwareApplication` JSON-LD, MCP discovery tools, and `/llms.txt` + `/llms-full.txt` specifications.
 - **Offline & PWA Resilience**: Service Worker background caching, install prompt support, and IndexedDB catalog caching.
 
@@ -98,10 +94,10 @@
 ├── src/                       # Frontend application source
 │   ├── components/            # UI pages, sections, modals, and navigation
 │   ├── context/               # React Context providers (Auth, Navigation, Install, Theme)
-│   ├── services/               # Client-side business logic and Firebase connectors
-│   ├── utils/                  # Security validators, search algorithms, media helpers
-│   ├── App.tsx                 # Main view router and overlay shell
-│   └── main.tsx                # Application bootstrap and PWA service worker mount
+│   ├── services/              # Client-side business logic and Firebase connectors
+│   ├── utils/                 # Security validators, search algorithms, media helpers
+│   ├── App.tsx                # Main view router and overlay shell
+│   └── main.tsx               # Application bootstrap and PWA service worker mount
 ├── ROADMAP.md                 # Public product roadmap, priorities, and RFCs
 ├── server.ts                  # Unified full-stack Express server entry point
 ├── package.json               # Project manifest, dependencies, and build scripts
