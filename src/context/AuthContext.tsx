@@ -13,6 +13,8 @@ import {
   GithubAuthProvider,
   updateProfile,
   linkWithPopup,
+  linkWithCredential,
+  AuthCredential,
   unlink
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
@@ -1187,7 +1189,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (err?.code === 'auth/timeout') {
         message = 'Google sign-in timed out. Please try again.';
       } else if (err?.code === 'auth/account-exists-with-different-credential') {
-        message = 'An account already exists with this email address under a different login method.';
+        const pendingGoogleCred = GoogleAuthProvider.credentialFromError(err);
+        const conflictingEmail = (err.customData?.email || err.email || '').toLowerCase().trim();
+
+        console.log('[AuthContext] Google sign-in detected existing account for:', conflictingEmail, 'Attempting seamless linking with GitHub...');
+        let linkedSuccessfully = false;
+        try {
+          const githubProvider = new GithubAuthProvider();
+          githubProvider.addScope('read:user');
+          githubProvider.addScope('user:email');
+          githubProvider.setCustomParameters({ allow_signup: 'false' });
+
+          const primaryCred = await signInWithPopup(auth, githubProvider);
+          if (primaryCred?.user) {
+            if (pendingGoogleCred) {
+              try {
+                await linkWithCredential(primaryCred.user, pendingGoogleCred);
+                console.log('[AuthContext] Successfully linked Google credential to user account!');
+              } catch (linkError: any) {
+                console.warn('[AuthContext] linkWithCredential notice:', linkError?.message);
+              }
+            }
+            resolvedUser = await processGithubCredential(primaryCred);
+            setUser(resolvedUser);
+            linkedSuccessfully = true;
+            return;
+          }
+        } catch (linkAttemptErr: any) {
+          console.warn('[AuthContext] Automatic provider link attempt notice:', linkAttemptErr?.message);
+        }
+
+        if (!linkedSuccessfully) {
+          message = `An account already exists for ${conflictingEmail || 'this email'}. Please sign in with GitHub or your password to link your accounts.`;
+        }
       } else if (err?.message) {
         message = err.message;
       }
@@ -1367,7 +1401,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (err?.code === 'auth/popup-blocked') {
         message = 'Popup window was blocked by your browser. Please allow popups or retry to sign in with GitHub.';
       } else if (err?.code === 'auth/account-exists-with-different-credential') {
-        message = 'An account already exists with this email address using Google or password. Please sign in with that method to link your accounts.';
+        const pendingGithubCred = GithubAuthProvider.credentialFromError(err);
+        const conflictingEmail = (err.customData?.email || err.email || '').toLowerCase().trim();
+
+        console.log('[AuthContext] Account exists for:', conflictingEmail, 'Attempting seamless linking with primary Google account...');
+        let linkedSuccessfully = false;
+        try {
+          const googleProvider = new GoogleAuthProvider();
+          googleProvider.addScope('email');
+          googleProvider.addScope('profile');
+          googleProvider.setCustomParameters({
+            prompt: 'select_account',
+            ...(conflictingEmail ? { login_hint: conflictingEmail } : {})
+          });
+
+          const primaryCred = await signInWithPopup(auth, googleProvider);
+          if (primaryCred?.user) {
+            if (pendingGithubCred) {
+              try {
+                await linkWithCredential(primaryCred.user, pendingGithubCred);
+                console.log('[AuthContext] Successfully linked GitHub credential to user account!');
+              } catch (linkError: any) {
+                console.warn('[AuthContext] linkWithCredential notice:', linkError?.message);
+              }
+            }
+            resolvedUser = await processGithubCredential(primaryCred);
+            setUser(resolvedUser);
+            linkedSuccessfully = true;
+            return;
+          }
+        } catch (linkAttemptErr: any) {
+          console.warn('[AuthContext] Automatic provider link attempt notice:', linkAttemptErr?.message);
+        }
+
+        if (!linkedSuccessfully) {
+          message = `An account already exists for ${conflictingEmail || 'this email'}. Please sign in with Google or your password to link your GitHub account.`;
+        }
       } else if (err?.code === 'auth/operation-not-allowed') {
         message = 'GitHub sign-in is not yet enabled in Firebase Console. Please enable GitHub under Authentication > Sign-in method in Firebase Console with your GitHub OAuth credentials.';
       } else if (err?.code === 'auth/unauthorized-domain') {
