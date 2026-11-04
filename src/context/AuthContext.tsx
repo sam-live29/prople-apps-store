@@ -11,7 +11,9 @@ import {
   getAdditionalUserInfo,
   GoogleAuthProvider,
   GithubAuthProvider,
-  updateProfile
+  updateProfile,
+  linkWithPopup,
+  unlink
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -49,6 +51,9 @@ interface AuthContextType {
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   togglePublisherStatus: (status?: boolean) => void;
   isPublisherOfApp: (appDeveloper?: string, appId?: string, appDeveloperId?: string, appDeveloperEmail?: string) => boolean;
+  linkGoogleAccount: () => Promise<void>;
+  linkGithubAccount: () => Promise<void>;
+  unlinkAccountProvider: (providerId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -1798,6 +1803,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
+  const linkGoogleAccount = async () => {
+    if (!auth.currentUser) throw new Error('You must be signed in to link your Google account.');
+    setIsLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await linkWithPopup(auth.currentUser, provider);
+      setFirebaseUser(cred.user);
+      if (user && user.email) {
+        const unified = await unifyUserProfileAcrossAccounts(user.email, cred.user.uid, user);
+        setUser(unified);
+        try { localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified)); } catch {}
+        syncUserProfileToFirestore(unified);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const linkGithubAccount = async () => {
+    if (!auth.currentUser) throw new Error('You must be signed in to link your GitHub account.');
+    setIsLoading(true);
+    try {
+      const provider = new GithubAuthProvider();
+      provider.addScope('read:user');
+      provider.addScope('user:email');
+      const cred = await linkWithPopup(auth.currentUser, provider);
+      setFirebaseUser(cred.user);
+      const additional = getAdditionalUserInfo(cred);
+      const screenName = additional?.username;
+      if (user && user.email) {
+        const unified = await unifyUserProfileAcrossAccounts(user.email, cred.user.uid, {
+          ...user,
+          publisherGithub: screenName || user.publisherGithub || ''
+        });
+        setUser(unified);
+        try { localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified)); } catch {}
+        syncUserProfileToFirestore(unified);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const unlinkAccountProvider = async (providerId: string) => {
+    if (!auth.currentUser) throw new Error('You must be signed in.');
+    if ((auth.currentUser.providerData || []).length <= 1) {
+      throw new Error('You cannot disconnect your only login method.');
+    }
+    setIsLoading(true);
+    try {
+      const updatedUser = await unlink(auth.currentUser, providerId);
+      setFirebaseUser(updatedUser);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const isAdmin = Boolean(
     user && (
       AdminPermissionsService.isAdmin(user) ||
@@ -1824,6 +1887,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signup,
         loginWithGoogle,
         loginWithGithub,
+        linkGoogleAccount,
+        linkGithubAccount,
+        unlinkAccountProvider,
         sendEmailOtp,
         verifyEmailOtp,
         forgotPassword,
