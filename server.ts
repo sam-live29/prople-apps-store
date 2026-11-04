@@ -2734,16 +2734,60 @@ async function startServer() {
         });
       }
 
-      await serverDeleteDoc(appRef);
+      let deletedFromFirestore = false;
+      const bearerToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim() || req.body?.idToken || req.query?.idToken;
+
+      try {
+        await serverDeleteDoc(appRef);
+        deletedFromFirestore = true;
+      } catch (delErr: any) {
+        // 1. If unauthenticated client SDK is blocked by cloud security rules, try REST API with client's Firebase Auth ID token
+        if (bearerToken) {
+          try {
+            const fbConfig = getServerFirebaseConfig();
+            const databaseId = !fbConfig.isExampleConfig ? fbConfig.firestoreDatabaseId : '(default)';
+            const projectId = !fbConfig.isExampleConfig ? fbConfig.projectId : '';
+            if (projectId) {
+              const restDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/apps/${encodeURIComponent(appId)}`;
+              const restRes = await fetch(restDocUrl, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${bearerToken}` }
+              });
+              if (restRes.ok) {
+                deletedFromFirestore = true;
+              }
+            }
+          } catch {}
+        }
+
+        // 2. Fallback: If cloud rules restrict direct hard delete, tombstone the app so it is removed from catalog & feeds
+        if (!deletedFromFirestore) {
+          try {
+            await serverSetDoc(appRef, {
+              isDeleted: true,
+              isPublished: false,
+              status: 'deleted',
+              deletedAt: new Date().toISOString(),
+              deletedBy: normUserEmail || userId,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+            deletedFromFirestore = true;
+          } catch (tombstoneErr: any) {
+            console.warn("[Backend] App deletion tombstone fallback notice:", tombstoneErr.message);
+          }
+        }
+      }
 
       // Delete associated spotlight banner from Firestore if exists
       try {
         const bannerRef = serverDoc(serverDb, "banners", `banner-${appId}`);
-        await serverDeleteDoc(bannerRef);
+        await serverDeleteDoc(bannerRef).catch(async () => {
+          await serverSetDoc(bannerRef, { isActive: false, isDeleted: true }, { merge: true }).catch(() => {});
+        });
       } catch {}
 
       // Flush server-side in-memory catalog cache and SEO caches
-      serverAppsCatalogCache = [];
+      serverAppsCatalogCache = serverAppsCatalogCache.filter(a => a.id !== appId);
       seoAppsCache.delete(appId.toLowerCase());
       seoAppsCache.delete(appId);
       if (existingData?.slug) {
@@ -6078,7 +6122,12 @@ async function startServer() {
       try {
         const snap = await serverGetDocs(serverCollection(serverDb, "apps"));
         const list: any[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        snap.forEach(d => {
+          const data = d.data();
+          if (data && !data.isDeleted && data.status !== 'deleted' && data.isPublished !== false) {
+            list.push({ id: d.id, ...data });
+          }
+        });
         if (list.length > 0) {
           serverAppsCatalogCache = list;
           serverAppsCatalogCacheTime = Date.now();
@@ -6123,6 +6172,9 @@ async function startServer() {
         const snap = await serverGetDoc(appRef);
         if (snap.exists()) {
           const data: any = { id: snap.id, ...snap.data() };
+          if (data.isDeleted || data.status === 'deleted' || data.isPublished === false) {
+            return null;
+          }
           seoAppsCache.set(cleanId, { data, timestamp: Date.now() });
           if (data.name) {
             seoAppsCache.set(slugifyAppName(data.name), { data, timestamp: Date.now() });

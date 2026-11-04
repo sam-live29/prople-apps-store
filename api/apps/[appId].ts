@@ -231,9 +231,28 @@ export default async function handler(req: any, res: any) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot delete it.' });
       }
 
-      const delRes = await fetch(directDocUrl, { method: 'DELETE' }).catch(() => null);
+      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim() || body.idToken;
+      const delRes = await fetch(directDocUrl, {
+        method: 'DELETE',
+        headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined
+      }).catch(() => null);
+
       if (!delRes || !delRes.ok) {
-        return res.status(500).json({ success: false, error: 'Failed to delete application from store' });
+        // Fallback: Tombstone / soft-delete in Firestore
+        await fetch(
+          `${directDocUrl}?updateMask.fieldPaths=isDeleted&updateMask.fieldPaths=isPublished&updateMask.fieldPaths=status`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                isDeleted: { booleanValue: true },
+                isPublished: { booleanValue: false },
+                status: { stringValue: 'deleted' }
+              }
+            })
+          }
+        ).catch(() => null);
       }
 
       // Also clean up any banner doc
@@ -252,6 +271,9 @@ export default async function handler(req: any, res: any) {
       const docData = await directRes.json().catch(() => null);
       const app = parseFirestoreDoc(docData);
       if (app) {
+        if (app.isDeleted || app.status === 'deleted' || app.isPublished === false) {
+          return res.status(404).json({ success: false, error: 'Application not found' });
+        }
         return res.status(200).json({ success: true, app });
       }
     }

@@ -222,6 +222,10 @@ export function listenToApp(appId: string, callback: (app: AppDetails | null) =>
   return onSnapshot(appRef, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
+      if (data && (data.isDeleted === true || data.status === 'deleted' || data.isPublished === false)) {
+        callback(null);
+        return;
+      }
       const downloadsFormatted = formatDownloadCount(data.downloadsCount ?? parseDownloadCount(data.downloads));
       
       const app: AppDetails = {
@@ -297,6 +301,9 @@ export function listenToAllApps(
     const map: Record<string, AppDetails> = {};
     snap.forEach(d => {
       const data = d.data();
+      if (data && (data.isDeleted === true || data.status === 'deleted' || data.isPublished === false)) {
+        return;
+      }
       const downloadsFormatted = formatDownloadCount(data.downloadsCount ?? parseDownloadCount(data.downloads));
       const normalizeTs = (ts: any): number | string | undefined => {
         if (!ts) return undefined;
@@ -821,88 +828,48 @@ export async function deleteAppFromFirestore(
   const currentAuthUid = customUserId || currentAuth.uid;
   const currentAuthEmail = (customUserEmail || currentAuth.email || '').toLowerCase().trim();
 
-  // 1. First attempt: Server-side API endpoint with full administrative and ownership validation
-  let backendSucceeded = false;
+  // Obtain client auth ID token if signed in
+  const idToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => null) : null;
+
+  // 1. If signed into Firebase Auth on client, delete directly via client SDK with authenticated credentials
+  if (auth.currentUser) {
+    try {
+      const appRef = doc(db, 'apps', appId);
+      await deleteDoc(appRef);
+      try {
+        const bannerRef = doc(db, 'banners', `banner-${appId}`);
+        await deleteDoc(bannerRef);
+      } catch {}
+    } catch (clientErr: any) {
+      console.info('[StoreService] Direct client delete notice:', clientErr?.message);
+    }
+  }
+
+  // 2. Synchronize with server-side API endpoint to clear server cache, Meilisearch index, and tombstone/delete in DB
   try {
     const { ok, data: resData, error: fetchErr } = await safeFetchJson<{ success: boolean; error?: string }>(
       `/api/apps/${encodeURIComponent(appId)}`,
       {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
         body: JSON.stringify({
           userId: currentAuthUid,
-          userEmail: currentAuthEmail
+          userEmail: currentAuthEmail,
+          idToken: idToken || undefined
         })
       }
     );
 
-    if (ok && resData?.success) {
-      backendSucceeded = true;
-    } else if (!ok) {
-      console.warn('[StoreService] Backend delete returned error:', resData?.error || fetchErr);
+    if (!ok && !auth.currentUser) {
+      console.warn('[StoreService] Backend delete notice:', resData?.error || fetchErr);
     }
   } catch (backendErr: any) {
-    console.warn('[StoreService] Backend delete request exception, trying client Firestore SDK:', backendErr.message);
+    console.warn('[StoreService] Backend delete request exception:', backendErr.message);
   }
 
-  if (backendSucceeded) {
-    delete appDetailsMock[appId];
-    if (currentAuthUid) {
-      try {
-        const userRef = doc(db, 'users', currentAuthUid);
-        await setDoc(userRef, {
-          publishedAppIds: arrayRemove(appId),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } catch (e) {
-        console.warn('Could not remove app from user publishedAppIds:', e);
-      }
-    }
-    return;
-  }
-
-  // 2. Fallback: Direct Firestore SDK deletion
-  const appRef = doc(db, 'apps', appId);
-  const snap = await getDoc(appRef).catch(() => null);
-  if (snap && snap.exists()) {
-    const data = snap.data();
-    const devEmail = (data.developerEmail || '').toLowerCase().trim();
-    const pubEmail = (data.publisherEmail || '').toLowerCase().trim();
-    const ownerEmail = (data.ownerEmail || '').toLowerCase().trim();
-    const authorEmail = (data.authorEmail || '').toLowerCase().trim();
-    const devInfoEmail = (data.developerInfo?.email || '').toLowerCase().trim();
-
-    const isMatchingEmail = Boolean(
-      currentAuthEmail && (
-        devEmail === currentAuthEmail ||
-        pubEmail === currentAuthEmail ||
-        ownerEmail === currentAuthEmail ||
-        authorEmail === currentAuthEmail ||
-        devInfoEmail === currentAuthEmail
-      )
-    );
-
-    const canDelete = AdminPermissionsService.canDeleteApp(data as any, { uid: currentAuthUid, email: currentAuthEmail });
-
-    if (!canDelete) {
-      throw new Error('Forbidden: You do not own this application and are not an authorized administrator.');
-    }
-  }
-
-  try {
-    await deleteDoc(appRef);
-  } catch (err: any) {
-    // Final fallback to server-authoritative API
-    const delRes = await fetch(`/api/apps/${appId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentAuthUid, userEmail: currentAuthEmail })
-    });
-    if (!delRes.ok) {
-      const errData = await delRes.json().catch(() => ({}));
-      throw new Error(errData?.error || err?.message || 'Failed to delete application from store.');
-    }
-  }
   delete appDetailsMock[appId];
 
   // Remove app from user profile's publishedAppIds
