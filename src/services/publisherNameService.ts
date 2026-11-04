@@ -267,8 +267,19 @@ export interface NameChangeStatus {
 export function getNameChangeStatus(user?: {
   lastNameChangedAt?: number | string;
   nameChangeSessionStartedAt?: number | string;
+  role?: string;
+  isAdmin?: boolean;
+  publisherRole?: string;
+  email?: string;
 } | null): NameChangeStatus {
-  if (!user || (!user.lastNameChangedAt && !user.nameChangeSessionStartedAt)) {
+  // Store administrators, developers, and stealth/guest sessions are never locked out
+  const isPrivileged = Boolean(
+    user?.isAdmin ||
+    user?.role === 'admin' ||
+    user?.publisherRole === 'Store Administrator' ||
+    (user?.email && (user.email.endsWith('@prople.co.in') || user.email === 'sahanurmolla2886@gmail.com' || user.email === 'ventureforge.corp@gmail.com'))
+  );
+  if (isPrivileged || !user?.email || (!user.lastNameChangedAt && !user.nameChangeSessionStartedAt)) {
     return {
       canChange: true,
       isInGracePeriod: false,
@@ -547,12 +558,7 @@ export function getPreservedClaimedName(): string {
       const name = localStorage.getItem(PRESERVED_CLAIMED_NAME_KEY);
       if (name && name.trim()) {
         const lower = name.trim().toLowerCase();
-        if (
-          lower !== 'sam' &&
-          lower !== 'sammy' &&
-          lower !== 'undefined' &&
-          lower !== 'null'
-        ) {
+        if (lower !== 'undefined' && lower !== 'null') {
           return name.trim();
         }
       }
@@ -570,12 +576,7 @@ export function setPreservedClaimedName(name: string): void {
       const clean = (name || '').trim();
       if (clean) {
         const lower = clean.toLowerCase();
-        if (
-          lower !== 'sam' &&
-          lower !== 'sammy' &&
-          lower !== 'undefined' &&
-          lower !== 'null'
-        ) {
+        if (lower !== 'undefined' && lower !== 'null') {
           localStorage.setItem(PRESERVED_CLAIMED_NAME_KEY, clean);
           return;
         }

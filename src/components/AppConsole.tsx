@@ -1141,7 +1141,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const [developerName, setDeveloperName] = useState(() => {
     const draftDev = (initialDraft?.developerName || '').trim();
     const lower = draftDev.toLowerCase();
-    if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer' && lower !== 'sam' && lower !== 'sammy' && lower !== 'guest') {
+    if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer' && lower !== 'undefined' && lower !== 'null') {
       return draftDev;
     }
     return currentGoogleName || 'User';

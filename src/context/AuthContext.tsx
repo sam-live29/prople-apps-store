@@ -125,7 +125,7 @@ export async function unifyUserProfileAcrossAccounts(
       const savedBackup = localStorage.getItem('prople_saved_profile_' + cleanEmail);
       if (savedBackup) {
         const parsedBackup = JSON.parse(savedBackup);
-        if (parsedBackup && (parsedBackup as any).nameResetVersion === 'fresh_start_v1') {
+        if (parsedBackup && typeof parsedBackup === 'object') {
           localAccountData = parsedBackup;
         }
       }
@@ -135,7 +135,7 @@ export async function unifyUserProfileAcrossAccounts(
           const parsed = JSON.parse(savedRaw);
           if (
             parsed &&
-            (parsed as any).nameResetVersion === 'fresh_start_v1' &&
+            typeof parsed === 'object' &&
             ((currentUid && parsed.uid === currentUid) ||
               (cleanEmail && (parsed.email || '').toLowerCase().trim() === cleanEmail))
           ) {
@@ -149,15 +149,9 @@ export async function unifyUserProfileAcrossAccounts(
   let mergedIsPublisher = isDevHardcoded ? true : Boolean(initialData.isPublisher || localAccountData?.isPublisher);
   const isInvalidName = (val?: string) =>
     !val ||
-    val === 'User' ||
-    val === 'Developer' ||
-    val === 'Publisher' ||
-    val === 'Verified Publisher' ||
-    val === 'Verified Developer' ||
-    val.toLowerCase() === 'sam' ||
-    val.toLowerCase() === 'sammy' ||
-    val.toLowerCase() === 'guest' ||
-    val.toLowerCase() === cleanEmail.split('@')[0];
+    val.trim() === '' ||
+    val.toLowerCase() === 'undefined' ||
+    val.toLowerCase() === 'null';
 
   const rawInitialName = (initialData.publisherName || initialData.displayName || '').trim();
   const validInitialName = !isInvalidName(rawInitialName) ? rawInitialName : '';
@@ -505,31 +499,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_PENDING_2FA_KEY) === '1') {
         return null;
       }
-      // One-time fresh start reset of all stored user names
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('prople_fresh_names_reset_v1') !== 'done') {
-        localStorage.setItem('prople_fresh_names_reset_v1', 'done');
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && (k === LOCAL_STORAGE_USER_KEY || k.startsWith('prople_saved_profile_'))) {
-            try {
-              const raw = localStorage.getItem(k);
-              if (raw) {
-                const p = JSON.parse(raw);
-                if (p && typeof p === 'object') {
-                  p.displayName = '';
-                  p.publisherName = '';
-                  delete p.lastNameChangedAt;
-                  delete p.nameChangeSessionStartedAt;
-                  p.nameResetVersion = 'fresh_start_v1';
-                  localStorage.setItem(k, JSON.stringify(p));
-                }
-              }
-            } catch {}
-          }
-        }
-        safeFetchJson('/api/publishers/reset-all-names', { method: 'POST' }).catch(() => {});
-      }
-
       // Purge any legacy inquiry status
       localStorage.removeItem('developer_inquiry_status');
       const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -547,21 +516,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return null;
         }
 
-        const isSam = (n?: string | null) => {
-          if (!n) return false;
-          const l = n.trim().toLowerCase();
-          return l === 'sam' || l === 'sammy';
-        };
-        if (isSam(parsed.displayName)) parsed.displayName = 'User';
-        if (isSam(parsed.publisherName)) parsed.publisherName = 'User';
-        if (parsed.nameResetVersion !== 'fresh_start_v1') {
-          parsed.displayName = '';
-          parsed.publisherName = '';
-          delete parsed.lastNameChangedAt;
-          delete parsed.nameChangeSessionStartedAt;
-          parsed.nameResetVersion = 'fresh_start_v1';
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(parsed));
-        }
         // If not a store admin or verified publisher, ensure standard user role
         if (!isDeveloperEmail(parsed.email) && !parsed.isPublisher) {
           parsed.publisherRole = 'Standard User';
@@ -633,12 +587,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const email = fbUser.email || remoteData.email || '';
         if (email) {
           try {
-            const isFreshRemote = (remoteData as any).nameResetVersion === 'fresh_start_v1';
+            const rawName = (remoteData.publisherName || remoteData.displayName || fbUser.displayName || '').trim();
             const unified = await unifyUserProfileAcrossAccounts(email, fbUser.uid, {
               ...remoteData,
               email,
-              displayName: isFreshRemote ? (remoteData.publisherName || remoteData.displayName || '') : '',
-              publisherName: isFreshRemote ? (remoteData.publisherName || '') : '',
+              displayName: rawName,
+              publisherName: rawName,
               photoURL: remoteData.photoURL || fbUser.photoURL || undefined,
               isEmailVerified: fbUser.emailVerified || remoteData.isEmailVerified,
             });
@@ -652,16 +606,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // When not authenticated with Firebase, maintain any active verified email/OTP session
+        // When not authenticated with Firebase, maintain any active guest/stealth or local session
         setUser((prev) => {
-          if (prev && prev.isEmailVerified && prev.email) {
+          if (prev && (prev.displayName || prev.publisherName || prev.email)) {
             return prev;
           }
           try {
             const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
             if (saved) {
               const parsed = JSON.parse(saved);
-              if (parsed && parsed.isEmailVerified && parsed.email) {
+              if (parsed && typeof parsed === 'object') {
                 return parsed;
               }
             }

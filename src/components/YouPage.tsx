@@ -174,7 +174,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
   const isExcludedName = (n?: string | null) => {
     if (!n) return true;
     const l = n.trim().toLowerCase();
-    return l === 'sam' || l === 'sammy' || l === 'undefined' || l === 'null';
+    return l === 'undefined' || l === 'null';
   };
   const preservedClaimedName = !isExcludedName(rawPreserved) ? rawPreserved.trim() : '';
   const userEmail = user?.email || "User";

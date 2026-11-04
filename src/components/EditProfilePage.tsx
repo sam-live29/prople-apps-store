@@ -38,7 +38,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   const rawCandidateName = (user?.publisherName || user?.displayName || preservedName || '').trim();
   const isExcludedName = (n: string) => {
     const l = n.toLowerCase();
-    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'undefined' || l === 'null';
+    return l === 'undefined' || l === 'null';
   };
   const currentActiveName = rawCandidateName && !isExcludedName(rawCandidateName) ? rawCandidateName : (user ? '' : 'User');
   const [displayName, setDisplayName] = useState(currentActiveName || 'User');

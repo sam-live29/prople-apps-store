@@ -47,31 +47,10 @@ try {
     try { localStorage.removeItem(key); } catch {}
   });
 
-  // Purge any stale preserved claimed name if it is a personal/generic placeholder
+  // Clean only invalid 'undefined' or 'null' literal strings
   const preservedName = localStorage.getItem('prople_preserved_claimed_name');
-  if (preservedName && ['sam', 'sammy', 'undefined', 'null'].includes(preservedName.trim().toLowerCase())) {
+  if (preservedName && ['undefined', 'null'].includes(preservedName.trim().toLowerCase())) {
     localStorage.removeItem('prople_preserved_claimed_name');
-  }
-
-  // Sanitize stored unauthenticated user profile if it had 'sam' or 'sammy'
-  const rawUser = localStorage.getItem('appmarket_user_profile');
-  if (rawUser) {
-    try {
-      const parsed = JSON.parse(rawUser);
-      if (parsed && typeof parsed === 'object') {
-        const dName = (parsed.displayName || '').trim().toLowerCase();
-        const pName = (parsed.publisherName || '').trim().toLowerCase();
-        if (dName === 'sam' || dName === 'sammy' || pName === 'sam' || pName === 'sammy') {
-          if (!parsed.email) {
-            localStorage.removeItem('appmarket_user_profile');
-          } else {
-            parsed.displayName = 'User';
-            parsed.publisherName = 'User';
-            localStorage.setItem('appmarket_user_profile', JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch {}
   }
 } catch {}
 

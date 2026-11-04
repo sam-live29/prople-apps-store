@@ -52,7 +52,7 @@ export function getGmailAvatarColor(identifier?: string | null): { bg: string; t
 export function getAvatarInitial(name?: string | null, email?: string | null): string {
   const raw = (name || '').trim();
   const lower = raw.toLowerCase();
-  const isExcluded = lower === 'sam' || lower === 'sammy' || lower === 'guest' || lower === 'user';
+  const isExcluded = lower === 'undefined' || lower === 'null';
   const candidate = (!isExcluded ? raw : '') || (email || '').trim();
   if (!candidate) return 'U';
 
@@ -83,7 +83,7 @@ export function getFriendlyDisplayName(user?: {
   const isInvalid = (val?: string | null) => {
     if (!val) return true;
     const l = val.trim().toLowerCase();
-    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'user' || l === 'undefined' || l === 'null';
+    return l === 'undefined' || l === 'null';
   };
 
   const publisher = (user.publisherName || '').trim();
