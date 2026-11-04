@@ -1140,10 +1140,11 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
   const currentGoogleEmail = user?.email || 'support@prople.co.in';
   const [developerName, setDeveloperName] = useState(() => {
     const draftDev = (initialDraft?.developerName || '').trim();
-    if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer' && draftDev.toLowerCase() !== 'sammy') {
+    const lower = draftDev.toLowerCase();
+    if (draftDev && draftDev !== 'Verified Publisher' && draftDev !== 'Verified Developer' && lower !== 'sam' && lower !== 'sammy' && lower !== 'guest') {
       return draftDev;
     }
-    return currentGoogleName;
+    return currentGoogleName || 'User';
   });
   const [githubRepoOwner, setGithubRepoOwner] = useState(() => initialDraft?.githubRepoOwner || '');
   const [category, setCategory] = useState(() => initialDraft?.category || 'Productivity');

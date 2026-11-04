@@ -154,6 +154,9 @@ export async function unifyUserProfileAcrossAccounts(
     val === 'Publisher' ||
     val === 'Verified Publisher' ||
     val === 'Verified Developer' ||
+    val.toLowerCase() === 'sam' ||
+    val.toLowerCase() === 'sammy' ||
+    val.toLowerCase() === 'guest' ||
     val.toLowerCase() === cleanEmail.split('@')[0];
 
   const rawInitialName = (initialData.publisherName || initialData.displayName || '').trim();
@@ -1698,32 +1701,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser((prev) => {
       const fallbackGuestUid = getOrCreateGuestUid();
-      const preservedName = getPreservedClaimedName();
+      const rawPreserved = getPreservedClaimedName();
+      const isExcluded = (n?: string | null) => {
+        if (!n) return true;
+        const l = n.trim().toLowerCase();
+        return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'undefined' || l === 'null';
+      };
+      const preservedName = !isExcluded(rawPreserved) ? rawPreserved.trim() : '';
+      const fallbackName = newName || preservedName || 'User';
+
       const baseProfile = prev || (() => {
         try {
           const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-          return saved ? JSON.parse(saved) : null;
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed === 'object') {
+              if (isExcluded(parsed.displayName)) parsed.displayName = 'User';
+              if (isExcluded(parsed.publisherName)) parsed.publisherName = 'User';
+              return parsed;
+            }
+          }
+          return null;
         } catch {
           return null;
         }
       })() || {
         uid: fallbackGuestUid,
         email: '',
-        displayName: newName || preservedName || '',
-        publisherName: newName || preservedName || '',
+        displayName: fallbackName,
+        publisherName: fallbackName,
         isPublisher: true,
         publisherRole: 'Standard User',
         publishedAppIds: [],
         nameResetVersion: 'fresh_start_v1'
       };
 
-      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || preservedName || '').trim();
+      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || preservedName || 'User').trim();
+
+      const resolvedName = newName || (!isExcluded(baseProfile.publisherName) ? baseProfile.publisherName : '') || (!isExcluded(baseProfile.displayName) ? baseProfile.displayName : '') || 'User';
 
       const updated: UserProfile = { 
         ...baseProfile, 
         ...data,
-        displayName: newName || baseProfile.publisherName || baseProfile.displayName || '',
-        publisherName: newName || baseProfile.publisherName || baseProfile.displayName || '',
+        displayName: resolvedName,
+        publisherName: resolvedName,
         lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : baseProfile.lastNameChangedAt,
         nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : baseProfile.nameChangeSessionStartedAt,
         ...({ nameResetVersion: 'fresh_start_v1' } as any)

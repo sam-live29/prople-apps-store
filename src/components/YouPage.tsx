@@ -170,10 +170,16 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
     return () => clearTimeout(timer);
   }, [isAuthLoading, user, activeView, showToast, hasActiveToast]);
 
-  const preservedClaimedName = getPreservedClaimedName();
-  const userEmail = user?.email || "Guest User";
+  const rawPreserved = getPreservedClaimedName();
+  const isExcludedName = (n?: string | null) => {
+    if (!n) return true;
+    const l = n.trim().toLowerCase();
+    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'user' || l === 'undefined' || l === 'null';
+  };
+  const preservedClaimedName = !isExcludedName(rawPreserved) ? rawPreserved.trim() : '';
+  const userEmail = user?.email || "User";
   const userGreetingName = getFriendlyDisplayName(user);
-  const userName = user?.publisherName || user?.displayName || (user ? userGreetingName : "");
+  const userName = user?.publisherName || user?.displayName || (user ? userGreetingName : "User");
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
@@ -309,7 +315,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
               onClick={() => setActiveView('edit-profile')}
               icon={<User className="w-5 h-5 text-theme-text-muted" />} 
               label="Edit Profile" 
-              sublabel={userName !== "Guest" ? `Publisher name: ${userName}` : "Display name, bio & preferences"}
+              sublabel={userName && userName !== "User" && userName !== "Guest" ? `Publisher name: ${userName}` : "Display name, bio & preferences"}
               hasBorder={false}
               rightIcon={<ChevronRight className="w-4 h-4 text-theme-text-muted" />} 
             />

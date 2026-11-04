@@ -35,8 +35,13 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
 
   // Publisher name takes highest priority; falls back to preserved claimed name across guest/logout sessions
   const preservedName = getPreservedClaimedName();
-  const currentActiveName = (user?.publisherName || user?.displayName || preservedName || '').trim();
-  const [displayName, setDisplayName] = useState(currentActiveName);
+  const rawCandidateName = (user?.publisherName || user?.displayName || preservedName || '').trim();
+  const isExcludedName = (n: string) => {
+    const l = n.toLowerCase();
+    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'undefined' || l === 'null';
+  };
+  const currentActiveName = rawCandidateName && !isExcludedName(rawCandidateName) ? rawCandidateName : (user ? '' : 'User');
+  const [displayName, setDisplayName] = useState(currentActiveName || 'User');
   const [age, setAge] = useState(user?.age || '25');
   const [gender, setGender] = useState(user?.gender || 'Prefer not to say');
   const [location, setLocation] = useState(user?.location || 'Global');

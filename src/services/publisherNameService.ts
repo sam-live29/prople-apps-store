@@ -547,7 +547,16 @@ export function getPreservedClaimedName(): string {
       const name = localStorage.getItem(PRESERVED_CLAIMED_NAME_KEY);
       if (name && name.trim()) {
         const lower = name.trim().toLowerCase();
-        if (lower !== 'sammy' && lower !== 'guest' && lower !== 'user' && lower !== 'developer' && lower !== 'publisher') {
+        if (
+          lower !== 'sam' &&
+          lower !== 'sammy' &&
+          lower !== 'guest' &&
+          lower !== 'user' &&
+          lower !== 'developer' &&
+          lower !== 'publisher' &&
+          lower !== 'undefined' &&
+          lower !== 'null'
+        ) {
           return name.trim();
         }
       }
@@ -565,7 +574,16 @@ export function setPreservedClaimedName(name: string): void {
       const clean = (name || '').trim();
       if (clean) {
         const lower = clean.toLowerCase();
-        if (lower !== 'sammy' && lower !== 'guest' && lower !== 'user' && lower !== 'developer' && lower !== 'publisher') {
+        if (
+          lower !== 'sam' &&
+          lower !== 'sammy' &&
+          lower !== 'guest' &&
+          lower !== 'user' &&
+          lower !== 'developer' &&
+          lower !== 'publisher' &&
+          lower !== 'undefined' &&
+          lower !== 'null'
+        ) {
           localStorage.setItem(PRESERVED_CLAIMED_NAME_KEY, clean);
           return;
         }

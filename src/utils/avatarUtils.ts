@@ -50,7 +50,10 @@ export function getGmailAvatarColor(identifier?: string | null): { bg: string; t
  * Always searches for the first alphanumeric character.
  */
 export function getAvatarInitial(name?: string | null, email?: string | null): string {
-  const candidate = (name || '').trim() || (email || '').trim();
+  const raw = (name || '').trim();
+  const lower = raw.toLowerCase();
+  const isExcluded = lower === 'sam' || lower === 'sammy' || lower === 'guest' || lower === 'user';
+  const candidate = (!isExcluded ? raw : '') || (email || '').trim();
   if (!candidate) return 'U';
 
   // Search for the first alphanumeric character
@@ -68,25 +71,31 @@ export function getAvatarInitial(name?: string | null, email?: string | null): s
  * Generates a friendly display name for greetings and profile cards:
  * If displayName or publisherName is set, returns that.
  * Otherwise, extracts the local-part from email (e.g. sahinurmolla1979@gmail.com -> Sahinurmolla1979)
- * instead of leaving an empty gap like "Hi, !".
+ * instead of leaving an empty gap like "Hi, !". Defaults to "User" for un-logged in users.
  */
 export function getFriendlyDisplayName(user?: { 
   displayName?: string | null; 
   publisherName?: string | null; 
   email?: string | null;
 } | null): string {
-  if (!user) return 'Guest';
+  if (!user) return 'User';
+
+  const isInvalid = (val?: string | null) => {
+    if (!val) return true;
+    const l = val.trim().toLowerCase();
+    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'user' || l === 'undefined' || l === 'null';
+  };
 
   const publisher = (user.publisherName || '').trim();
-  if (publisher) return publisher;
+  if (publisher && !isInvalid(publisher)) return publisher;
 
   const display = (user.displayName || '').trim();
-  if (display) return display;
+  if (display && !isInvalid(display)) return display;
 
   const email = (user.email || '').trim();
   if (email && email.includes('@')) {
     const localPart = email.split('@')[0].trim();
-    if (localPart) {
+    if (localPart && !isInvalid(localPart)) {
       // Capitalize first letter of email username
       return localPart.charAt(0).toUpperCase() + localPart.slice(1);
     }
