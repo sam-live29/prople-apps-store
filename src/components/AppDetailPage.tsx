@@ -2112,7 +2112,7 @@ export default function AppDetailPage({
              </button>
           </div>
           <p 
-            className="text-[15px] text-theme-text leading-relaxed mb-3 whitespace-pre-line line-clamp-4 cursor-pointer hover:opacity-90 transition-opacity"
+            className="text-[15px] text-theme-text leading-relaxed mb-3 whitespace-pre-line line-clamp-8 cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setDetailView('about')}
           >
             {previewAboutText}
