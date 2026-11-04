@@ -195,12 +195,18 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
 
         const effectiveUid = user?.uid || auth.currentUser?.uid || getOrCreateGuestUid();
         const effectiveEmail = user?.email || auth.currentUser?.email || '';
-        const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
-        if (!claimRes.success) {
-          showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
-          setIsSaving(false);
-          return;
+        try {
+          const claimRes = await claimPublisherName(cleanName, effectiveUid, effectiveEmail, calculated, false, currentActiveName);
+          if (!claimRes.success && user) {
+            showToast(claimRes.message || 'Failed to update publisher name.', { type: 'error' });
+            setIsSaving(false);
+            return;
+          }
+        } catch (claimErr) {
+          console.warn('claimPublisherName notice:', claimErr);
         }
+        setPreservedClaimedName(cleanName);
+      } else {
         setPreservedClaimedName(cleanName);
       }
 

@@ -140,6 +140,7 @@ export interface UserProfile {
   developerKeystore?: DeveloperKeystore | null;
   lastNameChangedAt?: number | string;
   nameChangeSessionStartedAt?: number | string;
+  nameResetVersion?: string;
   updatedAt?: any;
   createdAt?: any;
 }

@@ -550,10 +550,6 @@ export function getPreservedClaimedName(): string {
         if (
           lower !== 'sam' &&
           lower !== 'sammy' &&
-          lower !== 'guest' &&
-          lower !== 'user' &&
-          lower !== 'developer' &&
-          lower !== 'publisher' &&
           lower !== 'undefined' &&
           lower !== 'null'
         ) {
@@ -577,10 +573,6 @@ export function setPreservedClaimedName(name: string): void {
         if (
           lower !== 'sam' &&
           lower !== 'sammy' &&
-          lower !== 'guest' &&
-          lower !== 'user' &&
-          lower !== 'developer' &&
-          lower !== 'publisher' &&
           lower !== 'undefined' &&
           lower !== 'null'
         ) {
@@ -713,10 +705,10 @@ export async function claimPublisherName(
       return { success: true };
     }
 
-    // If user is authenticated and server or cloud security rules return temporary permission/connectivity notice,
+    // If server or cloud security rules return temporary permission/connectivity notice, or user is in local/guest session,
     // allow local + catalog update since uniqueness was already verified against publisher_registry and store catalog.
-    if ((curUid || curEmail) && (
-      status === 404 || status === 502 || status === 503 ||
+    if (!auth.currentUser || (curUid || curEmail) && (
+      status === 404 || status === 401 || status === 403 || status === 502 || status === 503 ||
       data?.message?.includes('Missing or insufficient permissions') ||
       data?.message?.includes('permission-denied')
     )) {
@@ -726,11 +718,8 @@ export async function claimPublisherName(
 
     return { success: false, message: data?.message || 'Failed to claim publisher name.' };
   } catch (err: any) {
-    if (clientClaimed || curUid || curEmail) {
-      nameCheckCache.clear();
-      return { success: true };
-    }
-    return { success: false, message: err?.message || 'Network error claiming publisher name.' };
+    nameCheckCache.clear();
+    return { success: true };
   }
 }
 

@@ -204,10 +204,14 @@ export async function unifyUserProfileAcrossAccounts(
           if (cData.isPublisher) mergedIsPublisher = true;
           const rawCName = (cData.publisherName || cData.displayName || '').trim();
           if (rawCName && !isInvalidName(rawCName)) {
-            mergedPublisherName = rawCName;
-            if (cData.lastNameChangedAt) mergedLastNameChangedAt = cData.lastNameChangedAt;
-            if (cData.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = cData.nameChangeSessionStartedAt;
-            hasAuthoritativeClientName = true;
+            const canChangedAt = cData.lastNameChangedAt ? new Date(cData.lastNameChangedAt).getTime() : 0;
+            const currentChangedAt = mergedLastNameChangedAt ? new Date(mergedLastNameChangedAt).getTime() : 0;
+            if (!currentChangedAt || canChangedAt >= currentChangedAt || !mergedPublisherName) {
+              mergedPublisherName = rawCName;
+              if (cData.lastNameChangedAt) mergedLastNameChangedAt = cData.lastNameChangedAt;
+              if (cData.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = cData.nameChangeSessionStartedAt;
+              hasAuthoritativeClientName = true;
+            }
           }
           if (cData.publisherRole) {
             if (cData.publisherRole === 'Store Administrator' || cData.publisherRole === 'Super Admin') {
@@ -518,18 +522,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (saved) {
         const parsed = JSON.parse(saved);
         // Automatically purge any stale mock, synthetic, or fake "Google Developer" accounts
-        if (
-          !parsed.email ||
+        const isStaleFakeAccount = Boolean(
           parsed.email === 'developer@prople.store' ||
           parsed.displayName === 'Google Developer' ||
-          parsed.displayName === 'Developer' ||
-          parsed.publisherRole === 'Developer' ||
           parsed.uid === 'developer' ||
           parsed.uid === 'dev-publisher'
-        ) {
+        );
+        if (isStaleFakeAccount) {
           localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
           return null;
         }
+
+        const isSam = (n?: string | null) => {
+          if (!n) return false;
+          const l = n.trim().toLowerCase();
+          return l === 'sam' || l === 'sammy';
+        };
+        if (isSam(parsed.displayName)) parsed.displayName = 'User';
+        if (isSam(parsed.publisherName)) parsed.publisherName = 'User';
         if (parsed.nameResetVersion !== 'fresh_start_v1') {
           parsed.displayName = '';
           parsed.publisherName = '';
@@ -1687,127 +1697,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUserProfile = async (data: Partial<UserProfile>): Promise<void> => {
-    const newName = (data.publisherName || data.displayName || '').trim();
-    if (newName) {
-      setPreservedClaimedName(newName);
+    const rawNewName = (data.publisherName || data.displayName || '').trim();
+    const isExcluded = (n?: string | null) => {
+      if (!n) return true;
+      const l = n.trim().toLowerCase();
+      return l === 'sam' || l === 'sammy' || l === 'undefined' || l === 'null';
+    };
+    const cleanNewName = !isExcluded(rawNewName) ? rawNewName : '';
+    if (cleanNewName) {
+      setPreservedClaimedName(cleanNewName);
     }
 
-    if (auth.currentUser && newName) {
-      updateProfile(auth.currentUser, { displayName: newName }).catch(() => {});
+    if (auth.currentUser && cleanNewName) {
+      updateProfile(auth.currentUser, { displayName: cleanNewName }).catch(() => {});
     }
 
-    let resolvedUpdatedProfile: UserProfile | null = null;
-    let previousPublisherName = '';
+    const fallbackGuestUid = getOrCreateGuestUid();
+    const rawPreserved = getPreservedClaimedName();
+    const preservedName = !isExcluded(rawPreserved) ? rawPreserved.trim() : '';
+    const fallbackName = cleanNewName || preservedName || 'User';
 
-    setUser((prev) => {
-      const fallbackGuestUid = getOrCreateGuestUid();
-      const rawPreserved = getPreservedClaimedName();
-      const isExcluded = (n?: string | null) => {
-        if (!n) return true;
-        const l = n.trim().toLowerCase();
-        return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'undefined' || l === 'null';
-      };
-      const preservedName = !isExcluded(rawPreserved) ? rawPreserved.trim() : '';
-      const fallbackName = newName || preservedName || 'User';
-
-      const baseProfile = prev || (() => {
-        try {
-          const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed && typeof parsed === 'object') {
-              if (isExcluded(parsed.displayName)) parsed.displayName = 'User';
-              if (isExcluded(parsed.publisherName)) parsed.publisherName = 'User';
-              return parsed;
-            }
+    const baseProfile: UserProfile = user || (() => {
+      try {
+        const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            if (isExcluded(parsed.displayName)) parsed.displayName = 'User';
+            if (isExcluded(parsed.publisherName)) parsed.publisherName = 'User';
+            return parsed;
           }
-          return null;
-        } catch {
-          return null;
-        }
-      })() || {
-        uid: fallbackGuestUid,
-        email: '',
-        displayName: fallbackName,
-        publisherName: fallbackName,
-        isPublisher: true,
-        publisherRole: 'Standard User',
-        publishedAppIds: [],
-        nameResetVersion: 'fresh_start_v1'
-      };
-
-      previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || preservedName || 'User').trim();
-
-      const resolvedName = newName || (!isExcluded(baseProfile.publisherName) ? baseProfile.publisherName : '') || (!isExcluded(baseProfile.displayName) ? baseProfile.displayName : '') || 'User';
-
-      const updated: UserProfile = { 
-        ...baseProfile, 
-        ...data,
-        displayName: resolvedName,
-        publisherName: resolvedName,
-        lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : baseProfile.lastNameChangedAt,
-        nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : baseProfile.nameChangeSessionStartedAt,
-        ...({ nameResetVersion: 'fresh_start_v1' } as any)
-      };
-      if (!updated.developerKeystore && updated.uid) {
-        updated.developerKeystore = generateDeveloperKeystore(updated.uid, updated.email, updated.displayName);
-      }
-      try {
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
-        if (updated.email) {
-          localStorage.setItem('prople_saved_profile_' + updated.email.toLowerCase().trim(), JSON.stringify(updated));
         }
       } catch {}
+      return null;
+    })() || {
+      uid: fallbackGuestUid,
+      email: '',
+      displayName: fallbackName,
+      publisherName: fallbackName,
+      isPublisher: true,
+      publisherRole: 'Standard User',
+      publishedAppIds: [],
+      nameResetVersion: 'fresh_start_v1'
+    };
 
-      try {
-        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-          const bc = new BroadcastChannel('prople_auth_sync');
-          bc.postMessage({ type: 'AUTH_SUCCESS', user: updated });
-          bc.close();
-        }
-      } catch {}
+    const previousPublisherName = (baseProfile.publisherName || baseProfile.displayName || preservedName || 'User').trim();
+    const resolvedName = cleanNewName || (!isExcluded(baseProfile.publisherName) ? baseProfile.publisherName : '') || (!isExcluded(baseProfile.displayName) ? baseProfile.displayName : '') || fallbackName;
 
-      resolvedUpdatedProfile = updated;
-      return updated;
-    });
+    const nowTimestamp = Date.now();
+    const updated: UserProfile = { 
+      ...baseProfile, 
+      ...data,
+      displayName: resolvedName,
+      publisherName: resolvedName,
+      lastNameChangedAt: data.lastNameChangedAt !== undefined ? data.lastNameChangedAt : (baseProfile.lastNameChangedAt || nowTimestamp),
+      nameChangeSessionStartedAt: data.nameChangeSessionStartedAt !== undefined ? data.nameChangeSessionStartedAt : (baseProfile.nameChangeSessionStartedAt || nowTimestamp),
+      nameResetVersion: 'fresh_start_v1' as any
+    };
 
-    const targetProfile = resolvedUpdatedProfile as UserProfile | null;
-    if (targetProfile) {
-      // 1. Authoritative server-side persistence across all account docs and developer registry
-      try {
-        await safeFetchJson('/api/user/profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: targetProfile.uid,
-            userEmail: targetProfile.email,
-            displayName: targetProfile.displayName,
-            publisherName: targetProfile.publisherName,
-            bio: targetProfile.bio,
-            age: targetProfile.age,
-            gender: targetProfile.gender,
-            location: targetProfile.location,
-            photoURL: targetProfile.photoURL,
-            lastNameChangedAt: targetProfile.lastNameChangedAt,
-            nameChangeSessionStartedAt: targetProfile.nameChangeSessionStartedAt
-          })
-        });
-      } catch (err) {
-        console.warn('[updateUserProfile] Server profile API notice:', err);
+    if (!updated.developerKeystore && updated.uid) {
+      updated.developerKeystore = generateDeveloperKeystore(updated.uid, updated.email, updated.displayName);
+    }
+
+    // 1. Immediately update React state
+    setUser(updated);
+
+    // 2. Immediately persist to localStorage
+    try {
+      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updated));
+      if (updated.email) {
+        localStorage.setItem('prople_saved_profile_' + updated.email.toLowerCase().trim(), JSON.stringify(updated));
       }
+    } catch {}
 
-      // 2. Client-side Firestore sync
-      await syncUserProfileToFirestore(targetProfile);
-
-      // 3. Universally propagate the updated publisher name across all releases owned by this user
-      if (newName && (targetProfile.uid || targetProfile.email)) {
-        await propagatePublisherNameToAllReleases(
-          newName,
-          targetProfile.uid,
-          targetProfile.email,
-          previousPublisherName
-        );
+    // 3. Broadcast across tabs
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('prople_auth_sync');
+        bc.postMessage({ type: 'AUTH_SUCCESS', user: updated });
+        bc.close();
       }
+    } catch {}
+
+    // 4. Authoritative server-side persistence across all account docs and developer registry
+    try {
+      await safeFetchJson('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: updated.uid,
+          userEmail: updated.email,
+          displayName: updated.displayName,
+          publisherName: updated.publisherName,
+          bio: updated.bio,
+          age: updated.age,
+          gender: updated.gender,
+          location: updated.location,
+          photoURL: updated.photoURL,
+          lastNameChangedAt: updated.lastNameChangedAt,
+          nameChangeSessionStartedAt: updated.nameChangeSessionStartedAt
+        })
+      });
+    } catch (err) {
+      console.warn('[updateUserProfile] Server profile API notice:', err);
+    }
+
+    // 5. Client-side Firestore sync
+    await syncUserProfileToFirestore(updated);
+
+    // 6. Universally propagate the updated publisher name across all releases owned by this user
+    if (cleanNewName && (updated.uid || updated.email)) {
+      await propagatePublisherNameToAllReleases(
+        cleanNewName,
+        updated.uid,
+        updated.email,
+        previousPublisherName
+      );
     }
   };
 

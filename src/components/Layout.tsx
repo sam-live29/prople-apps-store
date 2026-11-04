@@ -28,6 +28,7 @@ import { OfflineIndicator } from './OfflineIndicator';
 import PrivacyPolicyPage from './PrivacyPolicyPage';
 import TermsPage from './TermsPage';
 import UserAvatar from './UserAvatar';
+import { getPreservedClaimedName } from '../services/publisherNameService';
 
 interface LayoutProps {
   children: ReactNode;
@@ -76,6 +77,8 @@ export default function MarketplaceShell({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const preservedName = getPreservedClaimedName();
+  const hasPreservedCustomName = Boolean(preservedName && preservedName.toLowerCase() !== 'user');
 
   const isConsoleOpen = Boolean(
     activeTab === 'you' && youView === 'studio'
@@ -249,7 +252,7 @@ export default function MarketplaceShell({
                   )}
                   <button 
                     type="button"
-                    className={`w-8 h-8 rounded-full ${user ? '' : 'bg-theme-hover border border-theme-border/60'} flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-90 transition-opacity shadow-xs ${activeTab === 'search' ? '' : 'ml-1'}`}
+                    className={`w-8 h-8 rounded-full ${user || hasPreservedCustomName ? '' : 'bg-theme-hover border border-theme-border/60'} flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-90 transition-opacity shadow-xs ${activeTab === 'search' ? '' : 'ml-1'}`}
                     onClick={() => onTabChange('you')}
                     aria-label="Account profile"
                   >
@@ -259,6 +262,11 @@ export default function MarketplaceShell({
                          displayName={user.displayName}
                          publisherName={user.publisherName}
                          email={user.email}
+                         size="sm"
+                       />
+                     ) : hasPreservedCustomName ? (
+                       <UserAvatar 
+                         displayName={preservedName}
                          size="sm"
                        />
                      ) : (
@@ -387,12 +395,16 @@ export default function MarketplaceShell({
                 ) : (
                   <div className="flex flex-col gap-2.5 p-1">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-theme-hover text-theme-text-muted flex items-center justify-center shrink-0">
-                        <User className="w-5 h-5" />
-                      </div>
+                      {hasPreservedCustomName ? (
+                        <UserAvatar displayName={preservedName} size="md" className="shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-theme-hover text-theme-text-muted flex items-center justify-center shrink-0">
+                          <User className="w-5 h-5" />
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
-                        <h4 className="text-sm font-semibold text-theme-text leading-tight">Sign in to Store</h4>
-                        <p className="text-[11px] text-theme-text-muted mt-0.5 leading-tight">Manage apps, reviews & releases</p>
+                        <h4 className="text-sm font-semibold text-theme-text leading-tight">{hasPreservedCustomName ? `Hi, ${preservedName}!` : 'Sign in to Store'}</h4>
+                        <p className="text-[11px] text-theme-text-muted mt-0.5 leading-tight">{hasPreservedCustomName ? 'Claimed profile • Sign in to sync' : 'Manage apps, reviews & releases'}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

@@ -174,12 +174,12 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
   const isExcludedName = (n?: string | null) => {
     if (!n) return true;
     const l = n.trim().toLowerCase();
-    return l === 'sam' || l === 'sammy' || l === 'guest' || l === 'user' || l === 'undefined' || l === 'null';
+    return l === 'sam' || l === 'sammy' || l === 'undefined' || l === 'null';
   };
   const preservedClaimedName = !isExcludedName(rawPreserved) ? rawPreserved.trim() : '';
   const userEmail = user?.email || "User";
   const userGreetingName = getFriendlyDisplayName(user);
-  const userName = user?.publisherName || user?.displayName || (user ? userGreetingName : "User");
+  const userName = user?.publisherName || user?.displayName || (preservedClaimedName && preservedClaimedName.toLowerCase() !== 'user' ? preservedClaimedName : '') || (user ? userGreetingName : (preservedClaimedName || "User"));
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
@@ -628,7 +628,7 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
             {/* User Name */}
             <div className="flex items-center justify-center gap-1.5 max-w-full">
               <h2 className="text-lg sm:text-xl font-semibold text-theme-text tracking-tight truncate">
-                Hi, {userGreetingName}!
+                Hi, {userName || userGreetingName || 'User'}!
               </h2>
               {isUserVerifiedPublisher && <VerifiedBadge size="md" />}
             </div>
@@ -636,19 +636,27 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
         ) : (
           <div className="p-4 sm:p-5 bg-theme-card rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-full bg-theme-hover border border-theme-border/60 flex items-center justify-center shrink-0">
-                <User className="w-6 h-6 text-theme-text-muted" />
-              </div>
+              {userName && userName !== 'User' ? (
+                <UserAvatar 
+                  displayName={userName}
+                  size="md"
+                  className="shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-theme-hover border border-theme-border/60 flex items-center justify-center shrink-0">
+                  <User className="w-6 h-6 text-theme-text-muted" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h2 className="text-base sm:text-lg font-semibold text-theme-text truncate">
-                    {preservedClaimedName?.trim() ? `Hi, ${preservedClaimedName.trim()}!` : 'Sign in to Prople Store'}
+                    {userName && userName !== 'User' ? `Hi, ${userName}!` : 'Sign in to Prople Store'}
                   </h2>
-                  {preservedClaimedName?.trim() && isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
+                  {userName && userName !== 'User' && isUserVerifiedPublisher && <VerifiedBadge size="sm" />}
                 </div>
                 <p className="text-xs text-theme-text-muted line-clamp-1">
-                  {preservedClaimedName?.trim() 
-                    ? 'Claimed publisher • Sign in to sync across devices' 
+                  {userName && userName !== 'User'
+                    ? 'Claimed profile • Sign in to sync across devices' 
                     : 'Access developer tools, sync apps, and write reviews'}
                 </p>
               </div>

@@ -49,7 +49,7 @@ try {
 
   // Purge any stale preserved claimed name if it is a personal/generic placeholder
   const preservedName = localStorage.getItem('prople_preserved_claimed_name');
-  if (preservedName && ['sam', 'sammy', 'guest', 'user', 'developer', 'publisher', 'undefined', 'null'].includes(preservedName.trim().toLowerCase())) {
+  if (preservedName && ['sam', 'sammy', 'undefined', 'null'].includes(preservedName.trim().toLowerCase())) {
     localStorage.removeItem('prople_preserved_claimed_name');
   }
 
