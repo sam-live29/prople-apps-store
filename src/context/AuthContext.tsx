@@ -41,7 +41,7 @@ interface AuthContextType {
   cancelPendingTwoFactor: () => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  loginWithGithub: () => Promise<void>;
+  loginWithGithub: (isSignUp?: boolean) => Promise<void>;
   sendEmailOtp: (email: string, name?: string) => Promise<{ success: boolean; delivered?: boolean; message?: string; challengeToken?: string }>;
   verifyEmailOtp: (email: string, code: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; delivered?: boolean; message?: string; challengeToken?: string }>;
@@ -508,6 +508,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 2000);
+
+    // Process any returning OAuth redirect logins (e.g., GitHub on mobile browsers)
+    getRedirectResult(auth)
+      .then(async (redirectCred) => {
+        if (redirectCred?.user) {
+          const isGithub = redirectCred.providerId === 'github.com' || redirectCred.user.providerData.some(p => p.providerId === 'github.com');
+          if (isGithub) {
+            await processGithubCredential(redirectCred);
+          }
+        }
+      })
+      .catch((redirectErr) => {
+        if (redirectErr?.code !== 'auth/null-user') {
+          console.warn('[AuthContext] getRedirectResult notice:', redirectErr?.code || redirectErr?.message);
+        }
+      });
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
@@ -1225,10 +1241,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       screenName = (cred.user as any)?.reloadUserInfo?.screenName || cachedProfile.publisherGithub || '';
     }
 
+    const fallbackName = cred.user.displayName || screenName || email.split('@')[0];
+    const initialName = cachedProfile.publisherName || cachedProfile.displayName || fallbackName;
+
     const resolvedUser: UserProfile = {
       uid: cred.user.uid,
       email,
-      displayName: cachedProfile.publisherName || cachedProfile.displayName || '',
+      displayName: initialName,
       photoURL: cred.user.photoURL || cachedProfile.photoURL,
       age: cachedProfile.age || '25',
       gender: cachedProfile.gender || 'Prefer not to say',
@@ -1236,7 +1255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       bio: cachedProfile.bio || '',
       isEmailVerified: Boolean(cred.user.emailVerified || cred.user.email),
       isPublisher: isDevHardcoded ? true : Boolean(cachedProfile.isPublisher),
-      publisherName: cachedProfile.publisherName || '',
+      publisherName: cachedProfile.publisherName || fallbackName,
       publisherRole: isAdminHardcoded
         ? 'Store Administrator'
         : isDevHardcoded
@@ -1293,15 +1312,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return resolvedUser;
   };
 
-  const loginWithGithub = async () => {
+  const loginWithGithub = async (isSignUp: boolean = false) => {
     setIsLoading(true);
     let resolvedUser: UserProfile | null = null;
     try {
       const provider = new GithubAuthProvider();
       provider.addScope('read:user');
       provider.addScope('user:email');
+      // When logging in, do NOT force sign-up; GitHub's allow_signup flag ensures existing users see the sign-in form
       provider.setCustomParameters({
-        allow_signup: 'true'
+        allow_signup: isSignUp ? 'true' : 'false'
       });
 
       let cred: any = null;
