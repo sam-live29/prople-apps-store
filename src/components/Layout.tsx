@@ -27,6 +27,7 @@ import BrandLogo from './BrandLogo';
 import { OfflineIndicator } from './OfflineIndicator';
 import PrivacyPolicyPage from './PrivacyPolicyPage';
 import TermsPage from './TermsPage';
+import UserAvatar from './UserAvatar';
 
 interface LayoutProps {
   children: ReactNode;
@@ -248,22 +249,18 @@ export default function MarketplaceShell({
                   )}
                   <button 
                     type="button"
-                    className={`w-8 h-8 rounded-full ${user ? 'bg-blue-600' : 'bg-theme-hover border border-theme-border/60'} flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-90 transition-opacity shadow-xs ${activeTab === 'search' ? '' : 'ml-1'}`}
+                    className={`w-8 h-8 rounded-full ${user ? '' : 'bg-theme-hover border border-theme-border/60'} flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-90 transition-opacity shadow-xs ${activeTab === 'search' ? '' : 'ml-1'}`}
                     onClick={() => onTabChange('you')}
                     aria-label="Account profile"
                   >
-                     {user?.photoURL && user.photoURL.trim() ? (
-                       <img 
-                         src={user.photoURL} 
-                         alt={user.displayName || 'User'} 
-                         referrerPolicy="no-referrer" 
-                         className="w-full h-full object-cover"
-                         onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} 
+                     {user ? (
+                       <UserAvatar 
+                         photoURL={user.photoURL}
+                         displayName={user.displayName}
+                         publisherName={user.publisherName}
+                         email={user.email}
+                         size="sm"
                        />
-                     ) : user ? (
-                       <span className="text-xs font-semibold text-white">
-                         {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                       </span>
                      ) : (
                        <User className="w-4.5 h-4.5 text-theme-text-muted" />
                      )}
@@ -363,23 +360,17 @@ export default function MarketplaceShell({
                     }}
                     className="flex items-center gap-3 p-2 rounded-2xl hover:bg-theme-hover cursor-pointer transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
-                      {user.photoURL && user.photoURL.trim() ? (
-                        <img 
-                          src={user.photoURL} 
-                          alt={user.displayName || 'User'} 
-                          referrerPolicy="no-referrer" 
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                        />
-                      ) : (
-                        <span>{(user.displayName || user.email || 'U').charAt(0).toUpperCase()}</span>
-                      )}
-                    </div>
+                    <UserAvatar 
+                      photoURL={user.photoURL}
+                      displayName={user.displayName}
+                      publisherName={user.publisherName}
+                      email={user.email}
+                      size="md"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-sm font-semibold text-theme-text truncate leading-tight">
-                          {user.displayName || 'Account'}
+                          {user.displayName || user.publisherName || (user.email ? user.email.split('@')[0] : 'Account')}
                         </h4>
                         {user.isPublisher && (
                           <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-medium rounded-full shrink-0">

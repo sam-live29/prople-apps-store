@@ -52,6 +52,8 @@ import { AppListing } from '../types';
 import StoreCircleLoader from './StoreCircleLoader';
 import VerifiedBadge from './VerifiedBadge';
 import { getPreservedClaimedName } from '../services/publisherNameService';
+import UserAvatar from './UserAvatar';
+import { getFriendlyDisplayName } from '../utils/avatarUtils';
 
 export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClick?: (id: string) => void; onOpenNotifications?: () => void }) {
   const { unreadNotificationsCount, markAllNotificationsAsRead, openAuthDialog } = useInstall();
@@ -162,7 +164,8 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
 
   const preservedClaimedName = getPreservedClaimedName();
   const userEmail = user?.email || "Guest User";
-  const userName = user?.publisherName || user?.displayName || "";
+  const userGreetingName = getFriendlyDisplayName(user);
+  const userName = user?.publisherName || user?.displayName || (user ? userGreetingName : "");
   const isUserVerifiedPublisher = Boolean(
     user?.isVerifiedPublisher ||
     (user?.publisherName && AdminModerationService.isPublisherVerified(user.publisherName)) ||
@@ -599,29 +602,19 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
               {userEmail}
             </span>
 
-            {/* PFP at middle */}
-            <div 
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shrink-0 shadow-sm mb-2.5 relative"
-            >
-              {user.photoURL && user.photoURL.trim() ? (
-                <img 
-                  src={user.photoURL} 
-                  alt={userName} 
-                  referrerPolicy="no-referrer" 
-                  className="w-full h-full object-cover" 
-                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                />
-              ) : (
-                <span className="text-2xl sm:text-3xl font-bold text-white tracking-wide">
-                  {userName.charAt(0).toUpperCase()}
-                </span>
-              )}
-            </div>
+            {/* PFP at middle - Gmail letter style */}
+            <UserAvatar 
+              photoURL={user.photoURL}
+              displayName={userName}
+              email={user.email}
+              size="xl"
+              className="mb-2.5 shadow-xs"
+            />
 
             {/* User Name */}
             <div className="flex items-center justify-center gap-1.5 max-w-full">
               <h2 className="text-lg sm:text-xl font-semibold text-theme-text tracking-tight truncate">
-                Hi, {userName}!
+                Hi, {userGreetingName}!
               </h2>
               {isUserVerifiedPublisher && <VerifiedBadge size="md" />}
             </div>

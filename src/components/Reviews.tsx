@@ -9,6 +9,7 @@ import { FlagReviewModal } from './FlagReviewModal';
 import ConfirmationDialog from './ConfirmationDialog';
 import { calculateAppRatingAndReviews } from '../utils/appMetricsAlgorithm';
 import { AdminModerationService } from '../services/adminModerationService';
+import UserAvatar from './UserAvatar';
 
 interface ReviewsProps {
   app: AppDetails;
@@ -242,13 +243,11 @@ export function Reviews({ app, onSeeAllReviews, onWriteReview }: ReviewsProps) {
             >
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-3 min-w-0">
-                  {review.userAvatar && review.userAvatar.trim() ? (
-                    <img src={review.userAvatar} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover shrink-0 border border-theme-border/40" alt={review.userName} />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-slate-700 dark:bg-zinc-700 flex items-center justify-center text-xs font-medium text-white shrink-0">
-                      {review.userName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar
+                    photoURL={review.userAvatar}
+                    name={review.userName}
+                    size="sm"
+                  />
                   <span className="text-[14px] font-medium text-theme-text truncate">{review.userName}</span>
                 </div>
                 <div className="relative shrink-0">

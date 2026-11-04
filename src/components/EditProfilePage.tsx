@@ -19,6 +19,7 @@ import {
 import { usePreserveScroll } from '../services/scrollManager';
 import VerifiedBadge from './VerifiedBadge';
 import { AdminModerationService } from '../services/adminModerationService';
+import UserAvatar from './UserAvatar';
 
 export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   const { 
@@ -285,8 +286,6 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const initialLetter = (displayName || user?.email || 'U').charAt(0).toUpperCase();
-
   return (
     <div ref={containerRef} className="fixed inset-0 z-50 bg-theme-bg text-theme-text w-full flex flex-col h-full overflow-y-auto scrollbar-hide pb-24 shadow-none">
       {/* Sticky Header - No separation line */}
@@ -316,9 +315,13 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
       <div className="w-full max-w-2xl mx-auto px-2.5 sm:px-4 md:px-6 py-5 space-y-6">
         {/* Google Style User Name Starting Letter Profile Picture (Non-changeable) */}
         <div className="flex flex-col items-center justify-center text-center space-y-2.5 pt-1">
-          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl sm:text-4xl font-bold select-none shadow-md">
-            {initialLetter}
-          </div>
+          <UserAvatar
+            photoURL={user?.photoURL}
+            displayName={displayName || user?.displayName || user?.publisherName}
+            email={user?.email}
+            size="2xl"
+            className="shadow-sm"
+          />
           <p className="text-xs text-theme-text-muted">
             Profile photo is automatically generated from your name
           </p>

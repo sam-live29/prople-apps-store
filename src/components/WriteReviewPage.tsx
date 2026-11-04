@@ -13,6 +13,8 @@ import ReviewMediaUploader from './MediaUpload/ReviewMediaUploader';
 import MediaGalleryLightbox from './MediaUpload/MediaGalleryLightbox';
 import ConfirmationDialog from './ConfirmationDialog';
 import { usePreserveScroll } from '../services/scrollManager';
+import UserAvatar from './UserAvatar';
+import { getFriendlyDisplayName } from '../utils/avatarUtils';
 
 interface WriteReviewPageProps {
   app: AppDetails;
@@ -274,22 +276,14 @@ export default function WriteReviewPage({
 
         {/* User Identity Info */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden shrink-0">
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.displayName || 'Google User'}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-sm font-semibold text-white">
-                {(user?.displayName || 'U').charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
+          <UserAvatar
+            photoURL={user?.photoURL}
+            displayName={user?.displayName || user?.publisherName}
+            email={user?.email}
+            size="md"
+          />
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-theme-text">{user?.displayName || 'Google User'}</span>
+            <span className="text-sm font-medium text-theme-text">{user?.displayName || user?.publisherName || getFriendlyDisplayName(user)}</span>
             <span className="text-[11px] text-theme-text-muted">Reviews are public and include your Google account details</span>
           </div>
         </div>
