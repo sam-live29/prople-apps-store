@@ -2,40 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const DEFAULT_ADMIN_EMAILS = [
-  'ventureforge.corp@gmail.com',
-  'sahanurmolla7076@gmail.com',
-  'sahanurmolla2886@gmail.com',
-  'sahanurmolla190@gmail.com',
-  'prople.site@gmail.com',
-  'cloaktailsupport@gmail.com',
-  'cloaktailofficial@gmail.com',
-  'prople.org@gmail.com',
-];
-
-const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
-
-import { verifySecuritySecret } from '../../server/securityDefense.ts';
-
-function isStrictAdminEmail(email?: string | null): boolean {
-  if (!email || typeof email !== 'string') return false;
-  const norm = email.toLowerCase().trim();
-  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
-
-  const envAdmins = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
-    .toLowerCase()
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
-  if (envAdmins.includes(norm)) return true;
-  if (norm.endsWith(VERIFIED_ADMIN_DOMAIN)) {
-    const local = norm.slice(0, -VERIFIED_ADMIN_DOMAIN.length);
-    if (['admin', 'security', 'moderator', 'executive', 'root', 'dev'].includes(local)) {
-      return true;
-    }
-  }
-  return false;
-}
+import { isStrictAdminEmail, verifySecuritySecret } from '../../server/securityDefense.ts';
+import { authenticateApiRequest } from '../../server/tokenVerifier.ts';
 
 function getServerFirebaseConfig() {
   let fileConfig: any = {};
@@ -239,8 +207,10 @@ export default async function handler(req: any, res: any) {
     }
 
     const appId = (appPayload.id || `app-${(appPayload.name || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`).trim();
-    const effectiveUid = String(userId || req.headers['x-user-id'] || appPayload.owner || appPayload.developerId || appPayload.creatorUid || 'dev-publisher').trim();
-    const effectiveEmail = String(userEmail || req.headers['x-user-email'] || appPayload.developerEmail || appPayload.publisherEmail || '').toLowerCase().trim();
+    const callerAuth = await authenticateApiRequest(req);
+    const effectiveUid = callerAuth.uid || String(userId || req.headers['x-user-id'] || appPayload.owner || appPayload.developerId || appPayload.creatorUid || 'dev-publisher').trim();
+    const effectiveEmail = callerAuth.email || String(userEmail || req.headers['x-user-email'] || appPayload.developerEmail || appPayload.publisherEmail || '').toLowerCase().trim();
+    const isVerifiedAdmin = callerAuth.isVerifiedAdmin;
 
     const baseFirestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
     const docUrl = `${baseFirestoreUrl}/apps/${encodeURIComponent(appId)}`;
@@ -255,24 +225,19 @@ export default async function handler(req: any, res: any) {
       const pubEmail = (existing.publisherEmail || '').toLowerCase().trim();
       const ownerEmail = (existing.ownerEmail || '').toLowerCase().trim();
 
-      const isMatchingEmail = effectiveEmail && (
-        devEmail === effectiveEmail ||
-        pubEmail === effectiveEmail ||
-        ownerEmail === effectiveEmail
+      const isMatchingEmail = callerAuth.email && (
+        devEmail === callerAuth.email ||
+        pubEmail === callerAuth.email ||
+        ownerEmail === callerAuth.email
       );
 
-      const adminSecret = req.headers?.['x-admin-secret'] || req.body?.adminSecret;
-      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
-      const isVerifiedAdmin = Boolean(
-        (adminSecret && verifySecuritySecret(adminSecret)) ||
-        (bearerToken && isStrictAdminEmail(effectiveEmail))
-      );
-
-      const isOwner = (effectiveUid && effectiveUid !== 'guest' && effectiveUid !== 'developer' && effectiveUid !== 'dev-publisher' && (
-        existing.owner === effectiveUid ||
-        existing.developerId === effectiveUid ||
-        existing.creatorUid === effectiveUid
-      )) || (isMatchingEmail && effectiveUid && effectiveUid !== 'guest') || isVerifiedAdmin;
+      const isOwner = isVerifiedAdmin || (
+        callerAuth.uid && callerAuth.uid !== 'guest' && (
+          existing.owner === callerAuth.uid ||
+          existing.developerId === callerAuth.uid ||
+          existing.creatorUid === callerAuth.uid
+        )
+      ) || Boolean(isMatchingEmail);
 
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot update it.' });

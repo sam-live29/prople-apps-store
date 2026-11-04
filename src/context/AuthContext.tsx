@@ -215,8 +215,12 @@ export async function unifyUserProfileAcrossAccounts(
           }
           if (cData.publisherRole) {
             if (cData.publisherRole === 'Store Administrator' || cData.publisherRole === 'Super Admin') {
-              mergedPublisherRole = 'Store Administrator';
-              isVerifiedAdmin = true;
+              if (isAdminHardcoded) {
+                mergedPublisherRole = 'Store Administrator';
+                isVerifiedAdmin = true;
+              } else {
+                mergedPublisherRole = 'Verified Developer';
+              }
             } else if (cData.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
               mergedPublisherRole = 'Verified Developer';
             }
@@ -264,16 +268,22 @@ export async function unifyUserProfileAcrossAccounts(
           }
           if (data.publisherRole) {
             if (data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
-              mergedPublisherRole = 'Store Administrator';
-              isVerifiedAdmin = true;
+              if (isAdminHardcoded) {
+                mergedPublisherRole = 'Store Administrator';
+                isVerifiedAdmin = true;
+              } else {
+                mergedPublisherRole = 'Verified Developer';
+              }
             } else if (data.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
               mergedPublisherRole = 'Verified Developer';
             }
           }
           if (data.isAdmin || data.role === 'admin') {
-            isVerifiedAdmin = true;
-            mergedPublisherRole = 'Store Administrator';
-            mergedIsPublisher = true;
+            if (isAdminHardcoded) {
+              isVerifiedAdmin = true;
+              mergedPublisherRole = 'Store Administrator';
+              mergedIsPublisher = true;
+            }
           }
           if (data.developerKeystore && !mergedKeystore) {
             mergedKeystore = data.developerKeystore;
@@ -337,8 +347,12 @@ export async function unifyUserProfileAcrossAccounts(
         }
         if (u.publisherRole) {
           if (u.publisherRole === 'Store Administrator' || u.publisherRole === 'Super Admin') {
-            mergedPublisherRole = 'Store Administrator';
-            isVerifiedAdmin = true;
+            if (isAdminHardcoded) {
+              mergedPublisherRole = 'Store Administrator';
+              isVerifiedAdmin = true;
+            } else {
+              mergedPublisherRole = 'Verified Developer';
+            }
           } else if (u.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
             mergedPublisherRole = 'Verified Developer';
           }

@@ -90,6 +90,7 @@ import {
   isAuthorizedAdmin,
   hasAdminPermission
 } from "./server/adminPermissions.ts";
+import { authenticateApiRequest } from "./server/tokenVerifier.ts";
 
 // Server-side Firestore initialization using secure environment or project configuration
 let serverDb: any = null;
@@ -1177,12 +1178,8 @@ async function startServer() {
   // Meilisearch: Trigger Batch Indexing of All Apps (Protected Admin API)
   app.post("/api/search/sync", async (req, res) => {
     try {
-      const userEmail = (req.body?.userEmail || req.headers['x-user-email'] || '').toString().trim();
-      const adminSecret = req.headers['x-admin-secret'] || req.body?.adminSecret;
-      const bearerToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-      const isVerifiedSecret = Boolean(adminSecret && verifySecuritySecret(adminSecret));
-      const isAuthorizedAdmin = isVerifiedSecret || (bearerToken && isServerAdminEmail(userEmail));
-      if (!isAuthorizedAdmin) {
+      const callerAuth = await authenticateApiRequest(req);
+      if (!callerAuth.isVerifiedAdmin) {
         return res.status(403).json({
           success: false,
           error: "Forbidden: Administrator authorization required to trigger search re-indexing."
@@ -6304,7 +6301,7 @@ async function startServer() {
     appPayload: any,
     userId: string,
     userEmail: string,
-    options: { featureOnSpotlight?: boolean } = {}
+    options: { featureOnSpotlight?: boolean; isVerifiedAdmin?: boolean } = {}
   ): Promise<any> {
     if (!serverDb) throw new Error("Database service unavailable");
     const validation = validateAppPayload(appPayload);
@@ -6330,11 +6327,11 @@ async function startServer() {
         ownerEmail === normUserEmail
       );
 
-      const isOwner = (userId && (
+      const isOwner = options.isVerifiedAdmin || (userId && (
         existingData.owner === userId ||
         existingData.developerId === userId ||
         existingData.creatorUid === userId
-      )) || isMatchingEmail || (normUserEmail && isServerAdminEmail(normUserEmail));
+      )) || isMatchingEmail;
 
       if (!isOwner) {
         throw new Error("Forbidden: You do not own this application and cannot modify its release.");
@@ -6452,10 +6449,11 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Missing app data in request body." });
       }
 
-      const effectiveUid = String(userId || req.headers['x-user-id'] || appPayload.owner || appPayload.developerId || appPayload.creatorUid || 'dev-publisher').trim();
-      const effectiveEmail = String(userEmail || req.headers['x-user-email'] || appPayload.developerEmail || appPayload.publisherEmail || '').toLowerCase().trim();
+      const callerAuth = await authenticateApiRequest(req);
+      const effectiveUid = callerAuth.uid || String(userId || req.headers['x-user-id'] || appPayload.owner || appPayload.developerId || appPayload.creatorUid || 'dev-publisher').trim();
+      const effectiveEmail = callerAuth.email || String(userEmail || req.headers['x-user-email'] || appPayload.developerEmail || appPayload.publisherEmail || '').toLowerCase().trim();
 
-      const result = await executeAppPublish(appPayload, effectiveUid, effectiveEmail, { featureOnSpotlight });
+      const result = await executeAppPublish(appPayload, effectiveUid, effectiveEmail, { featureOnSpotlight, isVerifiedAdmin: callerAuth.isVerifiedAdmin });
       return res.json({ success: true, app: result.app, isNew: !result.app.updatedAt });
     } catch (err: any) {
       console.error("[Backend Publish Error]:", err.message);

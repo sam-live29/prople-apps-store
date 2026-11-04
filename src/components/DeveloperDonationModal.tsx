@@ -3,7 +3,6 @@ import { Heart } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useTheme } from '../context/ThemeContext';
 import appLogo from '../assets/images/logo.png';
-import donationQrImage from '../assets/images/regenerated_image_1789930106285.png';
 
 interface DeveloperDonationModalProps {
   isOpen: boolean;
@@ -80,11 +79,17 @@ export function DeveloperDonationModal({
           {/* Pure QR code with App Logo centered */}
           <div className="flex items-center justify-center py-2">
             <div className="relative w-48 h-48 flex items-center justify-center">
-              <img
-                src={donationQrImage || qrCodeDataUrl}
-                alt="Donation QR Code"
-                className="w-full h-full object-contain bg-transparent select-none"
-              />
+              {qrCodeDataUrl ? (
+                <img
+                  src={qrCodeDataUrl}
+                  alt="Donation QR Code"
+                  className="w-full h-full object-contain bg-transparent select-none"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-theme-accent border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
               {/* Centered App Logo with solid white background to cover underlying logo */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white flex items-center justify-center p-1.5 shadow-xs border border-gray-100">

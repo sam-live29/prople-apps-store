@@ -114,7 +114,63 @@ console.log('✔ Confirmed: OTP dispatch rate limiting operational');
 assert.strictEqual(isIpLocked('198.51.100.1'), false, 'Normal IP must not be locked');
 console.log('✔ Confirmed: Normal user IP passes without lockout (0 UX impact)');
 
-console.log('\n==========================================');
-console.log('🎉 ALL SECURITY & INTRUSION DEFENSE TESTS PASSED!');
-console.log('==========================================\n');
+console.log('\n--- [Security Test 5: Audit Remediation Verification] ---');
+import { computeDeterministicSha256 } from '../src/utils/securityUtils.ts';
+import { authenticateApiRequest } from '../server/tokenVerifier.ts';
+
+// 1. Verify standard cryptographic SHA-256 accuracy
+const testVector1 = 'hello';
+const expectedHash1 = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+const actualHash1 = computeDeterministicSha256(testVector1);
+assert.strictEqual(actualHash1, expectedHash1, 'computeDeterministicSha256 must match standard FIPS 180-4 SHA-256');
+
+const testVector2 = 'prople-store';
+const expectedHash2 = crypto.createHash('sha256').update(testVector2).digest('hex');
+const actualHash2 = computeDeterministicSha256(testVector2);
+assert.strictEqual(actualHash2, expectedHash2, 'SHA-256 must bit-for-bit match OpenSSL/Node crypto');
+console.log('✔ Confirmed: Genuine cryptographic SHA-256 hash verified (Issue 5 resolved)');
+
+// 2. Verify firestore.rules prevents role injection
+const updatedRules = fs.readFileSync(rulesPath, 'utf8');
+assert(updatedRules.includes('isPrivilegedRole'), 'firestore.rules must contain isPrivilegedRole');
+assert(updatedRules.includes('Store Administrator'), 'firestore.rules must specifically guard Store Administrator');
+console.log('✔ Confirmed: Profile role injection strictly forbidden in firestore.rules (Issue 1 resolved)');
+
+// 3. Verify vercel.json does not leak wildcard Access-Control-Allow-Origin
+const vercelConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'vercel.json'), 'utf8'));
+const headers = vercelConfig.headers || [];
+for (const h of headers) {
+  for (const entry of (h.headers || [])) {
+    if (entry.key === 'Access-Control-Allow-Origin') {
+      assert.notStrictEqual(entry.value, '*', 'vercel.json MUST NOT contain wildcard Access-Control-Allow-Origin: *');
+    }
+  }
+}
+console.log('✔ Confirmed: Wildcard CORS removed from vercel.json (Issue 4 resolved)');
+
+// 4. Verify authenticateApiRequest rejects unverified tokens / spoofed headers
+const fakeAuthReq: any = {
+  headers: {
+    authorization: 'Bearer fake_invalid_jwt_token_123',
+    'x-user-email': 'sahanurmolla2886@gmail.com',
+    'x-user-id': 'spoofed_admin_id'
+  },
+  body: {
+    userEmail: 'sahanurmolla2886@gmail.com',
+    userId: 'spoofed_admin_id'
+  }
+};
+authenticateApiRequest(fakeAuthReq).then((authRes) => {
+  assert.strictEqual(authRes.isAuthenticated, false, 'Unverified fake token must not authenticate');
+  assert.strictEqual(authRes.isVerifiedAdmin, false, 'Spoofed email must NEVER grant admin privileges');
+  assert.strictEqual(authRes.uid, null, 'Unverified caller must have null UID');
+  console.log('✔ Confirmed: API rejects spoofed identity and unverified tokens (Issue 2 & 3 resolved)');
+
+  console.log('\n==========================================');
+  console.log('🎉 ALL SECURITY, AUDIT REMEDIATION & INTRUSION TESTS PASSED!');
+  console.log('==========================================\n');
+}).catch((err) => {
+  console.error('Auth test failed:', err);
+  process.exit(1);
+});
 

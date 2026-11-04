@@ -14,41 +14,8 @@ const TRUSTED_ORIGIN_PATTERNS = [
   /^https:\/\/prople-store(-[a-z0-9-]+)?\.firebaseapp\.com$/i,
 ];
 
-const DEFAULT_ADMIN_EMAILS = [
-  'ventureforge.corp@gmail.com',
-  'sahanurmolla077@gmail.com',
-  'sahanurmolla7076@gmail.com',
-  'sahanurmolla2886@gmail.com',
-  'sahanurmolla190@gmail.com',
-  'prople.site@gmail.com',
-  'cloaktailsupport@gmail.com',
-  'cloaktailofficial@gmail.com',
-  'prople.org@gmail.com',
-];
-
-const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
-
-import { verifySecuritySecret } from '../../server/securityDefense.ts';
-
-function isStrictAdminEmail(email?: string | null): boolean {
-  if (!email || typeof email !== 'string') return false;
-  const norm = email.toLowerCase().trim();
-  if (DEFAULT_ADMIN_EMAILS.includes(norm)) return true;
-
-  const envAdmins = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
-    .toLowerCase()
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
-  if (envAdmins.includes(norm)) return true;
-  if (norm.endsWith(VERIFIED_ADMIN_DOMAIN)) {
-    const local = norm.slice(0, -VERIFIED_ADMIN_DOMAIN.length);
-    if (['admin', 'security', 'moderator', 'executive', 'root', 'dev'].includes(local)) {
-      return true;
-    }
-  }
-  return false;
-}
+import { isStrictAdminEmail, verifySecuritySecret } from '../../server/securityDefense.ts';
+import { authenticateApiRequest } from '../../server/tokenVerifier.ts';
 
 function getServerFirebaseConfig() {
   let fileConfig: any = {};
@@ -207,40 +174,39 @@ export default async function handler(req: any, res: any) {
         return res.status(404).json({ success: false, error: 'Application not found' });
       }
 
+      const callerAuth = await authenticateApiRequest(req);
+      const callerUid = callerAuth.uid;
+      const callerEmail = (callerAuth.email || '').toLowerCase().trim();
+
       const devEmail = (existingData.developerEmail || '').toLowerCase().trim();
       const pubEmail = (existingData.publisherEmail || '').toLowerCase().trim();
       const ownerEmail = (existingData.ownerEmail || '').toLowerCase().trim();
       const devInfoEmail = (existingData.developerInfo?.email || '').toLowerCase().trim();
 
-      const isMatchingEmail = userEmail && (
-        devEmail === userEmail ||
-        pubEmail === userEmail ||
-        ownerEmail === userEmail ||
-        devInfoEmail === userEmail
-      );
-
-      const adminSecret = req.headers?.['x-admin-secret'] || body.adminSecret;
-      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim() || body.idToken;
-      const isVerifiedAdmin = Boolean(
-        (adminSecret && verifySecuritySecret(adminSecret)) ||
-        (bearerToken && isStrictAdminEmail(userEmail))
+      const isMatchingEmail = callerEmail && (
+        devEmail === callerEmail ||
+        pubEmail === callerEmail ||
+        ownerEmail === callerEmail ||
+        devInfoEmail === callerEmail
       );
 
       const isOwner =
-        (userId &&
-          userId !== 'guest' &&
-          userId !== 'developer' &&
-          userId !== 'dev-publisher' &&
-          (existingData.owner === userId ||
-            existingData.developerId === userId ||
-            existingData.publisherId === userId ||
-            existingData.creatorUid === userId)) ||
-        (isMatchingEmail && userId && userId !== 'guest') ||
-        isVerifiedAdmin;
+        callerAuth.isVerifiedAdmin ||
+        (callerUid &&
+          callerUid !== 'guest' &&
+          callerUid !== 'developer' &&
+          callerUid !== 'dev-publisher' &&
+          (existingData.owner === callerUid ||
+            existingData.developerId === callerUid ||
+            existingData.publisherId === callerUid ||
+            existingData.creatorUid === callerUid)) ||
+        Boolean(isMatchingEmail && callerUid && callerUid !== 'guest');
 
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot delete it.' });
       }
+
+      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
 
       const delRes = await fetch(directDocUrl, {
         method: 'DELETE',

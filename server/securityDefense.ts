@@ -906,6 +906,12 @@ export function createIntrusionShieldMiddleware(options: {
     const clientIp = options.getClientIp(req);
     const path = req.path || req.url || "";
 
+    // Internal loopback bypasses honeypot/tarpit for local health checks and dev tooling
+    if (clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "localhost") {
+      next();
+      return;
+    }
+
     // 1. If IP is already jailed/locked, execute immediate socket tarpit punishment
     if (options.isIpLocked(clientIp)) {
       executeSocketTarpit(

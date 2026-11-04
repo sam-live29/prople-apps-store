@@ -52,15 +52,23 @@ service cloud.firestore {
       );
     }
 
-    function isSafeUserCreate() {
-      return !incoming().keys().hasAny(['role', 'isAdmin', 'publisherRole']) || (
-        incoming().get('role', 'user') != 'admin' &&
-        incoming().get('isAdmin', false) == false
+    function isPrivilegedRole(roleStr) {
+      return roleStr is string && (
+        roleStr.matches('(?i).*(admin|moderator|executive|root|manager|staff).*') ||
+        roleStr in ['Store Administrator', 'Administrator', 'Admin', 'Moderator', 'Executive', 'Root', 'SuperAdmin', 'admin']
       );
     }
 
+    function isSafeUserCreate() {
+      return incoming().get('isAdmin', false) == false &&
+        !isPrivilegedRole(incoming().get('role', 'user')) &&
+        !isPrivilegedRole(incoming().get('publisherRole', 'Developer'));
+    }
+
     function isSafeUserUpdate() {
-      return !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isAdmin', 'publisherRole', 'email']);
+      return !incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'email']) &&
+        !isPrivilegedRole(incoming().get('role', 'user')) &&
+        !isPrivilegedRole(incoming().get('publisherRole', 'Developer'));
     }
 
     // -------------------------------------------------------------------------

@@ -474,11 +474,19 @@ export async function publishAppToFirestore(
 
   // 1. Primary: Production-grade Backend API with server-side validation and ownership checks
   try {
+    let idToken = '';
+    if (auth.currentUser) {
+      idToken = await auth.currentUser.getIdToken().catch(() => '');
+    }
+
     const { ok, data: resData, error: fetchErr } = await safeFetchJson<{ success: boolean; app?: AppDetails; error?: string; isNew?: boolean }>(
       '/api/apps/publish',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
         body: JSON.stringify({
           app: optimizedApp,
           userId: currentAuthUid || ownerUid,

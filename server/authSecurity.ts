@@ -495,7 +495,7 @@ export async function lockHostileIp(
   db?: any
 ): Promise<void> {
   const cleanIp = (ip || '').replace('::ffff:', '').replace(/[^0-9a-fA-F:.]/g, '').slice(0, 64);
-  if (!cleanIp || cleanIp === 'unknown') return;
+  if (!cleanIp || cleanIp === 'unknown' || cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp === 'localhost') return;
 
   lockedIps.add(cleanIp);
   ipTotalStrikes.set(cleanIp, (ipTotalStrikes.get(cleanIp) || 0) + 100);
