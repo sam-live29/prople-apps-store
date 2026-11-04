@@ -17,6 +17,7 @@ import { Review, AppDetails, MAX_REPLY_CHARACTERS } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { useReviews } from '../context/ReviewContext';
+import { useInstall } from '../context/InstallContext';
 import { useNavigation } from '../context/NavigationContext';
 import { FlagAppModal } from './FlagAppModal';
 import MediaGalleryLightbox from './MediaUpload/MediaGalleryLightbox';
@@ -58,6 +59,14 @@ export default function AppRatingsReviewsPage({
     flagReview,
     isReviewFlagged
   } = useReviews();
+  const { markReviewNotificationsAsRead } = useInstall();
+
+  // As soon as user leaves the reviews page, mark review notifications as read in background
+  useEffect(() => {
+    return () => {
+      markReviewNotificationsAsRead();
+    };
+  }, [markReviewNotificationsAsRead]);
 
   const appReviews = getAppReviews(app.id);
 
@@ -385,7 +394,10 @@ export default function AppRatingsReviewsPage({
             <button 
               type="button"
               id="reviews-back-button"
-              onClick={onBack} 
+              onClick={() => {
+                markReviewNotificationsAsRead();
+                onBack();
+              }} 
               className="w-9 h-9 -ml-1 text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 rounded-full transition-colors shrink-0 cursor-pointer flex items-center justify-center" 
               aria-label="Back"
             >

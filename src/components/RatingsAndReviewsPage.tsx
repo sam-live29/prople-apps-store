@@ -156,7 +156,7 @@ export default function RatingsAndReviewsPage({
     getUserReviews, 
     getPublisherAppsReviews
   } = useReviews();
-  const { notifications, markNotificationAsRead, clearNotification } = useInstall();
+  const { notifications, markNotificationAsRead, markReviewNotificationsAsRead, clearNotification } = useInstall();
   const { showToast } = useToast();
   const { openAppReviews, openSearch } = useNavigation();
 
@@ -169,6 +169,13 @@ export default function RatingsAndReviewsPage({
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   usePreserveScroll('ratings-and-reviews-page', scrollRef);
+
+  // As soon as the user leaves the reviews page, mark review notifications as read in background
+  useEffect(() => {
+    return () => {
+      markReviewNotificationsAsRead();
+    };
+  }, [markReviewNotificationsAsRead]);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -273,7 +280,10 @@ export default function RatingsAndReviewsPage({
             <button 
               type="button"
               id="reviews-back-btn"
-              onClick={onClose}
+              onClick={() => {
+                markReviewNotificationsAsRead();
+                onClose();
+              }}
               className="w-10 h-10 -ml-1 text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 rounded-full transition-colors shrink-0 cursor-pointer flex items-center justify-center"
               aria-label="Back"
             >

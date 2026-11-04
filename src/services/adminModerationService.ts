@@ -580,6 +580,39 @@ export const AdminModerationService = {
     });
   },
 
+  // Mark all pending app and review reports as read in the background
+  markAllReportsAsRead() {
+    initLocalCache();
+    if (typeof window === 'undefined') return;
+    try {
+      const appIds = Object.keys(appReportsCache);
+      const reviewIds = Object.keys(reviewReportsCache);
+      const allIds = [...appIds, ...reviewIds];
+      if (allIds.length > 0) {
+        const raw = localStorage.getItem('prople_admin_read_reports_v1');
+        const set = new Set<string>(raw ? JSON.parse(raw) : []);
+        allIds.forEach(id => set.add(id));
+        localStorage.setItem('prople_admin_read_reports_v1', JSON.stringify(Array.from(set).slice(-1000)));
+      }
+      window.dispatchEvent(new CustomEvent('prople:admin-reports:read'));
+    } catch {}
+  },
+
+  // Count unviewed pending reports
+  getUnviewedReportsCount(): number {
+    initLocalCache();
+    if (typeof window === 'undefined') return 0;
+    try {
+      const raw = localStorage.getItem('prople_admin_read_reports_v1');
+      const readSet = new Set<string>(raw ? JSON.parse(raw) : []);
+      const appPending = Object.values(appReportsCache).filter(r => r.status === 'pending' && !readSet.has(r.id));
+      const reviewPending = Object.values(reviewReportsCache).filter(r => r.status === 'pending' && !readSet.has(r.id));
+      return appPending.length + reviewPending.length;
+    } catch {
+      return 0;
+    }
+  },
+
   dismissAppReport(appId: string) {
     initLocalCache();
     if (appReportsCache[appId]) {

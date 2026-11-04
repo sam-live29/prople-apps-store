@@ -843,6 +843,13 @@ export default function AdminControlPanel({
     return () => window.removeEventListener('admin:moderation:updated', handleModerationUpdate);
   }, [refreshData]);
 
+  // As soon as the admin leaves the page, mark all reports as read in the background
+  useEffect(() => {
+    return () => {
+      AdminModerationService.markAllReportsAsRead();
+    };
+  }, []);
+
   // Pull to refresh handler matching Console Page & Search Results
   const handleAdminPullRefresh = useCallback(async () => {
     setIsAdminRefreshing(true);
@@ -1700,7 +1707,10 @@ export default function AdminControlPanel({
             <button
               type="button"
               id="admin-panel-back-btn"
-              onClick={onClose}
+              onClick={() => {
+                AdminModerationService.markAllReportsAsRead();
+                onClose();
+              }}
               className="w-9 h-9 -ml-1 text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
               aria-label="Back"
             >

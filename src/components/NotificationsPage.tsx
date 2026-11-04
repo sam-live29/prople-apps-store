@@ -238,21 +238,12 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
   const notifScrollRef = useRef<HTMLDivElement | null>(null);
   usePreserveScroll('notifications-page', notifScrollRef);
 
-  // Automatically mark all notifications as read upon visiting NotificationsPage
-  // Users do not need to click or visit each individual target app or link to clear unread status
+  // Automatically mark all notifications as read in the background as soon as leaving NotificationsPage
   useEffect(() => {
-    markAllNotificationsAsRead();
+    return () => {
+      markAllNotificationsAsRead();
+    };
   }, [markAllNotificationsAsRead]);
-
-  // If new unread notifications arrive or sync while on this page, automatically mark them as read
-  useEffect(() => {
-    if (unreadNotificationsCount > 0) {
-      const timer = setTimeout(() => {
-        markAllNotificationsAsRead();
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-  }, [unreadNotificationsCount, markAllNotificationsAsRead]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -353,7 +344,10 @@ export default function NotificationsPage({ onClose, onAppClick, onNavigate }: N
             <button 
               type="button"
               id="notifications-back-btn"
-              onClick={onClose}
+              onClick={() => {
+                markAllNotificationsAsRead();
+                onClose();
+              }}
               className="w-9 h-9 -ml-1 text-theme-text hover:bg-theme-hover active:bg-theme-hover/80 rounded-full transition-colors shrink-0 cursor-pointer flex items-center justify-center"
               aria-label="Back"
             >

@@ -103,10 +103,18 @@ export default function YouPage({ onAppClick, onOpenNotifications }: { onAppClic
   const activeView = youView;
 
   const [adminStatsVersion, setAdminStatsVersion] = useState(0);
+
+  useEffect(() => {
+    const handleReportsRead = () => {
+      setAdminStatsVersion(v => v + 1);
+    };
+    window.addEventListener('prople:admin-reports:read', handleReportsRead);
+    return () => window.removeEventListener('prople:admin-reports:read', handleReportsRead);
+  }, []);
+
   const pendingAdminReportsCount = useMemo(() => {
     if (!isAdminUser) return 0;
-    return AdminModerationService.getAppReports().filter(r => r.status === 'pending').length +
-           AdminModerationService.getReviewReports().filter(r => r.status === 'pending').length;
+    return AdminModerationService.getUnviewedReportsCount();
   }, [isAdminUser, adminStatsVersion]);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);

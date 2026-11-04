@@ -78,6 +78,7 @@ interface InstallContextType {
   addNotification: (item: Partial<NotificationItem> & { title: string; message: string }) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
+  markReviewNotificationsAsRead: () => void;
   clearNotification: (id: string) => void;
   clearAllNotifications: () => void;
   isAuthDialogOpen: boolean;
@@ -841,6 +842,49 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     });
   }, [visibleNotifications]);
 
+  const markReviewNotificationsAsRead = useCallback(() => {
+    const unreadReviewIds = visibleNotifications
+      .filter(n => n.isUnread !== false && (
+        n.category === 'review' ||
+        n.category === 'review_reply' ||
+        n.category === 'rating' ||
+        n.actionType === 'review' ||
+        n.title?.toLowerCase().includes('review') ||
+        n.message?.toLowerCase().includes('review') ||
+        n.title?.toLowerCase().includes('rating')
+      ))
+      .map(n => n.id);
+
+    if (unreadReviewIds.length === 0) return;
+
+    const unreadIdSet = new Set(unreadReviewIds);
+
+    setRawNotifications(prev => {
+      const updated = prev.map(n => unreadIdSet.has(n.id) ? { ...n, isUnread: false } : n);
+      try {
+        localStorage.setItem(LOCAL_NOTIFS_KEY, JSON.stringify(updated));
+        const storeRaw = localStorage.getItem('prople_store_notifications_v5');
+        if (storeRaw) {
+          const storeList: NotificationItem[] = JSON.parse(storeRaw);
+          const updatedStore = storeList.map(n => unreadIdSet.has(n.id) ? { ...n, isUnread: false } : n);
+          localStorage.setItem('prople_store_notifications_v5', JSON.stringify(updatedStore));
+        }
+      } catch {}
+      return updated;
+    });
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('prople_store_notifications_v5');
+        if (raw) {
+          window.dispatchEvent(new CustomEvent('prople:notifications:updated', { detail: JSON.parse(raw) }));
+        }
+      } catch {}
+    }
+
+    markAllNotificationsAsReadInFirestore(unreadReviewIds).catch(() => {});
+  }, [visibleNotifications]);
+
   const clearNotification = useCallback((id: string) => {
     if (!id) return;
     if (inFlightClearIdsRef.current.has(id) || isClearingAllRef.current) {
@@ -1175,6 +1219,7 @@ export function InstallProvider({ children }: { children: ReactNode }) {
         addNotification,
         markNotificationAsRead,
         markAllNotificationsAsRead,
+        markReviewNotificationsAsRead,
         clearNotification,
         clearAllNotifications,
         isAuthDialogOpen,

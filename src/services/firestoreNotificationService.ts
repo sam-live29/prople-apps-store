@@ -39,6 +39,29 @@ export function formatNotificationTimestamp(createdAt?: number): string {
 }
 
 export const LOCAL_STORE_NOTIFS_KEY = 'prople_store_notifications_v5';
+export const LOCAL_READ_NOTIFS_KEY = 'prople_store_read_notif_ids_v1';
+
+export function getLocalReadNotificationIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(LOCAL_READ_NOTIFS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveLocalReadNotificationIds(ids: string[] | Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getLocalReadNotificationIds();
+    ids.forEach(id => current.add(id));
+    const arr = Array.from(current).slice(-1000);
+    localStorage.setItem(LOCAL_READ_NOTIFS_KEY, JSON.stringify(arr));
+  } catch {}
+}
 
 /**
  * Realtime listener for all database notifications
@@ -83,6 +106,7 @@ export function listenToStoreNotifications(
       colRef,
       (snapshot) => {
         const items: NotificationItem[] = [];
+        const readIds = getLocalReadNotificationIds();
         snapshot.forEach((d) => {
           const data = d.data();
           const docId = d.id;
@@ -120,7 +144,7 @@ export function listenToStoreNotifications(
             actionType: data.actionType || (data.appId ? 'app_detail' : undefined),
             actionUrl: data.actionUrl || undefined,
             actionLabel: data.actionLabel || (data.appId ? 'Open app details' : undefined),
-            isUnread: data.isUnread !== false,
+            isUnread: data.isUnread !== false && !readIds.has(docId),
             createdAt,
             category: data.category || undefined,
             targetType: data.targetType || undefined,
@@ -1481,6 +1505,8 @@ export function isNotificationVisibleToUser(
  * Mark a notification as read in Firestore
  */
 export async function markNotificationAsReadInFirestore(id: string): Promise<void> {
+  if (!id) return;
+  saveLocalReadNotificationIds([id]);
   try {
     const docRef = doc(db, NOTIFS_COLLECTION, id);
     await updateDoc(docRef, { isUnread: false });
@@ -1493,6 +1519,8 @@ export async function markNotificationAsReadInFirestore(id: string): Promise<voi
  * Mark all notifications as read in Firestore
  */
 export async function markAllNotificationsAsReadInFirestore(ids: string[]): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  saveLocalReadNotificationIds(ids);
   try {
     const batch = writeBatch(db);
     ids.forEach((id) => {
