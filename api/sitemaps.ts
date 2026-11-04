@@ -70,7 +70,7 @@ function getServerFirebaseConfig() {
   };
 }
 
-const SITEMAP_BASE = 'https://prople.co.in';
+const SITEMAP_BASE = 'https://www.prople.co.in';
 
 let memoryAppsCache: any[] = [];
 let lastCacheFetch = 0;

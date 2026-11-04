@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const BASE_URL = 'https://prople.co.in';
+const BASE_URL = 'https://www.prople.co.in';
 
 let memoryAppsCache: any[] = [];
 let lastCacheFetch = 0;
@@ -549,7 +549,7 @@ export default async function handler(req: any, res: any) {
   let fallbackHtml = `<!doctype html><html lang="en" class="dark" style="background-color:#131314;"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>Prople Store</title></head><body style="margin:0;background:#131314;"><div id="root"></div></body></html>`;
 
   try {
-    const host = (req.headers?.['x-forwarded-host'] || req.headers?.host || 'prople.co.in').toString().split(',')[0].trim();
+    const host = (req.headers?.['x-forwarded-host'] || req.headers?.host || 'www.prople.co.in').toString().split(',')[0].trim();
     const proto = (req.headers?.['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https')).toString().split(',')[0].trim();
     const baseUrl = host.includes('localhost') || host.includes('vercel.app') ? `${proto}://${host}` : BASE_URL;
     const isCrawler = isCrawlerUserAgent(req.headers?.['user-agent']?.toString());

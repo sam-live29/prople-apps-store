@@ -632,10 +632,19 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '25mb', extended: true }));
   app.use(prototypePollutionGuard);
 
+  // Canonical Host Redirection: Enforce www.prople.co.in across all incoming apex domain requests
+  app.use((req, res, next) => {
+    const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase().split(':')[0];
+    if (rawHost === 'prople.co.in') {
+      return res.redirect(301, `https://www.prople.co.in${req.originalUrl}`);
+    }
+    next();
+  });
+
   // RFC 9116 Compliant Security.txt endpoint
   app.get(["/.well-known/security.txt", "/security.txt"], (req, res) => {
     res.type("text/plain; charset=utf-8");
-    const domain = `${req.protocol}://${req.get("host") || "prople.co.in"}`;
+    const domain = `${req.protocol}://${req.get("host") || "www.prople.co.in"}`;
     const securityTxt = [
       "# Security Policy and Vulnerability Disclosure for Prople Store & Cloaktail Industries",
       "# Compliant with RFC 9116",
@@ -667,10 +676,10 @@ async function startServer() {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    const domain = "https://prople.co.in";
+    const domain = "https://www.prople.co.in";
     const robots = [
       "# Prople Store - Robots Directives for Search Engines & AI Models",
-      "# Canonical: https://prople.co.in/robots.txt",
+      "# Canonical: https://www.prople.co.in/robots.txt",
       "",
       "User-agent: *",
       "Allow: /",
@@ -872,7 +881,7 @@ async function startServer() {
   }
 
   // Canonical domain for sitemaps
-  const SITEMAP_BASE = "https://prople.co.in";
+  const SITEMAP_BASE = "https://www.prople.co.in";
 
   // Search Engine Optimization (SEO): Sitemaps Index at /sitemap.xml
   app.get(["/sitemap.xml", "/sitemap_index.xml"], async (req, res) => {
