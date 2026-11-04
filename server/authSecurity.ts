@@ -51,8 +51,11 @@ const lockedIps = new Set<string>();                            // set of blocke
 const LOGIN_FAIL_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_LOGIN_FAILS = 5;                        // 5 failed attempts per 24hr
 
-const OTP_WINDOW_MS = 2 * 60 * 60 * 1000;         // 2 hours
-const MAX_OTPS = 100;                             // Generous limit for Resend enterprise throughput
+const OTP_WINDOW_MS = 30 * 60 * 1000;             // 30 minutes
+const MAX_OTPS_PER_EMAIL = 5;                     // Strict limit: 5 OTPs per 30 minutes
+const MAX_OTPS_PER_IP = 10;                       // Strict limit: 10 OTPs per 30 minutes per IP
+const OTP_COOLDOWN_MS = 45 * 1000;                // 45-second anti-spam cooldown between requests
+const lastOtpDispatchTimestamp = new Map<string, number>(); // key -> last dispatch time
 
 const MAX_IP_STRIKES_BEFORE_LOCK = 20;             // Lock IP if > 20 failed attempts
 
@@ -203,53 +206,74 @@ export function canAttemptLogin(email: string, ip: string): SecurityStatusResult
 }
 
 /**
- * Verifies if an email or IP can request an OTP (Max 10 OTPs in 2 hours)
+ * Verifies if an email or IP can request an OTP (Strict Anti-Bombing Armor)
  */
 export function canRequestOtp(email: string, ip: string): SecurityStatusResult {
   if (isIpLocked(ip)) {
     return {
       allowed: false,
       isIpLocked: true,
-      reason: 'Access denied: Your IP address has been locked due to exceeding 20 failed security verification attempts.',
+      reason: 'Access denied: Your IP address has been locked due to security policy violations.',
     };
   }
 
   const now = Date.now();
   const cleanEmail = (email || '').toLowerCase().trim();
 
-  // Check email OTPs in last 2 hours
+  // Enforce 45-second anti-spam cooldown on consecutive requests
+  const lastEmailDispatch = lastOtpDispatchTimestamp.get(cleanEmail) || 0;
+  if (cleanEmail && now - lastEmailDispatch < OTP_COOLDOWN_MS) {
+    const waitSec = Math.ceil((OTP_COOLDOWN_MS - (now - lastEmailDispatch)) / 1000);
+    return {
+      allowed: false,
+      reason: `Anti-spam cooldown active: Please wait ${waitSec} second(s) before requesting another code.`,
+      remainingAttempts: 0,
+    };
+  }
+
+  const lastIpDispatch = lastOtpDispatchTimestamp.get(ip) || 0;
+  if (now - lastIpDispatch < OTP_COOLDOWN_MS) {
+    const waitSec = Math.ceil((OTP_COOLDOWN_MS - (now - lastIpDispatch)) / 1000);
+    return {
+      allowed: false,
+      reason: `Network cooldown active: Please wait ${waitSec} second(s) before requesting another code.`,
+      remainingAttempts: 0,
+    };
+  }
+
+  // Check email OTPs in 30-minute window
   const emailTimes = (emailOtpTimestamps.get(cleanEmail) || []).filter(
     (t) => now - t < OTP_WINDOW_MS
   );
   emailOtpTimestamps.set(cleanEmail, emailTimes);
 
-  if (cleanEmail && emailTimes.length >= MAX_OTPS) {
+  if (cleanEmail && emailTimes.length >= MAX_OTPS_PER_EMAIL) {
     const oldestOtp = emailTimes[0];
     const minutesLeft = Math.ceil((OTP_WINDOW_MS - (now - oldestOtp)) / (60 * 1000));
     return {
       allowed: false,
-      reason: `OTP request limit reached: Maximum ${MAX_OTPS} verification codes allowed in 2 hours. Please try again in ${minutesLeft} minute(s).`,
+      reason: `OTP request limit reached: Maximum ${MAX_OTPS_PER_EMAIL} verification codes allowed per 30 minutes. Please try again in ${minutesLeft} minute(s).`,
       remainingAttempts: 0,
     };
   }
 
-  // Check IP OTPs in last 2 hours
+  // Check IP OTPs in 30-minute window
   const ipTimes = (ipOtpTimestamps.get(ip) || []).filter(
     (t) => now - t < OTP_WINDOW_MS
   );
   ipOtpTimestamps.set(ip, ipTimes);
 
-  if (ipTimes.length >= MAX_OTPS) {
+  if (ipTimes.length >= MAX_OTPS_PER_IP) {
     return {
       allowed: false,
-      reason: `OTP request limit reached: Maximum ${MAX_OTPS} verification codes per 2 hours from this network. Please try again later.`,
+      reason: `Network OTP limit reached: Maximum ${MAX_OTPS_PER_IP} verification codes per 30 minutes from this network. Please try again later.`,
       remainingAttempts: 0,
     };
   }
 
   return {
     allowed: true,
-    remainingAttempts: MAX_OTPS - Math.max(emailTimes.length, ipTimes.length),
+    remainingAttempts: MAX_OTPS_PER_EMAIL - emailTimes.length,
   };
 }
 
@@ -259,6 +283,11 @@ export function canRequestOtp(email: string, ip: string): SecurityStatusResult {
 export function recordOtpDispatched(email: string, ip: string) {
   const now = Date.now();
   const cleanEmail = (email || '').toLowerCase().trim();
+
+  if (cleanEmail) {
+    lastOtpDispatchTimestamp.set(cleanEmail, now);
+  }
+  lastOtpDispatchTimestamp.set(ip, now);
 
   const emailTimes = emailOtpTimestamps.get(cleanEmail) || [];
   emailTimes.push(now);

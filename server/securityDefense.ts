@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 
 /**
@@ -784,6 +785,27 @@ const HONEYPOT_PATHS: RegExp[] = [
   /^\/server-status/i,
   /^\/vendor\/phpunit/i,
   /^\/eval-stdin\.php/i,
+  /^\/\.git(\/config|\/HEAD|$)/i,
+  /^\/\.env(\.local|\.production|\.development|\.backup|\.bak|$)/i,
+  /^\/\.ds_store/i,
+  /^\/config\.(json|yaml|yml)/i,
+  /^\/wp-includes\//i,
+  /^\/swagger-ui(\.html|\/|$)/i,
+  /^\/api-docs/i,
+];
+
+const SCANNER_USER_AGENTS: RegExp[] = [
+  /sqlmap/i,
+  /nikto/i,
+  /wpscan/i,
+  /dirbuster/i,
+  /gobuster/i,
+  /masscan/i,
+  /zgrab/i,
+  /acunetix/i,
+  /nessus/i,
+  /havij/i,
+  /nmap\s+scripting/i,
 ];
 
 const ATTACK_PATTERNS: Array<{ type: string; regex: RegExp }> = [
@@ -802,6 +824,14 @@ export function isHoneypotScanPath(pathname: string): boolean {
   if (!pathname || typeof pathname !== "string") return false;
   const clean = pathname.trim().toLowerCase();
   return HONEYPOT_PATHS.some((pattern) => pattern.test(clean));
+}
+
+/**
+ * Detects known aggressive attack scanner automation tool user-agents.
+ */
+export function isHostileScannerAgent(userAgent?: string | null): boolean {
+  if (!userAgent || typeof userAgent !== "string") return false;
+  return SCANNER_USER_AGENTS.some((pat) => pat.test(userAgent));
 }
 
 /**
@@ -826,6 +856,13 @@ export function inspectPayloadForZeroDayAttacks(req: ExpressRequest): {
   const rawUserAgent = req.headers ? req.headers["user-agent"] : undefined;
   if (typeof rawUserAgent === "string") {
     targets.push(rawUserAgent);
+    if (isHostileScannerAgent(rawUserAgent)) {
+      return {
+        detected: true,
+        attackType: "hostile_scanner_tool",
+        details: `Automated vulnerability scanner identified: '${rawUserAgent}'`,
+      };
+    }
   }
 
   if (req.body && typeof req.body === "object") {
@@ -851,11 +888,56 @@ export function inspectPayloadForZeroDayAttacks(req: ExpressRequest): {
   return { detected: false };
 }
 
+// ==========================================
+// 10. Offensive Counter-Strike: Gzip Decompression Trap
+// ==========================================
+
+// Pre-computed Gzip Decompression Trap: 10MB null buffer compressed into ~10KB gzip stream.
+// When an automated scanner (sqlmap, python-requests, nikto) accepts gzip and reads this response,
+// its memory footprint balloons, exhausting scanner thread memory without costing server CPU.
+let GZIP_BOMB_BUFFER: Buffer;
+try {
+  const uncompressed = Buffer.alloc(10 * 1024 * 1024, 0);
+  GZIP_BOMB_BUFFER = zlib.gzipSync(uncompressed, { level: 9 });
+} catch {
+  GZIP_BOMB_BUFFER = Buffer.from("H4sICAAAAAAA/wAA", "base64");
+}
+
+/**
+ * Fires the Gzip Decompression Counter-Strike against a hostile scanning bot or attacker.
+ */
+export function sendGzipBombCounterStrike(
+  res: ExpressResponse,
+  clientIp: string,
+  reason: string
+): void {
+  console.warn(`[Offensive Defense] 💥 Gzip Decompression Counter-Strike deployed against ${clientIp}. Reason: ${reason}`);
+  try {
+    res.status(200);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("X-Offensive-Defense", "Decompression-Counter-Strike-Engaged");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Connection", "close");
+    res.end(GZIP_BOMB_BUFFER);
+  } catch {
+    try {
+      res.status(403).end("ACCESS RESTRICTED");
+    } catch {}
+  }
+}
+
+// ==========================================
+// 11. Concurrency-Guarded Reverse Slowloris Tarpit
+// ==========================================
+
+let activeTarpitCount = 0;
+const MAX_CONCURRENT_TARPITS = 30; // Max concurrent open sockets to protect server file descriptors
+
 /**
  * Tarpit Punisher Engine:
- * When a hostile probe, scanner, or locked attacker is detected, the server engages
- * a reverse slowloris punishment tarpit. It holds the socket open for 10-12 seconds
- * while trickling minimal bytes, starving the attacker's automation concurrency and threads.
+ * When an attacker is detected, holds the socket open for 10-12 seconds while trickling minimal bytes.
+ * Safely guards against socket exhaustion under large botnet floods by capping concurrent tarpits.
  */
 export function executeSocketTarpit(
   res: ExpressResponse,
@@ -863,7 +945,17 @@ export function executeSocketTarpit(
   reason: string,
   durationMs = 10000
 ): void {
-  console.warn(`[Tarpit Punisher] 🚨 Active attacker from IP ${clientIp} penalized. Engaging socket tarpit (${durationMs}ms delay). Reason: ${reason}`);
+  // If too many tarpits are already active, immediately terminate connection to conserve server file descriptors
+  if (activeTarpitCount >= MAX_CONCURRENT_TARPITS) {
+    try {
+      res.setHeader("Connection", "close");
+      res.status(403).end("ACCESS BLOCKED: Permanent defense blacklist active.");
+    } catch {}
+    return;
+  }
+
+  activeTarpitCount++;
+  console.warn(`[Tarpit Punisher] 🚨 Active attacker from IP ${clientIp} penalized. Engaging socket tarpit (${durationMs}ms delay). Reason: ${reason} (Active Tarpits: ${activeTarpitCount}/${MAX_CONCURRENT_TARPITS})`);
 
   try {
     res.status(403);
@@ -872,28 +964,125 @@ export function executeSocketTarpit(
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Connection", "close");
 
-    // Write initial warning byte
     res.write("# [PROPLE DEFENSE SYSTEM] ACCESS RESTRICTED: Hostile intrusion attempt logged.\n");
 
-    const timer = setTimeout(() => {
+    let timer: NodeJS.Timeout | null = null;
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      activeTarpitCount = Math.max(0, activeTarpitCount - 1);
+    };
+
+    timer = setTimeout(() => {
       try {
-        res.end("SECURITY ACCESS TERMINATED: Hostile probe detected and permanently logged to global defense registry.\n");
+        res.end("SECURITY ACCESS TERMINATED: Hostile probe logged to global defense registry.\n");
       } catch {}
+      cleanup();
     }, durationMs);
 
-    res.on("close", () => {
-      clearTimeout(timer);
-    });
+    res.on("close", cleanup);
   } catch {
+    activeTarpitCount = Math.max(0, activeTarpitCount - 1);
     try {
       res.status(403).end("ACCESS DENIED");
     } catch {}
   }
 }
 
+// ==========================================
+// 12. Infinite Honeypot Crawler Web Maze (Scraper Trapping)
+// ==========================================
+
 /**
- * Creates the global Intrusion Shield & Honeypot Tarpit Middleware.
- * Decoupled from direct store dependencies for maximum modularity and zero circular imports.
+ * Generates an endless deterministic HTML link maze that consumes scraper crawl budgets forever.
+ */
+export function generateCrawlerTrapMazeHtml(seed: string, depth: number): string {
+  const safeDepth = Math.max(1, Math.min(depth, 100000));
+  const links: string[] = [];
+
+  for (let i = 1; i <= 8; i++) {
+    const nextSeed = crypto.createHash("sha256").update(`${seed}:${safeDepth}:${i}`).digest("hex").slice(0, 12);
+    links.push(`<li><a href="/trap/maze/${nextSeed}/${safeDepth + 1}">Catalog Index Section ${nextSeed}</a></li>`);
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>System Directory Node ${safeDepth}</title>
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+</head>
+<body>
+  <h1>Archival Node ${safeDepth}</h1>
+  <p>Verifying catalog synchronization checkpoint...</p>
+  <ul>
+    ${links.join("\n    ")}
+  </ul>
+</body>
+</html>`;
+}
+
+// ==========================================
+// 13. High-Throughput Bounded Ring-Buffer Rate Limiter (Zero OOM under Crores of Requests)
+// ==========================================
+
+export class BoundedIpRateLimiter {
+  private cache = new Map<string, { count: number; resetAt: number }>();
+  private readonly maxEntries: number;
+  private readonly windowMs: number;
+  private readonly maxRequests: number;
+
+  constructor(maxRequests: number, windowMs: number, maxEntries = 50000) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+    this.maxEntries = maxEntries;
+  }
+
+  /**
+   * Evaluates if request from IP is permitted within the rate limit.
+   */
+  public check(ip: string): { allowed: boolean; remaining: number; retryAfterSec: number } {
+    const now = Date.now();
+    let entry = this.cache.get(ip);
+
+    if (!entry || now >= entry.resetAt) {
+      // LRU Eviction guard: prevent unbounded memory growth if millions of distinct IPs flood the server
+      if (this.cache.size >= this.maxEntries) {
+        let purged = 0;
+        for (const [key, val] of this.cache.entries()) {
+          if (now >= val.resetAt || purged < 1000) {
+            this.cache.delete(key);
+            purged++;
+          }
+        }
+      }
+
+      entry = { count: 1, resetAt: now + this.windowMs };
+      this.cache.set(ip, entry);
+      return { allowed: true, remaining: this.maxRequests - 1, retryAfterSec: 0 };
+    }
+
+    if (entry.count >= this.maxRequests) {
+      const retryAfterSec = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      return { allowed: false, remaining: 0, retryAfterSec };
+    }
+
+    entry.count++;
+    return {
+      allowed: true,
+      remaining: this.maxRequests - entry.count,
+      retryAfterSec: 0,
+    };
+  }
+}
+
+// ==========================================
+// 14. Integrated Intrusion Shield & Retaliation Middleware
+// ==========================================
+
+/**
+ * Creates the global Intrusion Shield & Punishment Middleware.
  */
 export function createIntrusionShieldMiddleware(options: {
   db?: any;
@@ -909,6 +1098,8 @@ export function createIntrusionShieldMiddleware(options: {
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     const clientIp = options.getClientIp(req);
     const path = req.path || req.url || "";
+    const userAgent = (req.headers["user-agent"] || "").toString();
+    const acceptEncoding = (req.headers["accept-encoding"] || "").toString().toLowerCase();
 
     // Internal loopback bypasses honeypot/tarpit for local health checks and dev tooling
     if (clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "localhost") {
@@ -916,13 +1107,18 @@ export function createIntrusionShieldMiddleware(options: {
       return;
     }
 
-    // 1. If IP is already jailed/locked, execute immediate socket tarpit punishment
+    // Helper to retaliate based on whether the attacker's client accepts compression
+    const retaliateAgainstAttacker = (reason: string) => {
+      if (acceptEncoding.includes("gzip") || isHostileScannerAgent(userAgent)) {
+        sendGzipBombCounterStrike(res, clientIp, reason);
+      } else {
+        executeSocketTarpit(res, clientIp, reason, 12000);
+      }
+    };
+
+    // 1. If IP is already jailed/locked, execute immediate retaliation
     if (options.isIpLocked(clientIp)) {
-      executeSocketTarpit(
-        res,
-        clientIp,
-        "IP address is in permanent security jail due to prior hostile attacks"
-      );
+      retaliateAgainstAttacker("IP address is in permanent security jail due to prior hostile attacks");
       return;
     }
 
@@ -935,31 +1131,31 @@ export function createIntrusionShieldMiddleware(options: {
         {
           attackType: "honeypot_probe",
           payload: path,
-          userAgent: req.headers["user-agent"],
+          userAgent,
         },
         options.db
       );
 
-      executeSocketTarpit(res, clientIp, reason, 12000);
+      retaliateAgainstAttacker(reason);
       return;
     }
 
-    // 3. Inspect request for 0-day injection attacks
+    // 3. Inspect request for 0-day injection attacks or hostile scanner tools
     const attackCheck = inspectPayloadForZeroDayAttacks(req);
     if (attackCheck.detected) {
-      const reason = `Zero-day injection attack detected: ${attackCheck.details}`;
+      const reason = `Zero-day injection or scanner attack detected: ${attackCheck.details}`;
       await options.lockHostileIp(
         clientIp,
         reason,
         {
           attackType: attackCheck.attackType,
           payload: req.originalUrl,
-          userAgent: req.headers["user-agent"],
+          userAgent,
         },
         options.db
       );
 
-      executeSocketTarpit(res, clientIp, reason, 12000);
+      retaliateAgainstAttacker(reason);
       return;
     }
 

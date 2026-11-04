@@ -82,7 +82,9 @@ import {
   sanitizeIdentifier,
   deepSanitizeObject,
   createIntrusionShieldMiddleware,
-  verifySecuritySecret
+  verifySecuritySecret,
+  BoundedIpRateLimiter,
+  generateCrawlerTrapMazeHtml
 } from "./server/securityDefense.ts";
 import { getServerFirebaseConfig } from "./server/firebaseConfig.ts";
 import {
@@ -127,8 +129,13 @@ interface RateEvent {
 }
 const serverPublishHistory = new Map<string, RateEvent[]>(); // key: userId or client IP
 const serverUpdateHistory = new Map<string, RateEvent[]>();  // key: `${userId}:${appId}` or `${clientIp}:${appId}`
-const ipBurstHistory = new Map<string, number[]>();          // IP burst flood limiter
 const serverReviewsStore = new Map<string, any[]>();        // Authoritative server-side cache for app reviews
+
+// High-Throughput Bounded Ring-Buffer Limiters (Protected against Lakhs & Crores of Requests)
+export const globalApiRateLimiter = new BoundedIpRateLimiter(120, 60 * 1000, 50000);
+export const globalDownloadRateLimiter = new BoundedIpRateLimiter(25, 60 * 1000, 30000);
+export const globalSearchRateLimiter = new BoundedIpRateLimiter(60, 60 * 1000, 40000);
+export const globalWebRateLimiter = new BoundedIpRateLimiter(400, 60 * 1000, 50000);
 
 function getNormalizedClientIp(req: express.Request): string {
   let rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -139,16 +146,12 @@ function getNormalizedClientIp(req: express.Request): string {
   return clean || 'unknown';
 }
 
-function checkIpBurstLimit(ip: string, maxRequests = 20, windowMs = 60 * 1000): boolean {
-  const now = Date.now();
-  const times = (ipBurstHistory.get(ip) || []).filter(t => now - t < windowMs);
-  if (times.length >= maxRequests) return false;
-  times.push(now);
-  ipBurstHistory.set(ip, times);
-  return true;
+function checkIpBurstLimit(ip: string, maxRequests = 120, _windowMs = 60 * 1000): boolean {
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+  return globalApiRateLimiter.check(ip).allowed;
 }
 
-// Memory pruning every 5 minutes to prevent RAM exhaustion from high-throughput floods
+// Memory pruning every 5 minutes to prevent RAM exhaustion
 setInterval(() => {
   const now = Date.now();
   const pubWindow = 15 * 60 * 1000;
@@ -162,11 +165,6 @@ setInterval(() => {
     const valid = events.filter(e => now - e.timestamp < updWindow);
     if (valid.length === 0) serverUpdateHistory.delete(key);
     else serverUpdateHistory.set(key, valid);
-  }
-  for (const [ip, times] of ipBurstHistory.entries()) {
-    const valid = times.filter(t => now - t < 60 * 1000);
-    if (valid.length === 0) ipBurstHistory.delete(ip);
-    else ipBurstHistory.set(ip, valid);
   }
 }, 5 * 60 * 1000).unref();
 
@@ -658,6 +656,33 @@ async function startServer() {
     });
   });
 
+  // Offensive Counter-Strike: Infinite Honeypot Crawler Maze
+  // Scraper bots ignoring robots.txt get trapped in an infinite synthetic labyrinth
+  app.get("/trap/maze/:seed/:depth", async (req, res) => {
+    const seed = String(req.params.seed || "prople").replace(/[^a-zA-Z0-9_-]/g, "");
+    const depth = parseInt(req.params.depth || "1", 10) || 1;
+    const clientIp = getNormalizedClientIp(req);
+
+    // If bot walked deeper than 5 levels, it's definitively an aggressive crawler/scraper -> lock IP
+    if (depth >= 5 && !isIpLocked(clientIp)) {
+      await lockHostileIp(
+        clientIp,
+        `Crawler trap triggered: deep automated scraper traversal at level ${depth}`,
+        {
+          attackType: "aggressive_scraper_trap",
+          payload: req.originalUrl,
+          userAgent: (req.headers["user-agent"] || "").toString(),
+        },
+        serverDb
+      ).catch(() => {});
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.send(generateCrawlerTrapMazeHtml(seed, depth));
+  });
+
   // Search Engine Optimization (SEO) & AI Directives: robots.txt
   app.get(["/robots.txt", "/robots"], (req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -676,6 +701,7 @@ async function startServer() {
       "Disallow: /auth/",
       "Disallow: /login/",
       "Disallow: /internal/",
+      "Disallow: /trap/",
       "",
       "# Generative Engine Optimization (GEO): Permit AI assistants & web crawlers",
       "User-agent: Google-Extended",
@@ -5738,6 +5764,18 @@ async function startServer() {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return res.status(405).json({ success: false, error: "Method not allowed. Use GET or HEAD." });
     }
+
+    const clientIp = getNormalizedClientIp(req);
+    const rateCheck = globalDownloadRateLimiter.check(clientIp);
+    if (!rateCheck.allowed) {
+      res.setHeader('Retry-After', String(rateCheck.retryAfterSec));
+      return res.status(429).json({
+        success: false,
+        error: "Download rate limit exceeded. Please wait before initiating new package downloads.",
+        retryAfterSec: rateCheck.retryAfterSec
+      });
+    }
+
     const isHeadRequest = req.method === 'HEAD';
     try {
       const rawUrl = (req.query.url as string || '').trim();
