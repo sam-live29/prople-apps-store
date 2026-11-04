@@ -508,8 +508,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     if (moderationInfo) {
       const appMeta = getAppMetadata(appId);
       const userId = moderationInfo.targetUser?.id || targetReview?.userId;
-      const userName = moderationInfo.targetUser?.name || targetReview?.author;
-      const userEmail = moderationInfo.targetUser?.email || targetReview?.userEmail;
+      const userName = moderationInfo.targetUser?.name || targetReview?.userName || (targetReview as any)?.author;
+      const userEmail = moderationInfo.targetUser?.email || (targetReview as any)?.userEmail || (targetReview as any)?.email;
       notifyUserReviewDeleted({
         appId,
         appName: moderationInfo.appName || appMeta.name,
@@ -715,11 +715,11 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           { id: appId, name: (targetRev as any).appName || 'Prople Store App' },
           {
             id: reviewId,
-            author: targetRev.author,
-            email: targetRev.email,
-            avatar: targetRev.avatar,
+            author: targetRev.userName || (targetRev as any).author,
+            email: (targetRev as any).userEmail || (targetRev as any).email,
+            avatar: targetRev.userAvatar || (targetRev as any).avatar,
             rating: targetRev.rating,
-            comment: targetRev.comment
+            comment: targetRev.text || (targetRev as any).comment
           },
           reason
         );

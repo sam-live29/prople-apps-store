@@ -23,8 +23,7 @@ export function DeveloperDonationModal({
   const { theme } = useTheme();
 
   useEffect(() => {
-    // Generate QR with clean transparent background adapted to current theme and High error correction level for logo center
-    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isDark = theme === 'dark';
     QRCode.toDataURL(UPI_PAYLOAD, {
       width: 280,
       margin: 1,

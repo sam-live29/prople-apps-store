@@ -268,7 +268,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
           ...currentApp,
           rating: typeof rating === 'number' ? rating : currentApp.rating,
           ratingsCount: typeof ratingsCount === 'number' ? ratingsCount : currentApp.ratingsCount,
-          reviewsCount: typeof reviewsCount === 'number' ? reviewsCount : currentApp.reviewsCount,
+          reviewsCount: typeof reviewsCount === 'number' ? String(reviewsCount) : (typeof reviewsCount === 'string' ? reviewsCount : currentApp.reviewsCount),
           ratingBreakdown: ratingBreakdown || currentApp.ratingBreakdown,
         };
 
@@ -804,7 +804,7 @@ export function StoreConfigProvider({ children }: { children: ReactNode }) {
       const appObj = b.appId ? apps[b.appId] : (Object.values(apps) as AppDetails[]).find(a => a.name?.toLowerCase() === b.appName?.toLowerCase());
       const liveRating = (appObj?.rating && appObj.rating > 0) ? appObj.rating : b.appRating;
       const liveRatingsCount = (appObj?.ratingsCount && appObj.ratingsCount > 0) ? appObj.ratingsCount : b.appRatingsCount;
-      const liveReviewsCount = (appObj?.reviewsCount && appObj.reviewsCount > 0) ? appObj.reviewsCount : b.appReviewsCount;
+      const liveReviewsCount = (appObj?.reviewsCount && (Number(appObj.reviewsCount) > 0 || parseInt(String(appObj.reviewsCount), 10) > 0)) ? appObj.reviewsCount : b.appReviewsCount;
       const liveDeveloper = appObj?.developer || b.appDeveloper;
 
       return {

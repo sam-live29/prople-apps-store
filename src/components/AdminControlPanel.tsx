@@ -594,7 +594,7 @@ export default function AdminControlPanel({
 
   // Tab 4: Publishers
   const [searchPublishersQuery, setSearchPublishersQuery] = useState('');
-  const [publishersFilter, setPublishersFilter] = useState<'all' | 'active' | 'restricted' | 'blocked'>('all');
+  const [publishersFilter, setPublishersFilter] = useState<'all' | 'active' | 'verified' | 'restricted' | 'blocked'>('all');
   const [showPublishersFilterSheet, setShowPublishersFilterSheet] = useState(false);
 
   // Tab 5: Banned Links
@@ -1027,8 +1027,8 @@ export default function AdminControlPanel({
       list = list.filter(r => 
         (r.appName && r.appName.toLowerCase().includes(q)) ||
         (r.appId && r.appId.toLowerCase().includes(q)) ||
-        (r.reasons && r.reasons.some(re => re.toLowerCase().includes(q))) ||
-        (r.notes && r.notes.some(note => note.toLowerCase().includes(q)))
+        (r.reportReasons && r.reportReasons.some(re => re.toLowerCase().includes(q))) ||
+        (r.notes && r.notes.toLowerCase().includes(q))
       );
     }
     if (appReportsFilter === 'pending') {
@@ -1036,13 +1036,13 @@ export default function AdminControlPanel({
     } else if (appReportsFilter === 'multiple') {
       list = list.filter(r => r.reportCount > 1);
     } else if (appReportsFilter === 'policy') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('policy') || re.toLowerCase().includes('terms')));
+      list = list.filter(r => r.reportReasons && r.reportReasons.some(re => re.toLowerCase().includes('policy') || re.toLowerCase().includes('terms')));
     } else if (appReportsFilter === 'harmful') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('harmful') || re.toLowerCase().includes('malware') || re.toLowerCase().includes('security')));
+      list = list.filter(r => r.reportReasons && r.reportReasons.some(re => re.toLowerCase().includes('harmful') || re.toLowerCase().includes('malware') || re.toLowerCase().includes('security')));
     } else if (appReportsFilter === 'impersonation') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('impersonation') || re.toLowerCase().includes('fake')));
+      list = list.filter(r => r.reportReasons && r.reportReasons.some(re => re.toLowerCase().includes('impersonation') || re.toLowerCase().includes('fake')));
     } else if (appReportsFilter === 'inappropriate') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('inappropriate') || re.toLowerCase().includes('content')));
+      list = list.filter(r => r.reportReasons && r.reportReasons.some(re => re.toLowerCase().includes('inappropriate') || re.toLowerCase().includes('content')));
     }
     return list;
   }, [appReports, searchAppReportsQuery, appReportsFilter]);
@@ -1053,9 +1053,9 @@ export default function AdminControlPanel({
       const q = searchReviewReportsQuery.toLowerCase().trim();
       list = list.filter(r => 
         (r.userName && r.userName.toLowerCase().includes(q)) ||
-        (r.comment && r.comment.toLowerCase().includes(q)) ||
+        ((r.reviewText || (r as any).comment) && (r.reviewText || (r as any).comment).toLowerCase().includes(q)) ||
         (r.appName && r.appName.toLowerCase().includes(q)) ||
-        (r.reasons && r.reasons.some(re => re.toLowerCase().includes(q)))
+        ((r.reportReasons || (r as any).reasons) && (r.reportReasons || (r as any).reasons).some((re: string) => re.toLowerCase().includes(q)))
       );
     }
     if (reviewReportsFilter === 'pending') {
@@ -1063,11 +1063,11 @@ export default function AdminControlPanel({
     } else if (reviewReportsFilter === '1star') {
       list = list.filter(r => r.rating === 1);
     } else if (reviewReportsFilter === 'harassment') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('harassment') || re.toLowerCase().includes('hate')));
+      list = list.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('harassment') || re.toLowerCase().includes('hate')));
     } else if (reviewReportsFilter === 'spam') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('spam') || re.toLowerCase().includes('advertising')));
+      list = list.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('spam') || re.toLowerCase().includes('advertising')));
     } else if (reviewReportsFilter === 'offensive') {
-      list = list.filter(r => r.reasons && r.reasons.some(re => re.toLowerCase().includes('offensive') || re.toLowerCase().includes('inappropriate')));
+      list = list.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('offensive') || re.toLowerCase().includes('inappropriate')));
     }
     return list;
   }, [reviewReports, searchReviewReportsQuery, reviewReportsFilter]);
@@ -1271,19 +1271,19 @@ export default function AdminControlPanel({
     { key: 'all', label: 'All reports', count: appReports.length },
     { key: 'pending', label: 'Pending only', count: appReports.filter(r => r.status === 'pending').length },
     { key: 'multiple', label: 'Multiple reports (>1)', count: appReports.filter(r => r.reportCount > 1).length },
-    { key: 'policy', label: 'Policy violations', count: appReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('policy') || re.toLowerCase().includes('terms'))).length },
-    { key: 'harmful', label: 'Harmful / Malware', count: appReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('harmful') || re.toLowerCase().includes('malware') || re.toLowerCase().includes('security'))).length },
-    { key: 'impersonation', label: 'Impersonation & copycats', count: appReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('impersonation') || re.toLowerCase().includes('fake'))).length },
-    { key: 'inappropriate', label: 'Inappropriate content', count: appReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('inappropriate') || re.toLowerCase().includes('content'))).length },
+    { key: 'policy', label: 'Policy violations', count: appReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('policy') || re.toLowerCase().includes('terms'))).length },
+    { key: 'harmful', label: 'Harmful / Malware', count: appReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('harmful') || re.toLowerCase().includes('malware') || re.toLowerCase().includes('security'))).length },
+    { key: 'impersonation', label: 'Impersonation & copycats', count: appReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('impersonation') || re.toLowerCase().includes('fake'))).length },
+    { key: 'inappropriate', label: 'Inappropriate content', count: appReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('inappropriate') || re.toLowerCase().includes('content'))).length },
   ], [appReports]);
 
   const reviewReportsFilterOptions: FilterSheetOption[] = useMemo(() => [
     { key: 'all', label: 'All flagged reviews', count: reviewReports.length },
     { key: 'pending', label: 'Pending only', count: reviewReports.filter(r => r.status === 'pending').length },
     { key: '1star', label: '1-star reviews', count: reviewReports.filter(r => r.rating === 1).length },
-    { key: 'harassment', label: 'Harassment & hate speech', count: reviewReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('harassment') || re.toLowerCase().includes('hate'))).length },
-    { key: 'spam', label: 'Spam & promotion', count: reviewReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('spam') || re.toLowerCase().includes('advertising'))).length },
-    { key: 'offensive', label: 'Offensive & inappropriate', count: reviewReports.filter(r => r.reasons?.some(re => re.toLowerCase().includes('offensive') || re.toLowerCase().includes('inappropriate'))).length },
+    { key: 'harassment', label: 'Harassment & hate speech', count: reviewReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('harassment') || re.toLowerCase().includes('hate'))).length },
+    { key: 'spam', label: 'Spam & promotion', count: reviewReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('spam') || re.toLowerCase().includes('advertising'))).length },
+    { key: 'offensive', label: 'Offensive & inappropriate', count: reviewReports.filter(r => (r.reportReasons || (r as any).reasons)?.some((re: string) => re.toLowerCase().includes('offensive') || re.toLowerCase().includes('inappropriate'))).length },
   ], [reviewReports]);
 
   const appsFilterOptions: FilterSheetOption[] = useMemo(() => {

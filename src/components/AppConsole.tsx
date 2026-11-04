@@ -1358,7 +1358,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
 
   // Section 2: Binary & Platform Package
   const [platform, setPlatform] = useState<'android' | 'windows' | 'linux' | 'mac' | 'ios' | 'multiplatform'>(() => initialDraft?.platform || 'android');
-  const [packageFormat, setPackageFormat] = useState<'apk' | 'aar' | 'aab' | 'exe' | 'msi' | 'zip' | '7z' | 'rar' | 'msix' | 'appx' | 'deb' | 'AppImage' | 'rpm' | 'tar.gz' | 'tar.xz' | 'tar.zst' | 'snap' | 'flatpak' | 'bin' | 'run' | 'dmg' | 'pkg' | 'jar' | 'ipa'>(() => initialDraft?.packageFormat || 'apk');
+  const [packageFormat, setPackageFormat] = useState<'apk' | 'aar' | 'aab' | 'exe' | 'msi' | 'zip' | '7z' | 'rar' | 'msix' | 'appx' | 'deb' | 'AppImage' | 'rpm' | 'tar.gz' | 'tar.xz' | 'tar.zst' | 'snap' | 'flatpak' | 'bin' | 'run' | 'dmg' | 'pkg' | 'jar' | 'ipa' | 'pwa' | 'web'>(() => initialDraft?.packageFormat || 'apk');
   const [targetOs, setTargetOs] = useState(() => initialDraft?.targetOs || 'Android 8.0 and up');
   const [supportedArchitectures, setSupportedArchitectures] = useState<string[]>(() => initialDraft?.supportedArchitectures || ['Universal']);
   const [supportedArchitecturesInput, setSupportedArchitecturesInput] = useState(() => (initialDraft?.supportedArchitectures ? initialDraft.supportedArchitectures.join(', ') : 'Universal'));
@@ -2211,7 +2211,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
     const effectivePackageFormat = app.packageFormat || (detected.packageFormat as any) || 'apk';
     const effectiveTargetOs = app.targetOs || app.minAndroid || (effectivePlatform === 'mac' ? 'macOS 12.0 or later' : effectivePlatform === 'linux' ? 'Linux (Debian, Ubuntu, Fedora, Arch)' : effectivePlatform === 'windows' ? 'Windows 10, 11 (64-bit)' : detected.targetOs || 'Android 8.0 and up');
     const effectiveMinAndroid = app.minAndroid || (effectivePlatform === 'mac' || effectivePlatform === 'linux' || effectivePlatform === 'windows' ? detected.minRequirement : 'Android 8.0 and up');
-    setPlatform(effectivePlatform);
+    setPlatform(effectivePlatform as any);
     setPackageFormat(effectivePackageFormat);
     setTargetOs(effectiveTargetOs);
     const archs = app.supportedArchitectures && app.supportedArchitectures.length > 0 ? app.supportedArchitectures : ['Universal'];
@@ -6671,7 +6671,7 @@ export default function AppConsole({ onClose, onOpenAppDetail }: AppConsoleProps
                 <button
                   type="button"
                   disabled={isSavingPublisherName || isCandidateChecking || !isCandidateAvailable || newCandidatePublisherName.trim().length < 2}
-                  onClick={handleClaimCandidatePublisherName}
+                  onClick={() => handleClaimCandidatePublisherName()}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
                 >
                   {isSavingPublisherName ? (

@@ -37,9 +37,9 @@ interface AuthContextType {
   signup: (email: string, pass: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   loginWithGithub: () => Promise<void>;
-  sendEmailOtp: (email: string, name?: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
+  sendEmailOtp: (email: string, name?: string) => Promise<{ success: boolean; delivered?: boolean; message?: string; challengeToken?: string }>;
   verifyEmailOtp: (email: string, code: string) => Promise<void>;
-  forgotPassword: (email: string) => Promise<{ success: boolean; delivered?: boolean; message?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; delivered?: boolean; message?: string; challengeToken?: string }>;
   resetPasswordWithCode: (email: string, code: string, newPassword: string) => Promise<void>;
   completeExternalAuth: (userData: any) => void;
   logout: () => Promise<void>;
