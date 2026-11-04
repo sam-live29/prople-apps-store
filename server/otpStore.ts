@@ -609,3 +609,47 @@ export async function consumeAuthSession(email: string): Promise<void> {
   } catch {}
 }
 
+/**
+ * OWASP Hardened Password Hashing:
+ * Uses PBKDF2-HMAC-SHA512 with 210,000 iterations (OWASP recommendation).
+ * Format: pbkdf2:210000:<salt>:<hash>
+ */
+const OWASP_PBKDF2_ITERATIONS = 210000;
+const OWASP_KEY_LENGTH = 64;
+const OWASP_DIGEST = 'sha512';
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, OWASP_PBKDF2_ITERATIONS, OWASP_KEY_LENGTH, OWASP_DIGEST).toString('hex');
+  return `pbkdf2:${OWASP_PBKDF2_ITERATIONS}:${salt}:${hash}`;
+}
+
+export function verifyPasswordHash(password: string, stored: string): { valid: boolean; needsRehash: boolean } {
+  if (!stored || typeof stored !== 'string') return { valid: false, needsRehash: false };
+
+  // Format 1: pbkdf2:210000:<salt>:<hash>
+  if (stored.startsWith('pbkdf2:')) {
+    const parts = stored.split(':');
+    if (parts.length === 4) {
+      const iterations = parseInt(parts[1], 10) || OWASP_PBKDF2_ITERATIONS;
+      const salt = parts[2];
+      const expectedHash = parts[3];
+      const computed = crypto.pbkdf2Sync(password, salt, iterations, OWASP_KEY_LENGTH, OWASP_DIGEST).toString('hex');
+      const valid = timingSafeEqualString(computed, expectedHash);
+      return { valid, needsRehash: iterations < OWASP_PBKDF2_ITERATIONS };
+    }
+  }
+
+  // Format 2: Legacy <salt>:<hash> (10,000 iterations)
+  if (stored.includes(':')) {
+    const [salt, expectedHash] = stored.split(':');
+    if (salt && expectedHash) {
+      const computed = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      const valid = timingSafeEqualString(computed, expectedHash);
+      return { valid, needsRehash: true };
+    }
+  }
+
+  return { valid: false, needsRehash: false };
+}
+

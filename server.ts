@@ -57,7 +57,9 @@ import {
   getAuthSessionStatus,
   consumeAuthSession,
   createSignedChallengeToken,
-  initOtpStoreDb
+  initOtpStoreDb,
+  hashPassword,
+  verifyPasswordHash
 } from "./server/otpStore.ts";
 import {
   initAuthSecurity,
@@ -1346,23 +1348,6 @@ async function startServer() {
     }
   });
 
-  function hashPassword(password: string): string {
-    const salt = crypto.randomBytes(16).toString("hex");
-    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
-    return `${salt}:${hash}`;
-  }
-
-  function verifyPassword(password: string, stored: string): boolean {
-    if (!stored || !stored.includes(":")) return false;
-    const [salt, key] = stored.split(":");
-    if (!salt || !key) return false;
-    const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
-    const keyBuf = Buffer.from(key, "utf8");
-    const hashBuf = Buffer.from(hash, "utf8");
-    if (keyBuf.length !== hashBuf.length) return false;
-    return crypto.timingSafeEqual(keyBuf, hashBuf);
-  }
-
   // Verify 6-digit OTP code with existing user lookup (Logs failed attempts & locks IP if > 20 strikes)
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
@@ -1863,7 +1848,13 @@ async function startServer() {
 
       // 1. Check persistent password hash in RTDB / memory store
       const storedHash = await getUserPasswordHash(cleanEmail);
-      if (storedHash && verifyPassword(String(password), storedHash)) {
+      const verifyRes = storedHash ? verifyPasswordHash(String(password), storedHash) : { valid: false, needsRehash: false };
+      if (verifyRes.valid) {
+        // Transparently re-hash legacy passwords to OWASP 210,000 PBKDF2 iterations
+        if (verifyRes.needsRehash) {
+          persistUserPasswordHash(cleanEmail, hashPassword(String(password))).catch(() => {});
+        }
+
         // Successful login: reset failed login attempts
         recordSuccessfulLogin(cleanEmail);
 

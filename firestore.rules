@@ -1,20 +1,40 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Strict administrator check:
+    // Requires authenticated user with either an admin document in /admins/{uid},
+    // an admin document in /admins/{verified_email}, or hardcoded root administrative email
+    // with email_verified == true to strictly prevent email spoofing attacks.
     function isAdmin() {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.publisherRole == 'Store Administrator'
-        )) ||
-        (request.auth.token.email != null && (
+        (request.auth.token.email != null && request.auth.token.email_verified == true && (
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
+          request.auth.token.email == 'sahanurmolla3131@gmail.com' ||
           request.auth.token.email == 'ventureforge.corp@gmail.com' ||
           request.auth.token.email == 'sahabhaiislive@gmail.com' ||
           request.auth.token.email == 'sahanurmolla077@gmail.com' ||
@@ -32,190 +52,227 @@ service cloud.firestore {
       );
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
     function isSafeUserCreate() {
-      return !request.resource.data.keys().hasAny(['role', 'isAdmin']) || (
-        request.resource.data.get('role', 'user') != 'admin' &&
-        request.resource.data.get('isAdmin', false) == false
+      return !incoming().keys().hasAny(['role', 'isAdmin', 'publisherRole']) || (
+        incoming().get('role', 'user') != 'admin' &&
+        incoming().get('isAdmin', false) == false
       );
     }
 
     function isSafeUserUpdate() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin']);
+      return !incoming().diff(existing()).affectedKeys().hasAny(['role', 'isAdmin', 'publisherRole', 'email']);
     }
 
+    // -------------------------------------------------------------------------
+    // User Profiles & Account Data
+    // -------------------------------------------------------------------------
+
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || userId.size() <= 128;
-      allow create: if isOwner(userId) || isAdmin() || (userId.size() <= 128 && isSafeUserCreate());
-      allow update: if isAdmin() || (isOwner(userId) && isSafeUserUpdate()) || (userId.size() <= 128 && isSafeUserUpdate());
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isSafeUserCreate();
+      allow update: if (isOwner(userId) && isSafeUserUpdate()) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
 
       match /dismissed_notifications/{notificationId} {
-        allow read, write: if isOwner(userId) || isAdmin() || notificationId.size() <= 128;
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
       match /notifications/{notificationId} {
-        allow read, write: if isOwner(userId) || isAdmin() || notificationId.size() <= 128;
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
     match /canonical_users/{emailKey} {
-      allow read: if true;
-      allow write: if isAuthenticated() || isAdmin() || emailKey.size() <= 128;
+      allow read: if isAdmin();
+      allow write: if false;
     }
+
+    match /console_configs/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Administrative Access (Privilege Escalation Protected)
+    // -------------------------------------------------------------------------
+
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /verified_accounts/{accountId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /system_config/{configId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Marketplace Applications Catalogue
+    // -------------------------------------------------------------------------
 
     match /apps/{appId} {
       allow read: if true;
+
       allow create: if isAdmin() || (
-        appId.size() <= 128 &&
-        request.resource.data.name is string &&
-        request.resource.data.developer is string &&
+        isAuthenticated() &&
+        isValidId(appId) &&
+        incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 150 &&
+        incoming().developer is string && incoming().developer.size() > 0 && incoming().developer.size() <= 150 &&
+        (incoming().owner == request.auth.uid || incoming().developerId == request.auth.uid || incoming().creatorUid == request.auth.uid) &&
         (
-          (!request.resource.data.keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])) ||
-          (
-            (!request.resource.data.keys().hasAll(['isVerified']) || request.resource.data.isVerified == false) &&
-            (!request.resource.data.keys().hasAll(['isEditorChoice']) || request.resource.data.isEditorChoice == false) &&
-            (!request.resource.data.keys().hasAll(['isBanned']) || request.resource.data.isBanned == false)
+          !incoming().keys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']) || (
+            incoming().get('isVerified', false) == false &&
+            incoming().get('isEditorChoice', false) == false &&
+            incoming().get('isBanned', false) == false
           )
         )
       );
 
       allow update: if isAdmin() || (
-        appId.size() <= 128 &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount']))
+        isAuthenticated() &&
+        (existing().owner == request.auth.uid || existing().developerId == request.auth.uid || existing().creatorUid == request.auth.uid) &&
+        !incoming().diff(existing()).affectedKeys().hasAny(['owner', 'developerId', 'creatorUid', 'isVerified', 'isEditorChoice', 'isBanned', 'quarantineStatus', 'strikeCount'])
       );
 
       allow delete: if isAdmin() || (
         isAuthenticated() && (
-          resource.data.owner == request.auth.uid ||
-          resource.data.developerId == request.auth.uid ||
-          resource.data.creatorUid == request.auth.uid ||
-          (request.auth.token.email != null && (
-            resource.data.developerEmail == request.auth.token.email ||
-            resource.data.publisherEmail == request.auth.token.email ||
-            resource.data.ownerEmail == request.auth.token.email
-          ))
+          existing().owner == request.auth.uid ||
+          existing().developerId == request.auth.uid ||
+          existing().creatorUid == request.auth.uid
         )
-      ) || appId.size() <= 128;
+      );
 
       match /reviews/{reviewId} {
         allow read: if true;
-        allow create: if true;
-        allow update, delete: if isAdmin() || reviewId.size() <= 128;
+        allow create: if isAuthenticated() && incoming().userId == request.auth.uid;
+        allow update: if isAdmin() || (
+          isAuthenticated() && (
+            (existing().userId == request.auth.uid && !incoming().diff(existing()).affectedKeys().hasAny(['userId', 'appId'])) ||
+            (
+              exists(/databases/$(database)/documents/apps/$(appId)) &&
+              get(/databases/$(database)/documents/apps/$(appId)).data.owner == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['reply', 'updatedAt'])
+            )
+          )
+        );
+        allow delete: if isAdmin() || (isAuthenticated() && existing().userId == request.auth.uid);
       }
     }
 
+    // Direct root collection user reviews index
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if true;
-      allow update, delete: if isAdmin() || reviewId.size() <= 128;
+      allow create: if isAuthenticated() && incoming().userId == request.auth.uid;
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        existing().userId == request.auth.uid &&
+        !incoming().diff(existing()).affectedKeys().hasAny(['userId', 'appId'])
+      );
+      allow delete: if isAdmin() || (isAuthenticated() && existing().userId == request.auth.uid);
     }
 
-    match /console_configs/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin() || userId.size() <= 128;
-    }
+    // -------------------------------------------------------------------------
+    // Publisher Studio Registry & Names
+    // -------------------------------------------------------------------------
 
     match /publisher_registry/{nameId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin() || nameId.size() <= 128;
-    }
-
-    match /notifications/{notificationId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || notificationId.size() <= 128;
-    }
-
-    match /auth_failed_logs/{logId} {
-      allow read: if isAdmin() || logId.size() <= 128;
-      allow create, update, delete: if isAdmin() || logId.size() <= 128;
-    }
-
-    match /locked_ips/{ipId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || ipId.size() <= 128;
-    }
-
-    match /auth_security_state/{docId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || docId.size() <= 128;
-    }
-
-    match /banners/{bannerId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || bannerId.size() <= 128;
-    }
-
-    match /notifications/{notificationId} {
-      allow read: if true;
-      allow create: if isAuthenticated() || isAdmin() || notificationId.size() <= 128;
-      allow update: if isAuthenticated() || isAdmin() || notificationId.size() <= 128;
-      allow delete: if isAdmin() || notificationId.size() <= 128;
-    }
-
-    match /app_reports/{reportId} {
-      allow read: if isAdmin() || reportId.size() <= 128;
-      allow create, update, delete: if isAdmin() || reportId.size() <= 128;
-    }
-
-    match /review_reports/{reportId} {
-      allow read: if isAdmin() || reportId.size() <= 128;
-      allow create, update, delete: if isAdmin() || reportId.size() <= 128;
-    }
-
-    match /app_moderation/{appId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || appId.size() <= 128;
-    }
-
-    match /banned_releases/{banId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || banId.size() <= 128;
+      allow create: if isAuthenticated() && incoming().ownerUid == request.auth.uid;
+      allow update: if (isAuthenticated() && existing().ownerUid == request.auth.uid && incoming().ownerUid == existing().ownerUid) || isAdmin();
+      allow delete: if (isAuthenticated() && existing().ownerUid == request.auth.uid) || isAdmin();
     }
 
     match /publisher_restrictions/{pubKey} {
       allow read: if true;
-      allow create, update, delete: if isAdmin() || pubKey.size() <= 128;
+      allow create, update, delete: if isAdmin();
     }
 
-    match /admins/{adminId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || adminId.size() <= 128;
+    // -------------------------------------------------------------------------
+    // Moderation, Banned Releases, and Reports
+    // -------------------------------------------------------------------------
+
+    match /app_moderation/{appId} {
+      allow read, write: if isAdmin();
     }
 
-    match /verified_accounts/{accountId} {
+    match /banned_releases/{banId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin() || accountId.size() <= 128;
+      allow create, update, delete: if isAdmin();
     }
 
-    match /system_config/{configId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || configId.size() <= 128;
+    match /app_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isValidId(reportId) && incoming().appId is string;
+      allow update, delete: if isAdmin();
     }
+
+    match /review_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isValidId(reportId) && incoming().reviewId is string;
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Store Notifications (Broadcast Announcements)
+    // -------------------------------------------------------------------------
+
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Sensitive Security Controls & Credentials (ZERO Client Access)
+    // -------------------------------------------------------------------------
 
     match /auth_credentials/{credId} {
-      allow read: if credId.size() <= 128;
-      allow create, update, delete: if isAdmin() || credId.size() <= 128;
+      allow read, write: if false;
     }
 
     match /auth_otps/{otpId} {
-      allow read: if otpId.size() <= 128;
-      allow create, update, delete: if otpId.size() <= 128;
+      allow read, write: if false;
     }
 
     match /auth_sessions/{sessionId} {
-      allow read: if sessionId.size() <= 128;
-      allow create, update, delete: if sessionId.size() <= 128;
+      allow read, write: if false;
     }
+
+    match /locked_ips/{ipId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /auth_failed_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /auth_security_state/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Connection Health Verification
+    // -------------------------------------------------------------------------
 
     match /test/{docId} {
       allow read: if true;
       allow write: if false;
     }
 
+    // -------------------------------------------------------------------------
     // Global Safety Net: default-deny catch-all for any unmapped paths
+    // -------------------------------------------------------------------------
+
     match /{document=**} {
       allow read, write: if false;
     }

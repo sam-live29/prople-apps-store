@@ -311,18 +311,59 @@ interface StoredOtpRecord {
   createdAt: number;
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __PROPLE_VERCEL_OTPS: Map<string, StoredOtpRecord> | undefined;
+const GLOBAL_OTP_STEP_MS = 10 * 60 * 1000; // 10 minutes step
+
+// OWASP Hardened Password Hashing Parameters
+const OWASP_PBKDF2_ITERATIONS = 210000;
+const OWASP_KEY_LENGTH = 64;
+const OWASP_DIGEST = 'sha512';
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, OWASP_PBKDF2_ITERATIONS, OWASP_KEY_LENGTH, OWASP_DIGEST).toString('hex');
+  return `pbkdf2:${OWASP_PBKDF2_ITERATIONS}:${salt}:${hash}`;
 }
 
-const GLOBAL_OTP_STEP_MS = 10 * 60 * 1000; // 10 minutes step
+function verifyPasswordHash(password: string, stored: string): { valid: boolean; needsRehash: boolean } {
+  if (!stored || typeof stored !== 'string') return { valid: false, needsRehash: false };
+
+  // Format 1: pbkdf2:210000:<salt>:<hash>
+  if (stored.startsWith('pbkdf2:')) {
+    const parts = stored.split(':');
+    if (parts.length === 4) {
+      const iterations = parseInt(parts[1], 10) || OWASP_PBKDF2_ITERATIONS;
+      const salt = parts[2];
+      const expectedHash = parts[3];
+      const computed = crypto.pbkdf2Sync(password, salt, iterations, OWASP_KEY_LENGTH, OWASP_DIGEST).toString('hex');
+      const valid = timingSafeEqualString(computed, expectedHash);
+      return { valid, needsRehash: iterations < OWASP_PBKDF2_ITERATIONS };
+    }
+  }
+
+  // Format 2: Legacy <salt>:<hash> (10,000 iterations)
+  if (stored.includes(':')) {
+    const [salt, expectedHash] = stored.split(':');
+    if (salt && expectedHash) {
+      const computed = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      const valid = timingSafeEqualString(computed, expectedHash);
+      return { valid, needsRehash: true };
+    }
+  }
+
+  return { valid: false, needsRehash: false };
+}
 
 declare global {
   // eslint-disable-next-line no-var
   var __PROPLE_VERCEL_OTPS: Map<string, StoredOtpRecord> | undefined;
   // eslint-disable-next-line no-var
   var __PROPLE_VERCEL_CONSUMED_CODES: Map<string, number> | undefined;
+  // eslint-disable-next-line no-var
+  var __PROPLE_VERCEL_RATE_LIMITS: Map<string, number[]> | undefined;
+  // eslint-disable-next-line no-var
+  var __PROPLE_VERCEL_FAILED_STRIKES: Map<string, number[]> | undefined;
+  // eslint-disable-next-line no-var
+  var __PROPLE_VERCEL_VERIFIED_EMAILS: Set<string> | undefined;
 }
 
 if (!globalThis.__PROPLE_VERCEL_OTPS) {
@@ -331,9 +372,59 @@ if (!globalThis.__PROPLE_VERCEL_OTPS) {
 if (!globalThis.__PROPLE_VERCEL_CONSUMED_CODES) {
   globalThis.__PROPLE_VERCEL_CONSUMED_CODES = new Map<string, number>();
 }
+if (!globalThis.__PROPLE_VERCEL_RATE_LIMITS) {
+  globalThis.__PROPLE_VERCEL_RATE_LIMITS = new Map<string, number[]>();
+}
+if (!globalThis.__PROPLE_VERCEL_FAILED_STRIKES) {
+  globalThis.__PROPLE_VERCEL_FAILED_STRIKES = new Map<string, number[]>();
+}
+if (!globalThis.__PROPLE_VERCEL_VERIFIED_EMAILS) {
+  globalThis.__PROPLE_VERCEL_VERIFIED_EMAILS = new Set<string>();
+}
 
 const memoryStore = globalThis.__PROPLE_VERCEL_OTPS;
 const consumedCodesStore = globalThis.__PROPLE_VERCEL_CONSUMED_CODES;
+const rateLimitsStore = globalThis.__PROPLE_VERCEL_RATE_LIMITS;
+const failedStrikesStore = globalThis.__PROPLE_VERCEL_FAILED_STRIKES;
+const verifiedEmailsStore = globalThis.__PROPLE_VERCEL_VERIFIED_EMAILS;
+
+function getReqClientIp(req: any): string {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim().replace('::ffff:', '');
+  }
+  return req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+}
+
+function checkActionRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const times = (rateLimitsStore.get(key) || []).filter(t => now - t < windowMs);
+  if (times.length >= maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+  times.push(now);
+  rateLimitsStore.set(key, times);
+  return { allowed: true, remaining: maxRequests - times.length };
+}
+
+function checkIsStrikeLocked(key: string, maxStrikes = 5, windowMs = 15 * 60 * 1000): { isLocked: boolean; strikes: number } {
+  const now = Date.now();
+  const times = (failedStrikesStore.get(key) || []).filter(t => now - t < windowMs);
+  failedStrikesStore.set(key, times);
+  return { isLocked: times.length >= maxStrikes, strikes: times.length };
+}
+
+function recordStrike(key: string, maxStrikes = 5, windowMs = 15 * 60 * 1000): { isLocked: boolean; strikes: number } {
+  const now = Date.now();
+  const times = (failedStrikesStore.get(key) || []).filter(t => now - t < windowMs);
+  times.push(now);
+  failedStrikesStore.set(key, times);
+  return { isLocked: times.length >= maxStrikes, strikes: times.length };
+}
+
+function clearStrikes(key: string) {
+  failedStrikesStore.delete(key);
+}
 
 function computeTotpCode(email: string, stepIndex: number): string {
   const norm = email.toLowerCase().trim();
@@ -613,11 +704,30 @@ export default async function handler(req: any, res: any) {
 
   const body = parseBody(req);
   const email = (body.email || req.query?.email || '').toString().toLowerCase().trim();
+  const clientIp = getReqClientIp(req);
 
   try {
+    const ipLock = checkIsStrikeLocked(`ip:${clientIp}`, 20, 24 * 60 * 60 * 1000);
+    if (ipLock.isLocked) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied: Your network has been temporarily locked due to excessive failed verification attempts.',
+      });
+    }
+
     if (action === 'send-otp') {
       if (!email || !email.includes('@')) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+      }
+
+      // Enforce rate limiting: 5 OTP requests per 10 minutes per email, 10 per IP
+      const emailRate = checkActionRateLimit(`otp:email:${email}`, 5, 10 * 60 * 1000);
+      const ipRate = checkActionRateLimit(`otp:ip:${clientIp}`, 10, 10 * 60 * 1000);
+      if (!emailRate.allowed || !ipRate.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: 'Verification code request limit reached. Please wait 10 minutes before requesting another code.',
+        });
       }
 
       const code = generateTotpCode(email);
@@ -721,6 +831,15 @@ export default async function handler(req: any, res: any) {
     if (action === 'forgot-password' || action === 'send-reset-link') {
       if (!email || !email.includes('@')) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+      }
+
+      const emailRate = checkActionRateLimit(`otp:email:${email}`, 5, 10 * 60 * 1000);
+      const ipRate = checkActionRateLimit(`otp:ip:${clientIp}`, 10, 10 * 60 * 1000);
+      if (!emailRate.allowed || !ipRate.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: 'Password reset request limit reached. Please wait 10 minutes before trying again.',
+        });
       }
 
       const code = generateTotpCode(email);
@@ -829,13 +948,28 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
       }
 
+      // Check brute-force lockout for failed verification
+      const verifyLock = checkIsStrikeLocked(`verify:fail:${email}`, 5, 15 * 60 * 1000);
+      if (verifyLock.isLocked) {
+        return res.status(429).json({
+          success: false,
+          error: 'Too many failed verification attempts for this account. Please wait 15 minutes before trying again.',
+        });
+      }
+
       const verification = await verifyAndConsumeOtpRecord(email, code, true, clientChallengeToken);
       if (!verification.valid) {
+        recordStrike(`verify:fail:${email}`, 5, 15 * 60 * 1000);
+        recordStrike(`ip:${clientIp}`, 20, 24 * 60 * 60 * 1000);
         return res.status(400).json({
           success: false,
           error: verification.error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.',
         });
       }
+
+      // Successful verification: clear strikes and mark email ownership verified
+      clearStrikes(`verify:fail:${email}`);
+      verifiedEmailsStore.add(email);
 
       const verifiedUser = {
         uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
@@ -866,14 +1000,25 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
       }
 
+      const verifyLock = checkIsStrikeLocked(`verify:fail:${email}`, 5, 15 * 60 * 1000);
+      if (verifyLock.isLocked) {
+        return res.status(429).json({
+          success: false,
+          error: 'Too many failed verification attempts. Please wait 15 minutes before trying again.',
+        });
+      }
+
       const verification = await verifyAndConsumeOtpRecord(email, code, false, clientChallengeToken);
       if (!verification.valid) {
+        recordStrike(`verify:fail:${email}`, 5, 15 * 60 * 1000);
         return res.status(400).json({
           success: false,
           error: verification.error || 'Incorrect verification code. Please check your email and enter the latest 6 digits.',
         });
       }
 
+      clearStrikes(`verify:fail:${email}`);
+      verifiedEmailsStore.add(email);
       return res.status(200).json({ success: true, challengeToken: clientChallengeToken });
     }
 
@@ -881,16 +1026,42 @@ export default async function handler(req: any, res: any) {
       const password = (body.password || '').toString();
       const displayName = (body.displayName || '').toString().trim();
       const clientUid = (body.uid || '').toString();
+      const code = (body.code || body.verificationCode || '').toString().trim();
+      const clientChallengeToken = body.challengeToken || req.headers?.['x-challenge-token'];
+
       if (!email || !password || password.length < 6) {
         return res.status(400).json({
           success: false,
-          error: 'Valid email and password (min 6 characters) are required.',
+          error: 'Valid email and password (minimum 6 characters) are required.',
         });
       }
+
+      // Critical Security Check: Ensure email ownership is genuinely verified before returning user identity
+      let isVerified = verifiedEmailsStore.has(email);
+      if (!isVerified && code) {
+        const vRes = await verifyAndConsumeOtpRecord(email, code, true, clientChallengeToken);
+        if (vRes.valid) {
+          isVerified = true;
+          verifiedEmailsStore.add(email);
+        }
+      } else if (!isVerified && clientChallengeToken) {
+        const vRes = verifyChallengeToken(clientChallengeToken, email, code || generateTotpCode(email));
+        if (vRes.valid) {
+          isVerified = true;
+          verifiedEmailsStore.add(email);
+        }
+      }
+
+      if (!isVerified) {
+        return res.status(403).json({
+          success: false,
+          error: 'Email verification required. You must verify your email with the 6-digit security code before registering.',
+        });
+      }
+
+      // OWASP PBKDF2 210,000 iterations password hashing
+      const pwdHash = hashPassword(password);
       const key = getOtpKey(email);
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-      const pwdHash = `${salt}:${hash}`;
       if (RTDB_URL) {
         fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
           method: 'PUT',
@@ -950,16 +1121,19 @@ export default async function handler(req: any, res: any) {
       }
 
       if (!isValid) {
+        recordStrike(`verify:fail:${email}`, 5, 15 * 60 * 1000);
         return res.status(400).json({
           success: false,
           error: verifyError,
         });
       }
 
+      clearStrikes(`verify:fail:${email}`);
+      clearStrikes(`pwd:fail:${email}`);
+
+      // OWASP PBKDF2 210,000 iterations password hashing
+      const pwdHash = hashPassword(newPassword);
       const key = getOtpKey(email);
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync(newPassword, salt, 10000, 64, 'sha512').toString('hex');
-      const pwdHash = `${salt}:${hash}`;
 
       if (RTDB_URL) {
         fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
@@ -997,7 +1171,19 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ success: false, error: 'Email and password are required.' });
       }
 
+      // Check failed attempts lockout (5 fails / 24h)
+      const lockCheck = checkIsStrikeLocked(`pwd:fail:${email}`, 5, 24 * 60 * 60 * 1000);
+      if (lockCheck.isLocked) {
+        return res.status(429).json({
+          success: false,
+          error: 'Security limit reached: 5 failed login attempts in 24 hours. Login for this account is temporarily restricted. You can reset your password to regain access.',
+        });
+      }
+
       const key = getOtpKey(email);
+      let isValidPassword = false;
+      let needsRehash = false;
+
       try {
         if (RTDB_URL) {
           const pwdRes = await fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
@@ -1005,24 +1191,37 @@ export default async function handler(req: any, res: any) {
           });
           if (pwdRes.ok) {
             const pwdData = await pwdRes.json();
-            if (pwdData && typeof pwdData.hash === 'string' && pwdData.hash.includes(':')) {
-              const [salt, storedHex] = pwdData.hash.split(':');
-              const computed = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-              if (timingSafeEqualString(computed, storedHex)) {
-                return res.status(200).json({
-                  success: true,
-                  user: {
-                    uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
-                    email,
-                    displayName: email.split('@')[0],
-                    isEmailVerified: true,
-                  },
-                });
+            if (pwdData && typeof pwdData.hash === 'string') {
+              const res = verifyPasswordHash(password, pwdData.hash);
+              if (res.valid) {
+                isValidPassword = true;
+                needsRehash = res.needsRehash;
               }
             }
           }
         }
       } catch {}
+
+      if (isValidPassword) {
+        clearStrikes(`pwd:fail:${email}`);
+        // Transparently upgrade legacy hashes
+        if (needsRehash && RTDB_URL) {
+          fetch(`${RTDB_URL}/_auth_otps/pwd_${key}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hash: hashPassword(password), updatedAt: Date.now() }),
+          }).catch(() => {});
+        }
+        return res.status(200).json({
+          success: true,
+          user: {
+            uid: `usr_email_${Buffer.from(email).toString('base64url').slice(0, 24)}`,
+            email,
+            displayName: email.split('@')[0],
+            isEmailVerified: true,
+          },
+        });
+      }
 
       const fbApiKey = process.env.FIREBASE_API_KEY || '';
       if (fbApiKey) {
@@ -1038,6 +1237,7 @@ export default async function handler(req: any, res: any) {
           if (idtRes.ok) {
             const idtData = await idtRes.json();
             if (idtData && idtData.localId) {
+              clearStrikes(`pwd:fail:${email}`);
               return res.status(200).json({
                 success: true,
                 user: {
@@ -1052,27 +1252,35 @@ export default async function handler(req: any, res: any) {
         } catch {}
       }
 
+      recordStrike(`pwd:fail:${email}`, 5, 24 * 60 * 60 * 1000);
+      recordStrike(`ip:${clientIp}`, 20, 24 * 60 * 60 * 1000);
       return res.status(401).json({ success: false, error: 'auth/invalid-credential' });
     }
 
     if (action === 'check-security-status') {
+      const emailLock = checkIsStrikeLocked(`pwd:fail:${email}`, 5, 24 * 60 * 60 * 1000);
+      const ipLockStatus = checkIsStrikeLocked(`ip:${clientIp}`, 20, 24 * 60 * 60 * 1000);
+      const isLocked = emailLock.isLocked || ipLockStatus.isLocked;
       return res.status(200).json({
         success: true,
-        allowed: true,
-        isIpLocked: false,
-        remainingAttempts: 5,
+        allowed: !isLocked,
+        isIpLocked: ipLockStatus.isLocked,
+        remainingAttempts: Math.max(0, 5 - emailLock.strikes),
       });
     }
 
     if (action === 'report-failed-login') {
+      const emailStrike = recordStrike(`pwd:fail:${email}`, 5, 24 * 60 * 60 * 1000);
+      const ipStrike = recordStrike(`ip:${clientIp}`, 20, 24 * 60 * 60 * 1000);
       return res.status(200).json({
         success: true,
-        isLocked: false,
-        strikeCount: 1,
+        isLocked: emailStrike.isLocked || ipStrike.isLocked,
+        strikeCount: emailStrike.strikes,
       });
     }
 
     if (action === 'report-successful-login') {
+      if (email) clearStrikes(`pwd:fail:${email}`);
       return res.status(200).json({ success: true });
     }
 
@@ -1091,7 +1299,7 @@ export default async function handler(req: any, res: any) {
               return res.status(200).json({
                 success: true,
                 status: rec.status,
-                user: rec.user || undefined,
+                user: rec.user ? { uid: rec.user.uid, email: rec.user.email, displayName: rec.user.displayName } : undefined,
               });
             }
           }
