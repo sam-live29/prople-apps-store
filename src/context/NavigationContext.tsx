@@ -75,6 +75,21 @@ export interface NavigationState {
   authMode?: 'signin' | 'signup';
 }
 
+export const initialNavigationState: NavigationState = {
+  activeTab: 'apps',
+  activeSubTab: 'For you',
+  overlay: 'none',
+  activeAppDetailsId: null,
+  detailView: 'none',
+  searchQuery: '',
+  startWithVoice: false,
+  youView: 'main',
+  selectedCategory: null,
+  writeReviewRating: 0,
+  targetReviewId: null,
+  activePublisherName: null,
+};
+
 export function getInitialNavigationState(): NavigationState {
   try {
     const rawPath = (window.location.pathname || '').toLowerCase().replace(/\/$/, '');
@@ -314,21 +329,6 @@ export function getInitialNavigationState(): NavigationState {
 
   return initialNavigationState;
 }
-
-export const initialNavigationState: NavigationState = {
-  activeTab: 'apps',
-  activeSubTab: 'For you',
-  overlay: 'none',
-  activeAppDetailsId: null,
-  detailView: 'none',
-  searchQuery: '',
-  startWithVoice: false,
-  youView: 'main',
-  selectedCategory: null,
-  writeReviewRating: 0,
-  targetReviewId: null,
-  activePublisherName: null,
-};
 
 export interface NavigationContextType extends NavigationState {
   canGoBack: boolean;
