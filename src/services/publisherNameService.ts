@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, writeBatch } fr
 import { db, auth } from '../firebase';
 import { safeFetchJson } from '../utils/safeFetch';
 import { AppDetails } from '../types';
+import { DEFAULT_ADMIN_EMAILS } from './adminPermissionsService';
 
 export interface PublisherNameCheckResult {
   available: boolean;
@@ -273,11 +274,15 @@ export function getNameChangeStatus(user?: {
   email?: string;
 } | null): NameChangeStatus {
   // Store administrators, developers, and stealth/guest sessions are never locked out
+  const cleanEmail = (user?.email || '').toLowerCase().trim();
   const isPrivileged = Boolean(
     user?.isAdmin ||
     user?.role === 'admin' ||
     user?.publisherRole === 'Store Administrator' ||
-    (user?.email && (user.email.endsWith('@prople.co.in') || user.email === 'sahanurmolla2886@gmail.com' || user.email === 'ventureforge.corp@gmail.com'))
+    (cleanEmail && (
+      cleanEmail.endsWith('@prople.co.in') ||
+      DEFAULT_ADMIN_EMAILS.includes(cleanEmail)
+    ))
   );
   if (isPrivileged || !user?.email || (!user.lastNameChangedAt && !user.nameChangeSessionStartedAt)) {
     return {

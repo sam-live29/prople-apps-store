@@ -1430,27 +1430,27 @@ async function startServer() {
             const docSnap = snap.docs[0];
             userUid = docSnap.id;
             const data = docSnap.data();
-            const isFresh = data.nameResetVersion === "fresh_start_v1";
-            displayName = isFresh ? (data.publisherName || data.displayName || "") : "";
+            const savedName = (data.publisherName || data.displayName || "").trim();
+            displayName = savedName;
             userAttributes = {
               ...data,
-              displayName,
-              publisherName: isFresh ? (data.publisherName || "") : "",
-              lastNameChangedAt: isFresh ? data.lastNameChangedAt : null,
-              nameChangeSessionStartedAt: isFresh ? data.nameChangeSessionStartedAt : null,
+              displayName: savedName,
+              publisherName: savedName,
+              lastNameChangedAt: data.lastNameChangedAt || null,
+              nameChangeSessionStartedAt: data.nameChangeSessionStartedAt || null,
             };
           } else {
             const directDoc = await serverGetDoc(serverDoc(serverDb, "users", userUid)).catch(() => null);
             if (directDoc && directDoc.exists()) {
               const data = directDoc.data();
-              const isFresh = data.nameResetVersion === "fresh_start_v1";
-              displayName = isFresh ? (data.publisherName || data.displayName || "") : "";
+              const savedName = (data.publisherName || data.displayName || "").trim();
+              displayName = savedName;
               userAttributes = {
                 ...data,
-                displayName,
-                publisherName: isFresh ? (data.publisherName || "") : "",
-                lastNameChangedAt: isFresh ? data.lastNameChangedAt : null,
-                nameChangeSessionStartedAt: isFresh ? data.nameChangeSessionStartedAt : null,
+                displayName: savedName,
+                publisherName: savedName,
+                lastNameChangedAt: data.lastNameChangedAt || null,
+                nameChangeSessionStartedAt: data.nameChangeSessionStartedAt || null,
               };
             }
           }
@@ -1693,20 +1693,23 @@ async function startServer() {
             const docSnap = snap.docs[0];
             userUid = docSnap.id;
             existingData = docSnap.data();
-            const isFresh = existingData.nameResetVersion === "fresh_start_v1";
-            displayName = isFresh ? (existingData.displayName || "") : "";
-            existingData.displayName = displayName;
-            existingData.publisherName = isFresh ? (existingData.publisherName || "") : "";
+            const savedName = (existingData.publisherName || existingData.displayName || "").trim();
+            displayName = savedName;
+            existingData.displayName = savedName;
+            existingData.publisherName = savedName;
           }
           const userDocRef = serverDoc(serverDb, "users", userUid);
-          await serverSetDoc(userDocRef, {
+          const updatePayload: Record<string, any> = {
             email: cleanEmail,
-            displayName,
             passwordHash: pwdHash,
             isEmailVerified: true,
-            nameResetVersion: "fresh_start_v1",
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          };
+          if (displayName) {
+            updatePayload.displayName = displayName;
+            updatePayload.publisherName = displayName;
+          }
+          await serverSetDoc(userDocRef, updatePayload, { merge: true });
         } catch (dbErr: any) {
           console.warn("[Auth API] Firestore user query notice:", dbErr.message);
         }
@@ -1902,9 +1905,10 @@ async function startServer() {
               const docSnap = snap.docs[0];
               userUid = docSnap.id;
               remoteData = docSnap.data();
-              const isFresh = remoteData.nameResetVersion === "fresh_start_v1";
-              displayName = isFresh ? (remoteData.displayName || "") : "";
-              remoteData.publisherName = isFresh ? (remoteData.publisherName || "") : "";
+              const savedName = (remoteData.publisherName || remoteData.displayName || "").trim();
+              displayName = savedName;
+              remoteData.displayName = savedName;
+              remoteData.publisherName = savedName;
             }
           } catch (dbErr: any) {
             console.warn("[Auth API] verify-password lookup notice:", dbErr.message);
@@ -3082,7 +3086,26 @@ async function startServer() {
         }
       }
 
-      // 3. Propagate updated publisherName to apps published by this user
+      // 3. Register claimed name in publisher_registry so it is universally protected and indexed
+      if (finalName && finalName.length >= 2) {
+        try {
+          const alphaKey = finalName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (alphaKey) {
+            const regRef = serverDoc(serverDb, "publisher_registry", alphaKey);
+            await serverSetDoc(regRef, {
+              normalizedName: alphaKey,
+              displayName: finalName,
+              ownerUid: cleanUid,
+              ownerEmail: cleanEmail,
+              updatedAt: nowIso
+            }, { merge: true });
+          }
+        } catch (regErr: any) {
+          console.warn("[UserProfileAPI] Registry write notice:", regErr.message);
+        }
+      }
+
+      // 4. Propagate updated publisherName to apps published by this user
       if (finalName && (cleanUid || cleanEmail)) {
         try {
           const appsCol = serverCollection(serverDb, "apps");
@@ -3641,16 +3664,15 @@ async function startServer() {
           if (data.isAdmin || data.role === 'admin' || data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
             isAdmin = true;
           }
-          const isRemoteFresh = data.nameResetVersion === 'fresh_start_v1';
-          if (isRemoteFresh && data.publisherName && data.publisherName.trim() && data.publisherName.trim() !== 'User' && data.publisherName.trim() !== 'Developer') {
-            const trimmedRemote = data.publisherName.trim();
+          const remoteName = (data.publisherName || data.displayName || '').trim();
+          if (remoteName && remoteName !== 'User' && remoteName !== 'Developer') {
             if (!mergedPublisherName) {
-              mergedPublisherName = trimmedRemote;
+              mergedPublisherName = remoteName;
             } else if (clientLastNameChangedAt && clientPublisherName && clientPublisherName.trim()) {
               const remoteTime = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
               const clientTime = clientLastNameChangedAt ? new Date(clientLastNameChangedAt).getTime() : 0;
               if (remoteTime >= clientTime) {
-                mergedPublisherName = trimmedRemote;
+                mergedPublisherName = remoteName;
               }
             }
           }
@@ -3674,8 +3696,8 @@ async function startServer() {
           if (data.location && (!mergedLocation || mergedLocation === 'Global')) mergedLocation = data.location;
           if (data.age && (!mergedAge || mergedAge === '25')) mergedAge = data.age;
           if (data.gender && (!mergedGender || mergedGender === 'Prefer not to say')) mergedGender = data.gender;
-          if (isRemoteFresh && data.lastNameChangedAt && !mergedLastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
-          if (isRemoteFresh && data.nameChangeSessionStartedAt && !mergedNameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
+          if (data.lastNameChangedAt && !mergedLastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
+          if (data.nameChangeSessionStartedAt && !mergedNameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
           if (Array.isArray(data.bookmarks)) {
             mergedBookmarks = Array.from(new Set([...mergedBookmarks, ...data.bookmarks]));
           }
@@ -3686,8 +3708,9 @@ async function startServer() {
       }
 
       // If user had a valid claimed client name and no server name yet, adopt client name
-      if (!mergedPublisherName && clientPublisherName && String(clientPublisherName).trim() && String(clientPublisherName).trim() !== 'User' && String(clientPublisherName).trim() !== 'Developer') {
-        mergedPublisherName = String(clientPublisherName).trim();
+      const candidateClientName = (clientPublisherName || displayName || '').toString().trim();
+      if (!mergedPublisherName && candidateClientName && candidateClientName !== 'User' && candidateClientName !== 'Developer') {
+        mergedPublisherName = candidateClientName;
       }
 
       // If user is admin, enforce store administrator role and publisher status
@@ -3766,12 +3789,16 @@ async function startServer() {
       }
 
       // 3. Write unified user document to users/{cleanUid}
+      const existingUserSnap = foundUserDocs.find(d => d.id === cleanUid)?.data();
+      const existingDocName = (existingUserSnap?.publisherName || existingUserSnap?.displayName || '').trim();
+      const resolvedFinalName = (mergedPublisherName || existingDocName || '').trim();
+
       const targetUserRef = serverDoc(serverDb, "users", cleanUid);
       const finalUserPayload: Record<string, any> = {
         uid: cleanUid,
         email: cleanEmail,
-        displayName: mergedPublisherName || "",
-        publisherName: mergedPublisherName || "",
+        displayName: resolvedFinalName,
+        publisherName: resolvedFinalName,
         nameResetVersion: "fresh_start_v1",
         publisherRole: mergedPublisherRole,
         isPublisher: mergedIsPublisher,
@@ -4522,145 +4549,6 @@ async function startServer() {
 
       return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  // Dedicated authoritative endpoint: Update User Profile & Publisher details permanently
-  app.post("/api/user/profile", async (req, res) => {
-    try {
-      const { 
-        userId, 
-        userEmail, 
-        displayName, 
-        publisherName, 
-        bio, 
-        age, 
-        gender, 
-        location, 
-        photoURL, 
-        lastNameChangedAt, 
-        nameChangeSessionStartedAt 
-      } = req.body || {};
-
-      if (!userId && !userEmail) {
-        return res.status(400).json({ success: false, error: "Missing userId or userEmail" });
-      }
-
-      if (!serverDb) {
-        return res.status(503).json({ success: false, error: "Database temporarily unavailable" });
-      }
-
-      const cleanUid = (userId || '').trim();
-      const cleanEmail = (userEmail || '').toLowerCase().trim();
-      const cleanName = (publisherName || displayName || '').trim();
-      const nowIso = new Date().toISOString();
-
-      const profilePayload: Record<string, any> = {
-        updatedAt: nowIso
-      };
-
-      if (cleanEmail) profilePayload.email = cleanEmail;
-      if (cleanUid) profilePayload.uid = cleanUid;
-      if (cleanName) {
-        profilePayload.displayName = cleanName;
-        profilePayload.publisherName = cleanName;
-      }
-      if (bio !== undefined) {
-        profilePayload.bio = String(bio).trim();
-        profilePayload.publisherBio = String(bio).trim();
-      }
-      if (age !== undefined) profilePayload.age = String(age);
-      if (gender !== undefined) profilePayload.gender = String(gender);
-      if (location !== undefined) {
-        profilePayload.location = String(location).trim();
-        profilePayload.publisherLocation = String(location).trim();
-      }
-      if (photoURL !== undefined) profilePayload.photoURL = photoURL;
-      if (lastNameChangedAt !== undefined) profilePayload.lastNameChangedAt = lastNameChangedAt;
-      if (nameChangeSessionStartedAt !== undefined) profilePayload.nameChangeSessionStartedAt = nameChangeSessionStartedAt;
-
-      // 1. Authoritative write to primary user doc
-      if (cleanUid) {
-        try {
-          const userRef = serverDoc(serverDb, "users", cleanUid);
-          await serverSetDoc(userRef, profilePayload, { merge: true });
-        } catch (uErr: any) {
-          console.warn("[UserProfileAPI] Primary doc write notice:", uErr.message);
-        }
-      }
-
-      // 2. Synchronize any alternate user documents matching email
-      if (cleanEmail) {
-        try {
-          const qUsers = serverQuery(serverCollection(serverDb, "users"), serverWhere("email", "==", cleanEmail), serverLimit(10));
-          const uSnap = await serverGetDocs(qUsers);
-          for (const d of uSnap.docs) {
-            if (d.id !== cleanUid) {
-              await serverSetDoc(d.ref, profilePayload, { merge: true }).catch(() => {});
-            }
-          }
-        } catch (e: any) {
-          console.warn("[UserProfileAPI] Alternate docs sync notice:", e.message);
-        }
-      }
-
-      // 3. Claim publisher name in publisher_registry
-      if (cleanName && cleanName.length >= 2) {
-        try {
-          const alphaKey = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (alphaKey) {
-            const regRef = serverDoc(serverDb, "publisher_registry", alphaKey);
-            await serverSetDoc(regRef, {
-              normalizedName: alphaKey,
-              displayName: cleanName,
-              ownerUid: cleanUid,
-              ownerEmail: cleanEmail,
-              updatedAt: nowIso
-            }, { merge: true });
-          }
-        } catch (regErr: any) {
-          console.warn("[UserProfileAPI] Registry write notice:", regErr.message);
-        }
-      }
-
-      // 4. Universally propagate updated publisher name across all apps owned by this user
-      if (cleanName && (cleanUid || cleanEmail)) {
-        try {
-          const appsCol = serverCollection(serverDb, "apps");
-          const snap = await serverGetDocs(appsCol);
-          for (const d of snap.docs) {
-            const a = d.data();
-            const devEmail = (a.developerEmail || '').toLowerCase().trim();
-            const pubEmail = (a.publisherEmail || '').toLowerCase().trim();
-            const ownerEmail = (a.ownerEmail || '').toLowerCase().trim();
-            const isOwner = Boolean(
-              (cleanUid && (a.owner === cleanUid || a.developerId === cleanUid || a.creatorUid === cleanUid)) ||
-              (cleanEmail && (devEmail === cleanEmail || pubEmail === cleanEmail || ownerEmail === cleanEmail))
-            );
-            if (isOwner) {
-              const devInfo = a.developerInfo ? { ...a.developerInfo, publisherName: cleanName } : { publisherName: cleanName };
-              await serverSetDoc(d.ref, {
-                developer: cleanName,
-                publisherName: cleanName,
-                publishedBy: cleanName,
-                developerInfo: devInfo,
-                updatedAt: nowIso
-              }, { merge: true }).catch(() => {});
-            }
-          }
-        } catch (appErr: any) {
-          console.warn("[UserProfileAPI] App update notice:", appErr.message);
-        }
-      }
-
-      serverAppsCatalogCache = [];
-      seoAppsCache.clear();
-
-      console.log(`[UserProfileAPI] Successfully saved profile for ${cleanEmail || cleanUid} (Name: "${cleanName}")`);
-      return res.json({ success: true, user: profilePayload });
-    } catch (err: any) {
-      console.error("[UserProfileAPI] Error:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });

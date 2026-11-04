@@ -37,11 +37,14 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   const preservedName = getPreservedClaimedName();
   const rawCandidateName = (user?.publisherName || user?.displayName || preservedName || '').trim();
   const isExcludedName = (n: string) => {
-    const l = n.toLowerCase();
+    if (!n) return true;
+    const l = n.trim().toLowerCase();
     return l === 'undefined' || l === 'null';
   };
-  const currentActiveName = rawCandidateName && !isExcludedName(rawCandidateName) ? rawCandidateName : (user ? '' : 'User');
-  const [displayName, setDisplayName] = useState(currentActiveName || 'User');
+  const currentActiveName = rawCandidateName && !isExcludedName(rawCandidateName) 
+    ? rawCandidateName 
+    : (preservedName && !isExcludedName(preservedName) ? preservedName : (user ? '' : 'User'));
+  const [displayName, setDisplayName] = useState(currentActiveName || (user ? '' : 'User'));
   const [age, setAge] = useState(user?.age || '25');
   const [gender, setGender] = useState(user?.gender || 'Prefer not to say');
   const [location, setLocation] = useState(user?.location || 'Global');
@@ -91,7 +94,7 @@ export default function EditProfilePage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (!user || isDirty || isSaving) return;
     const latestName = (user.publisherName || user.displayName || '').trim();
-    if (latestName !== initialValues.current.displayName) {
+    if (latestName && !isExcludedName(latestName) && latestName !== initialValues.current.displayName) {
       setDisplayName(latestName);
       initialValues.current.displayName = latestName;
     }
