@@ -15,7 +15,7 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 | **GFI-03** | [Interactive Share Link Toast & Audio Feedback](#gfi-03-interactive-share-link-toast--audio-feedback) | 🟢 Easy | Micro-interactions | `src/components/AppDetailPage.tsx`, `src/utils/shareUtils.ts` |
 | **GFI-04** | [Platform Filter Quick-Chips on Explore View](#gfi-04-platform-filter-quick-chips-on-explore-view) | 🟡 Medium-Easy | UI / State | `src/components/ExplorePage.tsx` |
 | **GFI-05** | [Static Mock Catalog Sanity Validator Script](#gfi-05-static-mock-catalog-sanity-validator-script) | 🟡 Medium-Easy | Tooling / Testing | `scripts/validate_catalog.js`, `src/data.ts` |
-| **GFI-06** | [Private Repo & Self-Hosting Helper Accordion in Console](#gfi-06-private-repo--self-hosting-helper-accordion-in-console) | 🟢 Easy | UI / Guidance | `src/components/AppConsole.tsx` |
+| **GFI-06** | [Dynamic Star Rating Filter on Reviews Modal](#gfi-06-dynamic-star-rating-filter-on-reviews-modal) | 🟢 Easy | UI / State | `src/components/Reviews.tsx`, `src/types.ts` |
 
 ---
 
@@ -109,22 +109,22 @@ Welcome! If you are looking to make your first contribution to **Prople Store**,
 
 ---
 
-### GFI-06: Private Repo & Self-Hosting Helper Accordion in Console
+### GFI-06: Dynamic Star Rating Filter on Reviews Modal
 
-- **Goal**: Add a guided help accordion in Step 1 explaining how developers can publish apps whose source code is in private repositories.
+- **Goal**: Allow users to filter reviews by star rating (All, 5★, 4★, 3★, 2★, 1★) with an interactive filter chip row in the App Reviews modal.
 - **Files to Inspect**:
-  - `src/components/AppConsole.tsx`
+  - `src/components/Reviews.tsx`
+  - `src/types.ts`
 - **Problem Statement**:
-  Developers whose code is in private repositories often assume they cannot use Prople Store because the default prompt mentions GitHub releases. Providing clear guidance on alternative hosting solutions (Cloudflare R2, AWS S3, Firebase Storage, Google Drive direct download, self-hosted web servers) reduces onboarding friction.
+  When reading application reviews, users currently see all ratings mixed together. Adding one-click star filter chips (e.g. "5 Stars", "4 Stars", "Critical 1★-2★") alongside the existing sort dropdown lets users quickly isolate high-praise features or troubleshoot common reported issues.
 - **Acceptance Criteria**:
-  1. Add an expandable "Hosting from a private repository or self-hosted server?" accordion beneath the release URL field.
-  2. Include step-by-step instructions for:
-     - Hosting direct `.apk` / binary files on Cloudflare R2 / AWS S3 / Firebase Storage.
-     - Using a dedicated public releases repository (split-repo pattern).
-     - Adding `.sha256` checksums for automatic verification.
-  3. Styled cleanly with subtle Google Material borders matching the dark/light theme.
+  1. Add a horizontal chip row above the review list with options: `All`, `5★`, `4★`, `3★`, `2★`, `1★`.
+  2. Clicking a chip filters the visible review list client-side to only reviews matching that rating (or $\le 2$ stars for critical filter).
+  3. Displays the count of matching reviews next to each chip (e.g. `5★ (42)`).
+  4. If a selected star filter has zero reviews, render a polite empty state with a "Reset Filter" button.
+  5. Works smoothly with existing sort options (Most Recent, Highest Rated, Lowest Rated).
 - **Verification**:
-  Click the accordion on Step 1 of Publish New App in Developer Console, verify smooth expand/collapse and readable, formatted instructions.
+  Open the Reviews modal on any popular app (e.g. VLC), click the `5★` chip, and verify that only 5-star reviews appear and the review count matches the filtered subset.
 
 ---
 

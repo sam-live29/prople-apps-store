@@ -1,7 +1,7 @@
 # Advanced Contributor Challenges (Systems, Algorithms & Core Architecture)
 
 **Target Audience**: Senior Software Engineers, Algorithm Designers, Systems Architects, Backend & Security Specialists  
-**Prerequisites**: Familiarity with algorithm design (clustering, ranking, constraint solvers, search indexing), Node.js streaming APIs, cryptographic primitives (WebCrypto / Node `crypto`), HTTP range requests, cloud object storage (AWS S3 / Cloudflare R2), and binary package formats (APK / ELF / PE / Mach-O).
+**Prerequisites**: Familiarity with algorithm design (clustering, ranking, constraint solvers, search indexing), Node.js streaming APIs, cryptographic primitives (WebCrypto / Node `crypto`), HTTP range requests, binary delta compression, and executable package formats (APK / ELF / PE / Mach-O).
 
 For beginner-friendly tasks (UI micro-interactions, accessibility, catalog validators), please see [**Good First Issues**](GOOD_FIRST_ISSUES.md).
 
@@ -9,25 +9,15 @@ For beginner-friendly tasks (UI micro-interactions, accessibility, catalog valid
 
 ## 1. Architectural Context & Security Foundation
 
-Prople Store originated with support for open-source applications distributed via public GitHub releases. As the platform matures, developers who maintain proprietary codebases in **private repositories** (GitHub, GitLab, self-hosted Gitea) or self-host their binaries (AWS S3, Cloudflare R2, private VPS) also need to distribute software seamlessly.
+Prople Store is designed as a universal, high-performance open-source application index and package distribution ecosystem. Across heterogeneous platforms—Android (APK), Linux (AppImage, deb, rpm, flatpak), Windows (exe, msi), and macOS (dmg, pkg)—the platform delivers sub-second discovery and instant binary resolution while guaranteeing mathematical integrity and zero-trust assumptions.
 
 The core challenge for advanced contributors:
 > **Deliver high-speed, reliable package distribution and dynamic, intelligent storefront section algorithms while preserving 100% cryptographic transparency, user security, and mathematical integrity.**
 
-### The 4 Distribution Models at a Glance
-
-| Dimension | Model 1: Direct Binary Upload | Model 2: Ephemeral Importer + Mirror | Model 3: Self-Hosted Direct Binary | Model 4: Split Repo (Public Releases) |
-| :--- | :--- | :--- | :--- | :--- |
-| **Source Privacy** | 100% Private | 100% Private | 100% Private | 100% Private |
-| **Storage Host** | Prople S3/R2 Bucket | Prople S3/R2 Bucket | Developer Infrastructure | GitHub CDN (Free) |
-| **Token Exposure** | None (Local binary) | Ephemeral read token | None (Direct URL) | None (Public repo) |
-| **Integrity Assurance** | Client + Server SHA-256 | Server SHA-256 on mirror | Real-time streaming SHA-256 | GitHub asset checksum |
-| **Implementation** | `ADV-02` | `ADV-03` + `ADV-04` | `ADV-01` | Developer documentation |
-
-### Cryptographic Transparency & Threat Model
+### Package Verification & Provenance Pipeline
 
 ```
-[ External / Self-Hosted URL ]
+[ External / Upstream Package URL ]
               │
               ▼
     [ SSRF IP Guardrail ] ─────────► (Blocks 127.0.0.1, 10.0.0.0/8, 169.254.169.254)
@@ -56,13 +46,13 @@ The core challenge for advanced contributors:
 
 ## 2. Index of Advanced Challenges
 
-### Part A: Distribution Architecture, Streaming Cryptography & Cloud Pipelines
+### Part A: Systems Architecture, Package Delivery & Binary Intelligence
 | ID | Title | Domain | Complexity | Target Files |
 | :--- | :--- | :--- | :--- | :--- |
-| **ADV-01** | [Automated Streaming SHA-256 Digest & Sidecar Verifier](#adv-01-automated-streaming-sha-256-digest--sidecar-verifier) | Backend / Crypto | 🔴 Advanced | `api/resolve-apk.ts`, `server.ts` |
-| **ADV-02** | [Direct Binary Package Multipart Upload with S3/R2](#adv-02-direct-binary-package-multipart-upload-with-s3r2) | Cloud / Full-Stack | 🔴 Advanced | `server/s3Storage.ts`, `src/components/AppConsole.tsx` |
-| **ADV-03** | [Scoped Private GitHub Release Importer & Token Sanitizer](#adv-03-scoped-private-github-release-importer--token-sanitizer) | Security / API | 🔴 Advanced | `api/github-release-meta.ts`, `api/resolve-apk.ts` |
-| **ADV-04** | [One-Time Binary Release Mirroring & Edge CDN Cache](#adv-04-one-time-binary-release-mirroring--edge-cdn-cache) | Systems / Proxy | 🔴 Advanced | `server.ts`, `api/download-apk.ts` |
+| **ADV-01** | [Streaming Binary Header & Architecture Parser (APK / ELF / PE / Mach-O)](#adv-01-streaming-binary-header--architecture-parser-apk--elf--pe--mach-o) | Systems / Binary | 🔴 Advanced | `api/resolve-apk.ts`, `server/binaryParser.ts` |
+| **ADV-02** | [Distributed Webhook Event Bus & Multi-Tenant Release Ingestion Worker](#adv-02-distributed-webhook-event-bus--multi-tenant-release-ingestion-worker) | Distributed / API | 🔴 Advanced | `api/webhooks/release-ingest.ts`, `server/webhookBus.ts` |
+| **ADV-03** | [Edge-Terminated HTTP Range Request Chunking & Resumable Download Protocol](#adv-03-edge-terminated-http-range-request-chunking--resumable-download-protocol) | Networking / Protocol | 🔴 Advanced | `api/download-apk.ts`, `server/chunkedStreamer.ts` |
+| **ADV-04** | [Differential Package Delta Compression & OTA Binary Patch Engine](#adv-04-differential-package-delta-compression--ota-binary-patch-engine) | Compression / Algorithms | 🔴 Advanced | `server/deltaEngine.ts`, `api/package-delta.ts` |
 | **ADV-05** | [Android Keystore Signature (v2/v3) Fingerprint Parser & Lock](#adv-05-android-keystore-signature-v2v3-fingerprint-parser--lock) | Security / Android | 🔴 Advanced | `api/verify-signature.ts`, `src/components/AppConsole.tsx` |
 
 ### Part B: Store Distribution Sections Generation & Algorithmic Systems
@@ -76,108 +66,96 @@ The core challenge for advanced contributors:
 
 ---
 
-## Part A: Distribution Architecture & Cloud Storage
+## Part A: Systems Architecture, Package Delivery & Binary Intelligence
 
-### ADV-01: Automated Streaming SHA-256 Digest & Sidecar Verifier
+### ADV-01: Streaming Binary Header & Architecture Parser (APK / ELF / PE / Mach-O)
 
-- **Domain**: Cryptographic Verification, Streaming I/O, SSRF Mitigation
+- **Domain**: Systems Programming, Binary Inspection, HTTP Range Probing
 - **Files to Inspect**:
   - `api/resolve-apk.ts`
-  - `src/components/AppConsole.tsx`
-  - `src/types.ts`
+  - `server/binaryParser.ts`
+  - `src/utils/packageResolution.ts`
 - **Problem Statement**:
-  When developers submit an external or self-hosted package URL (e.g. `https://downloads.example.com/app-v2.0.apk`), Prople Store detects the binary format, but does not calculate or verify its cryptographic SHA-256 checksum in real time. We cannot rely on unverified client claims, nor can we allow external hosts to modify binaries post-submission without store detection.
+  When resolving application releases with multiple compiled binaries or raw assets, relying solely on file extension strings is brittle and easily spoofed. Furthermore, downloading an entire 200MB installer just to discover whether it targets `x86_64`, `aarch64`, or `armv7` wastes massive server bandwidth and delays publishing feedback.
 - **Detailed Acceptance Criteria**:
-  1. **SSRF Guardrail**: Validate host IP before making outbound requests. Reject loopback (`127.0.0.0/8`, `::1`), private CIDR blocks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and cloud metadata (`169.254.169.254`).
-  2. **Streaming Hash Computation**:
-     - Connect to the binary URL using an HTTP `GET` stream.
-     - Pipe chunks into `crypto.createHash('sha256')`.
-     - Stream without buffering the full binary into memory (constant $O(1)$ RAM usage).
-     - Enforce a 2 GB size cap—terminate the stream if the limit is exceeded.
-  3. **Sidecar Auto-Discovery**:
-     - Concurrently probe for `URL + '.sha256'` and `dirname(URL) + '/SHA256SUMS.txt'`.
-     - If found, extract the declared checksum and cross-verify with the computed hash.
-  4. **API Response Payload**:
-     ```json
-     {
-       "success": true,
-       "sha256Checksum": "a1b2c3d4...",
-       "sidecarFound": true,
-       "sidecarChecksum": "a1b2c3d4...",
-       "verifiedMatch": true,
-       "fileSizeBytes": 45829104,
-       "source": "direct_binary"
-     }
-     ```
-  5. **Console Integration**:
-     Populate `sha256Checksum` automatically in `AppConsole.tsx` and display a verified cryptographic status indicator.
+  1. **Byte-Range Header Probing**:
+     - Issue an HTTP `Range: bytes=0-65535` request to inspect the initial 64KB without reading the full package.
+     - Fall back gracefully if the upstream host does not support RFC 7233 Range requests.
+  2. **Magic Byte & Architecture Extraction**:
+     - **ELF Binaries** (`\x7fELF`): Parse ELF header (32-bit vs 64-bit, endianness, e_machine: x86_64, aarch64, arm, riscv64).
+     - **PE / Windows Executables** (`MZ`): Locate PE header offset at `0x3C`, parse COFF machine type (`IMAGE_FILE_MACHINE_AMD64` vs `ARM64` vs `I386`) and subsystem.
+     - **Mach-O Binaries** (`0xFEEDFACE`, `0xFEEDFACF`, or Fat Binary `0xCAFEBABE`): Parse CPU types and universal multi-architecture slices.
+     - **APK / Zip Archives** (`PK\x03\x04`): Scan central directory records to detect native libraries (`lib/arm64-v8a/`, `lib/armeabi-v7a/`, `lib/x86_64/`).
+  3. **Structured Response**:
+     - Return detected architecture, minimum OS version, and verified MIME type within `< 250ms`.
 
 ---
 
-### ADV-02: Direct Binary Package Multipart Upload with S3/R2
+### ADV-02: Distributed Webhook Event Bus & Multi-Tenant Release Ingestion Worker
 
-- **Domain**: Cloud Storage, Presigned S3 URLs, Client-Side WebCrypto
+- **Domain**: Distributed Systems, Cryptographic HMAC Webhooks, Event Queuing
 - **Files to Inspect**:
-  - `server/s3Storage.ts`
-  - `src/components/AppConsole.tsx`
-  - `src/components/MediaUpload/AppMediaUploader.tsx`
+  - `api/webhooks/release-ingest.ts`
+  - `server/webhookBus.ts`
+  - `src/services/releaseService.ts`
 - **Problem Statement**:
-  Developers compiling proprietary applications locally or in private CI pipelines need to upload their built packages directly to Prople Store's managed object storage without relying on external hosting or public GitHub repositories.
+  Developers and automated CI/CD pipelines (GitHub Actions, GitLab CI, Woodpecker, Forgejo) currently rely on manual console submissions or repetitive polling to notify the store of new releases. We need a secure, real-time webhook ingestion event bus that receives release publication payloads, validates cryptographic signatures, and asynchronously updates the store catalog.
 - **Detailed Acceptance Criteria**:
-  1. **Presigned Upload Pipeline**:
-     - Create `/api/storage/presigned-package-upload` in `server/s3Storage.ts`.
-     - Restrict to authenticated developers.
-     - Return an S3/Cloudflare R2 presigned PUT URL with enforced Content-Type (e.g. `application/vnd.android.package-archive` for `.apk`) and a 15-minute expiration.
-  2. **Client-Side Hashing & Drag-and-Drop**:
-     - Add a "Direct File Upload" tab in Step 1 of `AppConsole.tsx`.
-     - Compute the SHA-256 hash in-browser using Web Crypto API (`crypto.subtle.digest('SHA-256', buffer)`) with a chunked progress bar for large files.
-     - Upload directly to the presigned S3 URL with live byte-progress feedback.
-  3. **Metadata Extraction**:
-     - Auto-detect filename, size, and package format (`apk`, `exe`, `deb`, `dmg`, etc.).
-     - Write the final immutable CDN URL (`https://releases.prople.co.in/...`) into the app draft.
+  1. **Multi-Provider HMAC Signature Verification**:
+     - Verify constant-time HMAC-SHA256 signatures (`X-Hub-Signature-256` for GitHub, `X-Gitlab-Token` for GitLab, `X-Gitea-Signature` for Forgejo/Gitea) using developer-registered webhook secrets (`crypto.timingSafeEqual`).
+  2. **Idempotent Deduplication**:
+     - Ingest events into an idempotent processing pipeline. Discard duplicate delivery IDs using an in-memory sliding window or Redis bloom filter.
+  3. **Asynchronous Pipeline Worker**:
+     - Return HTTP `202 Accepted` immediately ($< 20\text{ms}$).
+     - Queue the release resolution worker asynchronously: resolves binary URLs, computes SHA-256 hashes, validates package formats, and stages the release draft or updates the active app entry.
+  4. **Failure Resiliency**:
+     - Implement exponential backoff retry for transient network failures and dead-letter queuing for corrupt payloads with webhook delivery audit logs.
 
 ---
 
-### ADV-03: Scoped Private GitHub Release Importer & Token Sanitizer
+### ADV-03: Edge-Terminated HTTP Range Request Chunking & Resumable Download Protocol
 
-- **Domain**: Authentication, Secret Zeroization, API Proxy
+- **Domain**: High-Throughput Networking, Resumable Streams, Merkle Leaf Verification
 - **Files to Inspect**:
-  - `api/github-release-meta.ts`
-  - `api/resolve-apk.ts`
-  - `src/components/AppConsole.tsx`
-- **Problem Statement**:
-  When developers maintain proprietary apps in private GitHub repositories, `api.github.com` requests fail with HTTP 404. Developers can provide a scoped GitHub Personal Access Token (PAT) (with `Releases: Read` scope), but this token must **never** leak into client bundles, public Firestore documents, error logs, or user-facing download links.
-- **Detailed Acceptance Criteria**:
-  1. **Secure UI Input**:
-     - Masked input field: *"Private Repository Personal Access Token (Optional)"*.
-     - Disclaimer explaining the token is used strictly in-memory during import and is never stored permanently.
-  2. **Backend Secret Zeroization**:
-     - Accept token over HTTPS POST payload.
-     - Pass `Authorization: Bearer <token>` when querying GitHub Releases API.
-     - Strip the token from all responses, logs, error handlers, and database write payloads.
-  3. **Error Handling**:
-     - Catch `401 Unauthorized` (invalid token) and `403 Forbidden` (insufficient token scope) and return clear, actionable feedback.
-
----
-
-### ADV-04: One-Time Binary Release Mirroring & Edge CDN Cache
-
-- **Domain**: Systems Architecture, TOCTOU Attack Prevention, Edge Caching
-- **Files to Inspect**:
-  - `server.ts`
   - `api/download-apk.ts`
-  - `server/s3Storage.ts`
+  - `server/chunkedStreamer.ts`
+  - `src/context/InstallContext.tsx`
 - **Problem Statement**:
-  Proxying downloads on-the-fly from private repositories using developer tokens exhausts GitHub's 5,000/hour API rate limit and breaks if the developer revokes their token. Furthermore, external URLs are vulnerable to TOCTOU (Time-of-Check to Time-of-Use) attacks if a host changes the binary after publication.
+  Mobile users on unstable network connections frequently experience dropped connections during 50MB-500MB application downloads. Without robust resumable HTTP Range protocol support, any drop requires restarting the download from byte zero, wasting bandwidth and frustrating users.
 - **Detailed Acceptance Criteria**:
-  1. **Mirroring Endpoint**:
-     - Implement `/api/mirror-release-package` (authenticated developer endpoint).
-     - Stream the binary directly from the private source or external URL into the store's S3/R2 bucket during publication.
-     - Compute the SHA-256 checksum during streaming.
-  2. **Integrity Validation**:
-     - Ensure the mirrored file's SHA-256 matches the approved release checksum. Abort and delete the cached artifact if there is any discrepancy.
-  3. **High-Speed CDN Delivery**:
-     - Serve user downloads directly from the mirrored CDN asset, decoupled from developer tokens and external rate limits.
+  1. **RFC 7233 HTTP Range Compliance**:
+     - Support single-part byte range requests (`Range: bytes=START-END`, `Range: bytes=START-`).
+     - Return HTTP `206 Partial Content` with correct `Content-Range`, `Content-Length`, `Accept-Ranges: bytes`, and strong `ETag` headers.
+  2. **Mid-Stream Reconnection & ETag Integrity**:
+     - Validate `If-Range` / `If-Match` headers against upstream asset ETags to prevent corrupt hybrid downloads if the upstream file was modified between reconnects.
+  3. **Chunked Merkle Tree Leaf Slices**:
+     - Generate a client-verifiable Merkle tree leaf slice digest for multi-part downloads (e.g. 2MB slice hashes), enabling client-side re-request of only corrupted chunks rather than the entire file.
+  4. **Resilient Client Worker**:
+     - Update the client download hook in `InstallContext.tsx` to automatically issue resumed range requests when a network disconnect or socket timeout occurs.
+
+---
+
+### ADV-04: Differential Package Delta Compression & OTA Binary Patch Engine
+
+- **Domain**: Binary Delta Encoding, Bandwidth Optimization, Compression Algorithms
+- **Files to Inspect**:
+  - `server/deltaEngine.ts`
+  - `api/package-delta.ts`
+  - `src/utils/deltaPatcher.ts`
+- **Problem Statement**:
+  Minor application updates (e.g., v1.4.1 to v1.4.2) often modify only 2% to 5% of compiled executable code or assets. Requiring mobile users to redownload an entire 120MB binary package for a 2MB code fix wastes global bandwidth and disincentivizes users from staying on the latest secure version.
+- **Detailed Acceptance Criteria**:
+  1. **Binary Delta Diff Generator**:
+     - Implement an algorithm (Courgette / bsdiff / zstd dictionary delta compression) that computes the differential patch between Version $N-1$ and Version $N$.
+     - Achieve an average patch size reduction of $\ge 70\%$ compared to full binary downloads for incremental version bumps.
+  2. **Cryptographic Patch Envelope**:
+     - Package patch files with a strict manifest: `sourceSha256`, `targetSha256`, `patchSha256`, `algorithm`, and patch byte payload.
+  3. **Client-Side Reconstruction**:
+     - Client verifies `sourceSha256` against currently installed package bytes.
+     - Reconstructs target binary in-memory or streaming to local storage.
+     - Validates that the reconstructed binary's SHA-256 matches `targetSha256` exactly before triggering system installation.
+  4. **Automatic Fallback**:
+     - If client patch reconstruction fails or if `sourceSha256` does not match, immediately fall back to standard full-binary download.
 
 ---
 
