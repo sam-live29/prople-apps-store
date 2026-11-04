@@ -545,7 +545,12 @@ export function getPreservedClaimedName(): string {
   try {
     if (typeof localStorage !== 'undefined') {
       const name = localStorage.getItem(PRESERVED_CLAIMED_NAME_KEY);
-      if (name && name.trim()) return name.trim();
+      if (name && name.trim()) {
+        const lower = name.trim().toLowerCase();
+        if (lower !== 'sammy' && lower !== 'guest' && lower !== 'user' && lower !== 'developer' && lower !== 'publisher') {
+          return name.trim();
+        }
+      }
     }
   } catch {}
   return '';
@@ -559,8 +564,13 @@ export function setPreservedClaimedName(name: string): void {
     if (typeof localStorage !== 'undefined') {
       const clean = (name || '').trim();
       if (clean) {
-        localStorage.setItem(PRESERVED_CLAIMED_NAME_KEY, clean);
+        const lower = clean.toLowerCase();
+        if (lower !== 'sammy' && lower !== 'guest' && lower !== 'user' && lower !== 'developer' && lower !== 'publisher') {
+          localStorage.setItem(PRESERVED_CLAIMED_NAME_KEY, clean);
+          return;
+        }
       }
+      localStorage.removeItem(PRESERVED_CLAIMED_NAME_KEY);
     }
   } catch {}
 }

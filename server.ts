@@ -99,47 +99,6 @@ try {
     initAuthSecurity(serverDb);
     initOtpStoreDb(serverDb);
     bootstrapDefaultAdmins(serverDb).catch(() => {});
-    // Fresh start reset: remove all previously stored user names and publisher_registry claims once
-    (async () => {
-      try {
-        const resetConfigRef = serverDoc(serverDb, "system_config", "fresh_names_reset_v1");
-        const resetSnap = await serverGetDoc(resetConfigRef);
-        if (!resetSnap || !resetSnap.exists() || !resetSnap.data()?.completed) {
-          console.log("[Backend] Executing fresh-start reset of all user names and publisher_registry...");
-          const regSnap = await serverGetDocs(serverCollection(serverDb, "publisher_registry")).catch(() => null);
-          if (regSnap) {
-            for (const d of regSnap.docs) {
-              await serverDeleteDoc(serverDoc(serverDb, "publisher_registry", d.id)).catch(() => {});
-            }
-          }
-          const usersSnap = await serverGetDocs(serverCollection(serverDb, "users")).catch(() => null);
-          if (usersSnap) {
-            for (const uDoc of usersSnap.docs) {
-              await serverSetDoc(serverDoc(serverDb, "users", uDoc.id), {
-                displayName: "",
-                publisherName: "",
-                lastNameChangedAt: null,
-                nameChangeSessionStartedAt: null,
-                nameResetVersion: "fresh_start_v1",
-                updatedAt: new Date().toISOString()
-              }, { merge: true }).catch(() => {});
-            }
-          }
-          await serverSetDoc(resetConfigRef, {
-            completed: true,
-            completedAt: new Date().toISOString(),
-            version: "fresh_start_v1"
-          }, { merge: true });
-          console.log("[Backend] Fresh-start user name reset completed.");
-        }
-      } catch (resetErr: any) {
-        if (resetErr?.message?.includes('Missing or insufficient permissions') || resetErr?.code === 'permission-denied') {
-          console.info("[Backend] Fresh-start name reset notice: Firestore writes restricted by cloud security rules.");
-        } else {
-          console.warn("[Backend] Fresh-start name reset notice:", resetErr?.message);
-        }
-      }
-    })();
     serverGetDoc(serverDoc(serverDb, "system_config", "resend")).then((snap: any) => {
       if (snap && snap.exists()) {
         const data = snap.data();
