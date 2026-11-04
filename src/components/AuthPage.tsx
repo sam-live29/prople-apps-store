@@ -461,7 +461,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       console.warn('Sign-in notice:', err?.code || err?.message);
       if (err?.code === 'auth/ip-locked' || err?.code === 'auth/too-many-requests') {
         const msg = err.message || 'Access temporarily restricted due to security limits. Please try again later.';
-        setFieldErrors({ general: msg });
         showToast(msg);
       } else if (err?.code === 'auth/user-not-found') {
         const msg = 'No account found with this email. Please check your email or sign up.';
@@ -477,7 +476,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
         showToast(msg);
       } else {
         const msg = sanitizeErrorMessage(err, 'Unable to sign in. Please verify your credentials and try again.');
-        setFieldErrors({ general: msg });
         showToast(msg);
       }
     } finally {
@@ -760,7 +758,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
       handleAuthSuccess();
     } catch (err: any) {
       const msg = sanitizeErrorMessage(err, 'Google sign-in was not completed. Please try again.');
-      setFieldErrors({ general: msg });
       showToast(msg, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
@@ -780,7 +777,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
         err,
         'GitHub sign-in was not completed. Please try again.'
       );
-      setFieldErrors({ general: msg });
       showToast(msg, { duration: 8000 });
     } finally {
       setIsSubmitting(false);
@@ -1030,13 +1026,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                     </button>
                   </div>
 
-                  {fieldErrors.general && (
-                    <div className="p-2.5 rounded-[4px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{fieldErrors.general}</span>
-                    </div>
-                  )}
-
                   {/* Primary Blue Login Button with sharp edges */}
                   <button
                     type="submit"
@@ -1164,13 +1153,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                       </p>
                     )}
                   </div>
-
-                  {fieldErrors.general && (
-                    <div className="p-2.5 rounded-[4px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{fieldErrors.general}</span>
-                    </div>
-                  )}
 
                   {/* Primary Blue Register Button with sharp edges */}
                   <button
@@ -1317,15 +1299,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-gray-300 dark:border-neutral-700 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8]'
                     }`}
                   />
-                </div>
-
-                <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
-                  {fieldErrors.general ? (
-                    <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{fieldErrors.general}</span>
-                    </p>
-                  ) : null}
                 </div>
 
                 <button
@@ -1594,15 +1567,6 @@ export default function AuthPage({ onClose, onSuccess, initialMode = 'signin' }:
                         : 'border-gray-300 dark:border-neutral-700 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8]'
                     }`}
                   />
-                </div>
-
-                <div className="min-h-[22px] flex items-center justify-center -my-1 text-center">
-                  {fieldErrors.general ? (
-                    <p className="text-xs text-red-500 font-medium flex items-center justify-center gap-1.5 animate-fadeIn truncate max-w-full">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{fieldErrors.general}</span>
-                    </p>
-                  ) : null}
                 </div>
 
                 <button

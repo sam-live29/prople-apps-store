@@ -67,7 +67,11 @@ export function sanitizeErrorMessage(
   }
 
   if (lower.includes('auth/operation-not-allowed') || lower.includes('operation-not-allowed')) {
-    return 'This sign-in provider is not yet enabled in the Firebase Console. Please enable Email/Password or Google provider in Firebase Console under Authentication > Sign-in method.';
+    return 'This sign-in provider is not yet enabled in the Firebase Console. Please enable Email/Password, Google, or GitHub in Firebase Console under Authentication > Sign-in method.';
+  }
+
+  if (lower.includes('auth/unauthorized-domain') || lower.includes('unauthorized-domain')) {
+    return 'This domain is not in the Firebase Authorized Domains list. Please add your app domain to Firebase Console > Authentication > Settings > Authorized domains.';
   }
 
   // Filter provider names and API key leakages
@@ -90,8 +94,15 @@ export function sanitizeErrorMessage(
     return 'Unable to reach the authentication service at this moment. Please try again or continue with Google.';
   }
 
-  if (lower.includes('unauthorized') || lower.includes('permission denied') || lower.includes('forbidden')) {
+  if (
+    (lower.includes('unauthorized') || lower.includes('permission denied') || lower.includes('forbidden')) &&
+    (lower.includes('app') || lower.includes('modify') || lower.includes('delete') || lower.includes('publish') || lower.includes('catalog'))
+  ) {
     return 'Permission denied: You do not have authority to modify this application.';
+  }
+
+  if (lower.includes('unauthorized') || lower.includes('permission denied') || lower.includes('forbidden') || lower.includes('permission_denied')) {
+    return fallback || 'Permission denied. Please verify your credentials or permissions.';
   }
 
   // Clean technical prefixes like "Error: ", "Firebase: Error ", "Publishing failed: ", etc.
