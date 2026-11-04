@@ -605,6 +605,21 @@ async function startServer() {
     })
   );
 
+  // Global API Burst Rate Limiter (120 requests/minute per client IP for /api/*)
+  // Transparently shields backend search, APK metadata resolution, and database endpoints from abuse
+  app.use('/api', (req, res, next) => {
+    const ip = getNormalizedClientIp(req);
+    if (!checkIpBurstLimit(ip, 120, 60 * 1000)) {
+      res.setHeader('Retry-After', '60');
+      return res.status(429).json({
+        success: false,
+        error: "Too many API requests. Please slow down.",
+        retryAfterMs: 60000
+      });
+    }
+    next();
+  });
+
   // Canonical Host Redirection: Enforce www.prople.co.in across all incoming apex domain requests
   app.use((req, res, next) => {
     const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase().split(':')[0];
@@ -6325,6 +6340,13 @@ async function startServer() {
         throw new Error("Forbidden: You do not own this application and cannot modify its release.");
       }
 
+      // Enforce release update rate limiting (maximum 5 updates per hour for this application)
+      const updateRateKey = `${userId || 'developer'}:${appId}`;
+      const updateCheck = checkUpdateRateLimit(updateRateKey);
+      if (!updateCheck.allowed) {
+        throw new Error(`Update rate limit exceeded (maximum 5 updates per hour for this app). Please wait ${Math.ceil(updateCheck.retryAfterMs / 1000 / 60)} minutes.`);
+      }
+
       const cleanDoc = sanitizeObject({
         ...existingData,
         ...appPayload,
@@ -6338,12 +6360,19 @@ async function startServer() {
       });
 
       await serverSetDoc(appRef, cleanDoc, { merge: true });
+      recordUpdateRateLimit(updateRateKey);
       serverAppsCatalogCache = [];
       seoAppsCache.delete(appId.toLowerCase());
       indexApp(cleanDoc).catch(() => {});
       return { success: true, app: cleanDoc };
     } else {
-      // New app creation
+      // New app creation rate limit enforcement (maximum 3 new applications per 15 minutes)
+      const publishRateKey = userId || userEmail || 'developer';
+      const publishCheck = checkPublishRateLimit(publishRateKey);
+      if (!publishCheck.allowed) {
+        throw new Error(`Publishing quota reached (maximum 3 new applications per 15 minutes). Please wait ${Math.ceil(publishCheck.retryAfterMs / 1000 / 60)} minutes.`);
+      }
+
       const cleanDoc = sanitizeObject({
         ...appPayload,
         id: appId,
@@ -6363,6 +6392,7 @@ async function startServer() {
       });
 
       await serverSetDoc(appRef, cleanDoc);
+      recordPublishRateLimit(publishRateKey);
       serverAppsCatalogCache = [];
       seoAppsCache.delete(appId.toLowerCase());
       indexApp(cleanDoc).catch(() => {});
@@ -6386,6 +6416,13 @@ async function startServer() {
       throw new Error(`Application "${appId}" not found in repository.`);
     }
 
+    // Enforce release update quota (maximum 5 updates per hour)
+    const updateRateKey = `${userId || 'developer'}:${appId}`;
+    const updateCheck = checkUpdateRateLimit(updateRateKey);
+    if (!updateCheck.allowed) {
+      throw new Error(`Release update quota reached (maximum 5 updates per hour). Please wait ${Math.ceil(updateCheck.retryAfterMs / 1000 / 60)} minutes.`);
+    }
+
     const updatePayload: Record<string, any> = {
       version,
       currentVersion: version,
@@ -6400,6 +6437,7 @@ async function startServer() {
     }
 
     await serverSetDoc(appRef, updatePayload, { merge: true });
+    recordUpdateRateLimit(updateRateKey);
     serverAppsCatalogCache = [];
     seoAppsCache.delete(appId.toLowerCase());
     return { success: true, appId, version };

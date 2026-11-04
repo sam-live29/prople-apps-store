@@ -117,6 +117,29 @@ function getSecureCorsHeaders(origin?: string): Record<string, string> {
   return headers;
 }
 
+const publishTimestamps = new Map<string, number[]>();
+const updateTimestamps = new Map<string, number[]>();
+
+function checkEdgePublishRateLimit(key: string): boolean {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const recent = (publishTimestamps.get(key) || []).filter(t => now - t < windowMs);
+  if (recent.length >= 3) return false;
+  recent.push(now);
+  publishTimestamps.set(key, recent);
+  return true;
+}
+
+function checkEdgeUpdateRateLimit(key: string): boolean {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const recent = (updateTimestamps.get(key) || []).filter(t => now - t < windowMs);
+  if (recent.length >= 5) return false;
+  recent.push(now);
+  updateTimestamps.set(key, recent);
+  return true;
+}
+
 function slugifyAppName(name: string): string {
   return (name || '')
     .trim()
@@ -254,6 +277,10 @@ export default async function handler(req: any, res: any) {
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot update it.' });
       }
+
+      if (!checkEdgeUpdateRateLimit(`${effectiveUid}:${appId}`)) {
+        return res.status(429).json({ success: false, error: 'Release update rate limit exceeded (maximum 5 updates per hour for this application).' });
+      }
     }
 
     const cleanDoc: Record<string, any> = {
@@ -269,6 +296,9 @@ export default async function handler(req: any, res: any) {
     };
 
     if (!existing) {
+      if (!checkEdgePublishRateLimit(effectiveUid || effectiveEmail || 'developer')) {
+        return res.status(429).json({ success: false, error: 'Publishing quota reached (maximum 3 new applications per 15 minutes).' });
+      }
       cleanDoc.createdAt = new Date().toISOString();
       cleanDoc.rating = typeof appPayload.rating === 'number' ? appPayload.rating : 5.0;
       cleanDoc.ratingsCount = typeof appPayload.ratingsCount === 'number' ? appPayload.ratingsCount : 1;
