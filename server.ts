@@ -3018,7 +3018,23 @@ async function startServer() {
       if (lastNameChangedAt !== undefined) profilePayload.lastNameChangedAt = lastNameChangedAt;
       if (nameChangeSessionStartedAt !== undefined) profilePayload.nameChangeSessionStartedAt = nameChangeSessionStartedAt;
 
-      // 1. Write to users/{userId}
+      // 1. Write to canonical_users/{emailKey} (Single source of truth keyed by verified email)
+      if (cleanEmail) {
+        try {
+          const emailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const canonicalRef = serverDoc(serverDb, "canonical_users", emailKey);
+          await serverSetDoc(canonicalRef, {
+            ...profilePayload,
+            canonicalEmail: cleanEmail,
+            email: cleanEmail,
+            updatedAt: nowIso
+          }, { merge: true });
+        } catch (canErr: any) {
+          console.warn("[UserProfileAPI] Canonical user write notice:", canErr.message);
+        }
+      }
+
+      // 2. Write to users/{userId}
       if (cleanUid) {
         try {
           const userRef = serverDoc(serverDb, "users", cleanUid);
@@ -3526,7 +3542,20 @@ async function startServer() {
         console.warn("[MigrateUserRights] Admin check notice:", e.message);
       }
 
-      // 1. Find user profile documents via direct UID lookup and indexed email query (fast & non-blocking)
+      // 1. Check canonical_users/{emailKey} first (Fastest O(1) canonical source of truth by verified email)
+      const emailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const canonicalRef = serverDoc(serverDb, "canonical_users", emailKey);
+      let canonicalData: any = null;
+      try {
+        const canSnap = await serverGetDoc(canonicalRef);
+        if (canSnap && canSnap.exists()) {
+          canonicalData = canSnap.data();
+        }
+      } catch (canErr: any) {
+        console.warn("[MigrateUserRights] Canonical user lookup notice:", canErr.message);
+      }
+
+      // 2. Find user profile documents via direct UID lookup and indexed email query
       const usersCol = serverCollection(serverDb, "users");
       const foundUserDocs: { id: string; data: () => any }[] = [];
       try {
@@ -3539,7 +3568,7 @@ async function startServer() {
       }
 
       try {
-        const qEmail = serverQuery(usersCol, serverWhere("email", "==", cleanEmail), serverLimit(5));
+        const qEmail = serverQuery(usersCol, serverWhere("email", "==", cleanEmail), serverLimit(10));
         const emailSnap = await serverGetDocs(qEmail);
         emailSnap.forEach(d => {
           if (!foundUserDocs.some(existing => existing.id === d.id)) {
@@ -3550,20 +3579,37 @@ async function startServer() {
         console.warn("[MigrateUserRights] Email query check notice:", err.message);
       }
 
-      let mergedPublisherName = (clientLastNameChangedAt && clientPublisherName && String(clientPublisherName).trim()) ? String(clientPublisherName).trim() : '';
-      let mergedPublisherRole = isAdmin ? 'Store Administrator' : 'Standard User';
-      let mergedIsPublisher = isAdmin;
-      let mergedKeystore: any = null;
-      let mergedBio = '';
-      let mergedWebsite = '';
-      let mergedGithub = '';
-      let mergedLocation = 'Global';
-      let mergedAge = '25';
-      let mergedGender = 'Prefer not to say';
-      let mergedBookmarks: string[] = [];
-      let mergedPublishedAppIds: string[] = [];
-      let mergedLastNameChangedAt: any = clientLastNameChangedAt || null;
-      let mergedNameChangeSessionStartedAt: any = clientSessionStartedAt || null;
+      // 3. Fallback: Check developer registry if publisher name was claimed for this email
+      let registryClaimedName = '';
+      try {
+        const regSnap = await serverGetDocs(serverCollection(serverDb, "publisher_registry"));
+        for (const regDoc of regSnap.docs) {
+          const r = regDoc.data();
+          if (r && r.ownerEmail && (r.ownerEmail.toLowerCase().trim() === cleanEmail)) {
+            if (r.displayName && r.displayName.trim()) {
+              registryClaimedName = r.displayName.trim();
+              break;
+            }
+          }
+        }
+      } catch (regErr: any) {
+        console.warn("[MigrateUserRights] Registry scan notice:", regErr.message);
+      }
+
+      let mergedPublisherName = (canonicalData?.publisherName || registryClaimedName || '').trim();
+      let mergedPublisherRole = canonicalData?.publisherRole || (isAdmin ? 'Store Administrator' : 'Standard User');
+      let mergedIsPublisher = Boolean(canonicalData?.isPublisher || isAdmin);
+      let mergedKeystore: any = canonicalData?.developerKeystore || null;
+      let mergedBio = canonicalData?.bio || canonicalData?.publisherBio || '';
+      let mergedWebsite = canonicalData?.publisherWebsite || '';
+      let mergedGithub = canonicalData?.publisherGithub || '';
+      let mergedLocation = canonicalData?.location || canonicalData?.publisherLocation || 'Global';
+      let mergedAge = canonicalData?.age || '25';
+      let mergedGender = canonicalData?.gender || 'Prefer not to say';
+      let mergedBookmarks: string[] = Array.isArray(canonicalData?.bookmarks) ? canonicalData.bookmarks : [];
+      let mergedPublishedAppIds: string[] = Array.isArray(canonicalData?.publishedAppIds) ? canonicalData.publishedAppIds : [];
+      let mergedLastNameChangedAt: any = canonicalData?.lastNameChangedAt || clientLastNameChangedAt || null;
+      let mergedNameChangeSessionStartedAt: any = canonicalData?.nameChangeSessionStartedAt || clientSessionStartedAt || null;
 
       // Scan found docs for any existing profile with matching email or this UID
       for (const d of foundUserDocs) {
@@ -3576,18 +3622,17 @@ async function startServer() {
           if (data.isAdmin || data.role === 'admin' || data.publisherRole === 'Store Administrator' || data.publisherRole === 'Super Admin') {
             isAdmin = true;
           }
-          // Only adopt remote publisherName if it was explicitly claimed after fresh start
           const isRemoteFresh = data.nameResetVersion === 'fresh_start_v1';
           if (isRemoteFresh && data.publisherName && data.publisherName.trim() && data.publisherName.trim() !== 'User' && data.publisherName.trim() !== 'Developer') {
             const trimmedRemote = data.publisherName.trim();
-            if (clientLastNameChangedAt && clientPublisherName && clientPublisherName.trim()) {
+            if (!mergedPublisherName) {
+              mergedPublisherName = trimmedRemote;
+            } else if (clientLastNameChangedAt && clientPublisherName && clientPublisherName.trim()) {
               const remoteTime = data.lastNameChangedAt ? new Date(data.lastNameChangedAt).getTime() : 0;
               const clientTime = clientLastNameChangedAt ? new Date(clientLastNameChangedAt).getTime() : 0;
               if (remoteTime >= clientTime) {
                 mergedPublisherName = trimmedRemote;
               }
-            } else {
-              mergedPublisherName = trimmedRemote;
             }
           }
           if (data.publisherRole) {
@@ -3600,19 +3645,18 @@ async function startServer() {
           if (data.isPublisher) {
             mergedIsPublisher = true;
           }
-          // Preserve cryptographic keystore if found in any previous doc
           if (data.developerKeystore && typeof data.developerKeystore === 'object' && !mergedKeystore) {
             mergedKeystore = data.developerKeystore;
           }
-          if (data.publisherBio) mergedBio = data.publisherBio;
-          if (data.publisherWebsite) mergedWebsite = data.publisherWebsite;
-          if (data.publisherGithub) mergedGithub = data.publisherGithub;
-          if (data.publisherLocation) mergedLocation = data.publisherLocation;
-          if (data.location) mergedLocation = data.location;
-          if (data.age) mergedAge = data.age;
-          if (data.gender) mergedGender = data.gender;
-          if (isRemoteFresh && data.lastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
-          if (isRemoteFresh && data.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
+          if (data.publisherBio && !mergedBio) mergedBio = data.publisherBio;
+          if (data.publisherWebsite && !mergedWebsite) mergedWebsite = data.publisherWebsite;
+          if (data.publisherGithub && !mergedGithub) mergedGithub = data.publisherGithub;
+          if (data.publisherLocation && (!mergedLocation || mergedLocation === 'Global')) mergedLocation = data.publisherLocation;
+          if (data.location && (!mergedLocation || mergedLocation === 'Global')) mergedLocation = data.location;
+          if (data.age && (!mergedAge || mergedAge === '25')) mergedAge = data.age;
+          if (data.gender && (!mergedGender || mergedGender === 'Prefer not to say')) mergedGender = data.gender;
+          if (isRemoteFresh && data.lastNameChangedAt && !mergedLastNameChangedAt) mergedLastNameChangedAt = data.lastNameChangedAt;
+          if (isRemoteFresh && data.nameChangeSessionStartedAt && !mergedNameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = data.nameChangeSessionStartedAt;
           if (Array.isArray(data.bookmarks)) {
             mergedBookmarks = Array.from(new Set([...mergedBookmarks, ...data.bookmarks]));
           }
@@ -3620,6 +3664,11 @@ async function startServer() {
             mergedPublishedAppIds = Array.from(new Set([...mergedPublishedAppIds, ...data.publishedAppIds]));
           }
         }
+      }
+
+      // If user had a valid claimed client name and no server name yet, adopt client name
+      if (!mergedPublisherName && clientPublisherName && String(clientPublisherName).trim() && String(clientPublisherName).trim() !== 'User' && String(clientPublisherName).trim() !== 'Developer') {
+        mergedPublisherName = String(clientPublisherName).trim();
       }
 
       // If user is admin, enforce store administrator role and publisher status
@@ -3733,6 +3782,16 @@ async function startServer() {
 
       try {
         await serverSetDoc(targetUserRef, finalUserPayload, { merge: true });
+        // Write authoritative unified record to canonical_users/{emailKey}
+        const existingLinked = Array.isArray(canonicalData?.linkedUids) ? canonicalData.linkedUids : [];
+        const updatedLinked = Array.from(new Set([...existingLinked, cleanUid]));
+        await serverSetDoc(canonicalRef, {
+          ...finalUserPayload,
+          canonicalEmail: cleanEmail,
+          linkedUids: updatedLinked,
+          primaryUid: canonicalData?.primaryUid || cleanUid,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
       } catch (writeErr: any) {
         console.warn("[MigrateUserRights] User doc write notice:", writeErr.message);
       }

@@ -190,7 +190,51 @@ export async function unifyUserProfileAcrossAccounts(
   let isVerifiedAdmin = isAdminHardcoded;
   let hasAuthoritativeClientName = Boolean(mergedPublisherName && mergedLastNameChangedAt);
 
-  // 1. Client-side Firestore check FIRST: directly read user's doc (fast, indexed, authorized by isOwner rule)
+  // 1. Direct Canonical Document check (keyed by verified email - single source of truth across all providers)
+  if (cleanEmail && db) {
+    try {
+      const emailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const canSnap = await getDoc(doc(db, 'canonical_users', emailKey));
+      if (canSnap && canSnap.exists()) {
+        const cData = canSnap.data();
+        if (cData) {
+          if (cData.isPublisher) mergedIsPublisher = true;
+          const rawCName = (cData.publisherName || cData.displayName || '').trim();
+          if (rawCName && !isInvalidName(rawCName)) {
+            mergedPublisherName = rawCName;
+            if (cData.lastNameChangedAt) mergedLastNameChangedAt = cData.lastNameChangedAt;
+            if (cData.nameChangeSessionStartedAt) mergedNameChangeSessionStartedAt = cData.nameChangeSessionStartedAt;
+            hasAuthoritativeClientName = true;
+          }
+          if (cData.publisherRole) {
+            if (cData.publisherRole === 'Store Administrator' || cData.publisherRole === 'Super Admin') {
+              mergedPublisherRole = 'Store Administrator';
+              isVerifiedAdmin = true;
+            } else if (cData.publisherRole === 'Verified Developer' && mergedPublisherRole !== 'Store Administrator') {
+              mergedPublisherRole = 'Verified Developer';
+            }
+          }
+          if (cData.developerKeystore && !mergedKeystore) mergedKeystore = cData.developerKeystore;
+          if (Array.isArray(cData.publishedAppIds)) {
+            mergedPublishedAppIds = Array.from(new Set([...mergedPublishedAppIds, ...cData.publishedAppIds]));
+          }
+          if (cData.publisherBio && !mergedPublisherBio) mergedPublisherBio = cData.publisherBio;
+          if (cData.publisherWebsite && !mergedPublisherWebsite) mergedPublisherWebsite = cData.publisherWebsite;
+          if (cData.publisherGithub && !mergedPublisherGithub) mergedPublisherGithub = cData.publisherGithub;
+          if (cData.publisherLocation && (!mergedLocation || mergedLocation === 'Global')) mergedLocation = cData.publisherLocation;
+          if (cData.bio !== undefined && !initialData.bio) mergedBio = cData.bio;
+          if (cData.age && (!mergedAge || mergedAge === '25')) mergedAge = cData.age;
+          if (cData.gender && (!mergedGender || mergedGender === 'Prefer not to say')) mergedGender = cData.gender;
+          if (cData.location && (!mergedLocation || mergedLocation === 'Global')) mergedLocation = cData.location;
+          if (cData.photoURL && !mergedPhotoURL) mergedPhotoURL = cData.photoURL;
+        }
+      }
+    } catch (e) {
+      console.warn('[AuthContext] Canonical user doc check notice:', e);
+    }
+  }
+
+  // 2. Client-side Firestore check: directly read user's doc (fast, indexed, authorized by isOwner rule)
   if (currentUid && db && auth.currentUser?.uid === currentUid) {
     try {
       const directDocSnap = await getDoc(doc(db, 'users', currentUid));
@@ -1108,66 +1152,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAdminHardcoded = isAdminEmail(email);
       const isDevHardcoded = isDeveloperEmail(email);
 
-      // 1. Fast, optimistic profile: do not pre-profile name from Google account so user can set and verify availability
-      resolvedUser = {
+      // Authoritative unified account resolution: immediately load canonical account data
+      const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
         uid: cred.user.uid,
         email,
-        displayName: cachedProfile.publisherName || cachedProfile.displayName || '',
         photoURL: cred.user.photoURL || cachedProfile.photoURL,
-        age: cachedProfile.age || '25',
-        gender: cachedProfile.gender || 'Prefer not to say',
-        location: cachedProfile.location || 'Global',
-        bio: cachedProfile.bio || '',
-        isEmailVerified: true,
-        isPublisher: cachedProfile.isPublisher ?? (isAdminHardcoded || isDevHardcoded),
-        publisherName: cachedProfile.publisherName || cachedProfile.displayName || '',
-        publisherRole: cachedProfile.publisherRole || (isAdminHardcoded ? 'Store Administrator' : (isDevHardcoded ? 'Verified Developer' : 'Standard User')),
-        publishedAppIds: cachedProfile.publishedAppIds || [],
-        developerKeystore: cachedProfile.developerKeystore,
-        publisherBio: cachedProfile.publisherBio || '',
-        publisherWebsite: cachedProfile.publisherWebsite || '',
-        publisherEmail: email,
-        publisherGithub: cachedProfile.publisherGithub || '',
-        publisherLocation: cachedProfile.publisherLocation || '',
-        ...({ nameResetVersion: 'fresh_start_v1' } as any)
-      };
+        displayName: cachedProfile.publisherName || cachedProfile.displayName || '',
+        publisherName: cachedProfile.publisherName || '',
+        ...cachedProfile
+      });
 
-      setUser(resolvedUser);
+      setUser(unified);
       try {
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(resolvedUser));
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
+        localStorage.setItem('prople_saved_profile_' + email, JSON.stringify(unified));
       } catch {}
-
-      // Immediately release loading indicator so dialog and buttons close instantly
+      syncUserProfileToFirestore(unified);
+      resolvedUser = unified;
       setIsLoading(false);
-
-      // 2. Asynchronously enrich rights, keystore & publisher apps in background (non-blocking)
-      (async () => {
-        let remoteData: Partial<UserProfile> = {};
-        try {
-          const snapPromise = getDoc(doc(db, 'users', cred.user.uid));
-          const snapTimeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500));
-          const snap = await Promise.race([snapPromise, snapTimeout]) as any;
-          if (snap && snap.exists()) {
-            remoteData = snap.data() as Partial<UserProfile>;
-          }
-        } catch (docErr) {
-          console.warn('[AuthContext] Fast user doc check notice:', docErr);
-        }
-
-        try {
-          const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
-            ...resolvedUser,
-            ...remoteData
-          });
-          setUser(unified);
-          try {
-            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
-          } catch {}
-          syncUserProfileToFirestore(unified);
-        } catch (enrichErr) {
-          console.warn('[AuthContext] Background profile unification notice:', enrichErr);
-        }
-      })().catch(() => {});
 
     } catch (err: any) {
       console.warn('[AuthContext] Google sign-in notice:', err?.code || err?.message || err);
@@ -1275,75 +1277,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       screenName = (cred.user as any)?.reloadUserInfo?.screenName || cachedProfile.publisherGithub || '';
     }
 
-    const fallbackName = cred.user.displayName || screenName || email.split('@')[0];
-    const initialName = cachedProfile.publisherName || cachedProfile.displayName || fallbackName;
+    const initialName = (cachedProfile.publisherName || cachedProfile.displayName || '').trim();
 
-    const resolvedUser: UserProfile = {
+    // Authoritative backend canonical unification: immediately loads unified account for this verified email
+    const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
       uid: cred.user.uid,
       email,
       displayName: initialName,
+      publisherName: initialName,
       photoURL: cred.user.photoURL || cachedProfile.photoURL,
       age: cachedProfile.age || '25',
       gender: cachedProfile.gender || 'Prefer not to say',
       location: cachedProfile.location || 'Global',
       bio: cachedProfile.bio || '',
-      isEmailVerified: Boolean(cred.user.emailVerified || cred.user.email),
-      isPublisher: isDevHardcoded ? true : Boolean(cachedProfile.isPublisher),
-      publisherName: cachedProfile.publisherName || fallbackName,
-      publisherRole: isAdminHardcoded
-        ? 'Store Administrator'
-        : isDevHardcoded
-        ? 'Verified Developer'
-        : cachedProfile.publisherRole || 'Standard User',
-      publishedAppIds: cachedProfile.publishedAppIds || [],
-      developerKeystore: cachedProfile.developerKeystore || null,
-      publisherBio: cachedProfile.publisherBio || '',
-      publisherWebsite: cachedProfile.publisherWebsite || '',
-      publisherEmail: email,
+      isEmailVerified: true,
       publisherGithub: screenName,
-      publisherLocation: cachedProfile.publisherLocation || 'Global',
-      lastNameChangedAt: cachedProfile.lastNameChangedAt || null,
-      nameChangeSessionStartedAt: cachedProfile.nameChangeSessionStartedAt || null,
-      ...({ nameResetVersion: 'fresh_start_v1' } as any)
-    };
+      ...cachedProfile
+    });
 
-    setUser(resolvedUser);
+    setUser(unified);
     try {
-      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(resolvedUser));
+      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
+      localStorage.setItem('prople_saved_profile_' + email, JSON.stringify(unified));
     } catch {}
-
+    syncUserProfileToFirestore(unified);
     setIsLoading(false);
-
-    (async () => {
-      let remoteData: Partial<UserProfile> = {};
-      try {
-        const snapPromise = getDoc(doc(db, 'users', cred.user.uid));
-        const snapTimeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500));
-        const snap = await Promise.race([snapPromise, snapTimeout]) as any;
-        if (snap && snap.exists()) {
-          remoteData = snap.data() as Partial<UserProfile>;
-        }
-      } catch (docErr) {
-        console.warn('[AuthContext] GitHub fast user doc check notice:', docErr);
-      }
-
-      try {
-        const unified = await unifyUserProfileAcrossAccounts(email, cred.user.uid, {
-          ...resolvedUser,
-          ...remoteData,
-          publisherGithub: screenName || (remoteData as any).publisherGithub
-        });
-        setUser(unified);
-        try {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(unified));
-        } catch {}
-        syncUserProfileToFirestore(unified);
-      } catch (enrichErr) {
-        console.warn('[AuthContext] Background GitHub profile unification notice:', enrichErr);
-      }
-    })().catch(() => {});
-
-    return resolvedUser;
+    return unified;
   };
 
   const loginWithGithub = async (isSignUp: boolean = false) => {
