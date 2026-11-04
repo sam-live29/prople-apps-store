@@ -131,16 +131,10 @@ export async function initAuthSecurity(db: any) {
  */
 export function getClientIp(req: express.Request): string {
   let rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    const parts = forwarded.split(',').map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 0) {
-      rawIp = parts[0];
-    }
-  } else if (Array.isArray(forwarded) && forwarded.length > 0) {
-    rawIp = String(forwarded[0]).trim();
-  }
-  const clean = rawIp.replace('::ffff:', '').replace(/[^0-9a-fA-F:.]/g, '').slice(0, 64);
+  const clean = String(rawIp)
+    .replace('::ffff:', '')
+    .replace(/[^0-9a-fA-F:.]/g, '')
+    .slice(0, 64);
   return clean || 'unknown';
 }
 
@@ -488,5 +482,55 @@ export async function clearAllLockedIps(
   }
 
   return { success: true, count };
+}
+
+/**
+ * Immediately locks a hostile IP address detected by intrusion defense or honeypot traps.
+ * Enforces immediate ban strikes and persists permanent ban to Firestore.
+ */
+export async function lockHostileIp(
+  ip: string,
+  reason: string,
+  details?: { attackType?: string; payload?: string; userAgent?: string },
+  db?: any
+): Promise<void> {
+  const cleanIp = (ip || '').replace('::ffff:', '').replace(/[^0-9a-fA-F:.]/g, '').slice(0, 64);
+  if (!cleanIp || cleanIp === 'unknown') return;
+
+  lockedIps.add(cleanIp);
+  ipTotalStrikes.set(cleanIp, (ipTotalStrikes.get(cleanIp) || 0) + 100);
+
+  const now = Date.now();
+  console.warn(`[Intrusion Shield] 🚨 HOSTILE PROBE LOCKED from IP ${cleanIp}: ${reason}`);
+
+  if (db) {
+    try {
+      const safeDocId = cleanIp.replace(/[\/\.#$\[\]:]/g, '_');
+      await setDoc(doc(db, 'locked_ips', safeDocId), {
+        ip: cleanIp,
+        lockedAt: now,
+        lockedAtIso: new Date(now).toISOString(),
+        reason,
+        strikeCount: 100,
+        attackType: details?.attackType || 'intrusion_probe',
+        payloadSnippet: (details?.payload || '').slice(0, 256),
+        userAgent: details?.userAgent || 'unknown',
+        permanentBan: true,
+      });
+
+      const forensicId = `attack_${now}_${Math.random().toString(36).substring(2, 8)}`;
+      await setDoc(doc(db, 'security_forensics', forensicId), {
+        ip: cleanIp,
+        timestamp: now,
+        isoTime: new Date(now).toISOString(),
+        reason,
+        attackType: details?.attackType || 'intrusion_probe',
+        payload: (details?.payload || '').slice(0, 512),
+        userAgent: details?.userAgent || 'unknown',
+      });
+    } catch (e: any) {
+      console.warn('[Intrusion Shield] Firestore persistence notice:', e?.message || e);
+    }
+  }
 }
 

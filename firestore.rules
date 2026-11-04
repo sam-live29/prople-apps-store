@@ -256,6 +256,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /security_forensics/{forensicId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /auth_security_state/{docId} {
       allow read, write: if isAdmin();
     }

@@ -65,6 +65,7 @@ import {
   initAuthSecurity,
   getClientIp,
   isIpLocked,
+  lockHostileIp,
   canAttemptLogin,
   canRequestOtp,
   recordOtpDispatched,
@@ -79,7 +80,9 @@ import {
   prototypePollutionGuard,
   sanitizeRedirectTarget,
   sanitizeIdentifier,
-  deepSanitizeObject
+  deepSanitizeObject,
+  createIntrusionShieldMiddleware,
+  verifySecuritySecret
 } from "./server/securityDefense.ts";
 import { getServerFirebaseConfig } from "./server/firebaseConfig.ts";
 import {
@@ -127,13 +130,12 @@ const ipBurstHistory = new Map<string, number[]>();          // IP burst flood l
 const serverReviewsStore = new Map<string, any[]>();        // Authoritative server-side cache for app reviews
 
 function getNormalizedClientIp(req: express.Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  } else if (Array.isArray(forwarded) && forwarded.length > 0) {
-    return forwarded[0].trim();
-  }
-  return req.socket.remoteAddress || req.ip || 'unknown';
+  let rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  const clean = String(rawIp)
+    .replace('::ffff:', '')
+    .replace(/[^0-9a-fA-F:.]/g, '')
+    .slice(0, 64);
+  return clean || 'unknown';
 }
 
 function checkIpBurstLimit(ip: string, maxRequests = 20, windowMs = 60 * 1000): boolean {
@@ -592,6 +594,16 @@ async function startServer() {
   app.use(express.json({ limit: '25mb' }));
   app.use(express.urlencoded({ limit: '25mb', extended: true }));
   app.use(prototypePollutionGuard);
+
+  // Active 0-Day Intrusion Shield, Honeypot Traps & Tarpit Punishment Middleware
+  app.use(
+    createIntrusionShieldMiddleware({
+      db: serverDb,
+      isIpLocked,
+      lockHostileIp,
+      getClientIp: getNormalizedClientIp,
+    })
+  );
 
   // Canonical Host Redirection: Enforce www.prople.co.in across all incoming apex domain requests
   app.use((req, res, next) => {
@@ -1151,7 +1163,11 @@ async function startServer() {
   app.post("/api/search/sync", async (req, res) => {
     try {
       const userEmail = (req.body?.userEmail || req.headers['x-user-email'] || '').toString().trim();
-      if (!userEmail || !isServerAdminEmail(userEmail)) {
+      const adminSecret = req.headers['x-admin-secret'] || req.body?.adminSecret;
+      const bearerToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      const isVerifiedSecret = Boolean(adminSecret && verifySecuritySecret(adminSecret));
+      const isAuthorizedAdmin = isVerifiedSecret || (bearerToken && isServerAdminEmail(userEmail));
+      if (!isAuthorizedAdmin) {
         return res.status(403).json({
           success: false,
           error: "Forbidden: Administrator authorization required to trigger search re-indexing."

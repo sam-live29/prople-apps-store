@@ -28,6 +28,8 @@ const DEFAULT_ADMIN_EMAILS = [
 
 const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
 
+import { verifySecuritySecret } from '../../server/securityDefense.ts';
+
 function isStrictAdminEmail(email?: string | null): boolean {
   if (!email || typeof email !== 'string') return false;
   const norm = email.toLowerCase().trim();
@@ -217,21 +219,29 @@ export default async function handler(req: any, res: any) {
         devInfoEmail === userEmail
       );
 
+      const adminSecret = req.headers?.['x-admin-secret'] || body.adminSecret;
+      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim() || body.idToken;
+      const isVerifiedAdmin = Boolean(
+        (adminSecret && verifySecuritySecret(adminSecret)) ||
+        (bearerToken && isStrictAdminEmail(userEmail))
+      );
+
       const isOwner =
-        (userId && (
-          existingData.owner === userId ||
-          existingData.developerId === userId ||
-          existingData.publisherId === userId ||
-          existingData.creatorUid === userId
-        )) ||
-        isMatchingEmail ||
-        (userEmail && isStrictAdminEmail(userEmail));
+        (userId &&
+          userId !== 'guest' &&
+          userId !== 'developer' &&
+          userId !== 'dev-publisher' &&
+          (existingData.owner === userId ||
+            existingData.developerId === userId ||
+            existingData.publisherId === userId ||
+            existingData.creatorUid === userId)) ||
+        (isMatchingEmail && userId && userId !== 'guest') ||
+        isVerifiedAdmin;
 
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot delete it.' });
       }
 
-      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim() || body.idToken;
       const delRes = await fetch(directDocUrl, {
         method: 'DELETE',
         headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined

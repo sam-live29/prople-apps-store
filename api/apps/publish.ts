@@ -15,6 +15,8 @@ const DEFAULT_ADMIN_EMAILS = [
 
 const VERIFIED_ADMIN_DOMAIN = '@prople.co.in';
 
+import { verifySecuritySecret } from '../../server/securityDefense.ts';
+
 function isStrictAdminEmail(email?: string | null): boolean {
   if (!email || typeof email !== 'string') return false;
   const norm = email.toLowerCase().trim();
@@ -236,14 +238,18 @@ export default async function handler(req: any, res: any) {
         ownerEmail === effectiveEmail
       );
 
-      const isOwner = (effectiveUid && (
+      const adminSecret = req.headers?.['x-admin-secret'] || req.body?.adminSecret;
+      const bearerToken = (req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      const isVerifiedAdmin = Boolean(
+        (adminSecret && verifySecuritySecret(adminSecret)) ||
+        (bearerToken && isStrictAdminEmail(effectiveEmail))
+      );
+
+      const isOwner = (effectiveUid && effectiveUid !== 'guest' && effectiveUid !== 'developer' && effectiveUid !== 'dev-publisher' && (
         existing.owner === effectiveUid ||
         existing.developerId === effectiveUid ||
-        existing.creatorUid === effectiveUid ||
-        existing.owner === 'developer' ||
-        existing.owner === 'dev-publisher' ||
-        existing.owner === 'guest'
-      )) || isMatchingEmail || isStrictAdminEmail(effectiveEmail);
+        existing.creatorUid === effectiveUid
+      )) || (isMatchingEmail && effectiveUid && effectiveUid !== 'guest') || isVerifiedAdmin;
 
       if (!isOwner) {
         return res.status(403).json({ success: false, error: 'Forbidden: You do not own this application and cannot update it.' });

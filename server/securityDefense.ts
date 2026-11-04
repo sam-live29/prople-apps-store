@@ -751,3 +751,209 @@ export function verifySecuritySecret(providedSecret?: string | null): boolean {
   }
 }
 
+// ==========================================
+// 9. Active 0-Day Intrusion Shield, Honeypot Traps & Tarpit Punishment Engine
+// ==========================================
+
+const HONEYPOT_PATHS: RegExp[] = [
+  /^\/\.env(\.|$)/i,
+  /^\/\.git(\/|$)/i,
+  /^\/\.svn(\/|$)/i,
+  /^\/\.aws(\/|$)/i,
+  /^\/\.ssh(\/|$)/i,
+  /^\/wp-login\.php/i,
+  /^\/wp-admin(\/|$)/i,
+  /^\/xmlrpc\.php/i,
+  /^\/phpmyadmin(\/|$)/i,
+  /^\/pma(\/|$)/i,
+  /^\/mysqladmin(\/|$)/i,
+  /^\/actuator(\/|$)/i,
+  /^\/console(\/|$)/i,
+  /^\/manager\/html/i,
+  /^\/cgi-bin(\/|$)/i,
+  /^\/solr(\/|$)/i,
+  /^\/autodiscover\/autodiscover\.xml/i,
+  /^\/owa\/auth\/logon\.aspx/i,
+  /^\/shell(\.php|\.sh|\.aspx|$)/i,
+  /^\/cmd\.exe/i,
+  /^\/debug\/vars/i,
+  /^\/server-status/i,
+  /^\/vendor\/phpunit/i,
+  /^\/eval-stdin\.php/i,
+];
+
+const ATTACK_PATTERNS: Array<{ type: string; regex: RegExp }> = [
+  { type: "sql_injection", regex: /(union\s+(all\s+)?select|;\s*drop\s+table|;\s*waitfor\s+delay|sleep\(\s*\d+\s*\)|benchmark\(\s*\d+|information_schema\.tables|'\s*or\s*'1'='1|'\s*or\s*1=1)/i },
+  { type: "remote_code_execution", regex: /((\||;|&|`|\$\()\s*(cat\s+\/etc\/passwd|nc\s+-e|curl\s+https?:\/\/|wget\s+https?:\/\/|bash\s+-i|\/bin\/sh|cmd\.exe|powershell))/i },
+  { type: "path_traversal", regex: /((\.\.[\/\\]){2,}|\/etc\/passwd|\/proc\/self\/environ|c:\\boot\.ini)/i },
+  { type: "jndi_log4j", regex: /\$\{jndi:(ldap|rmi|dns|nis|iiop|corba|http):/i },
+  { type: "ssti_exploit", regex: /(\{\{\s*(config|self\.__class__|__proto__|constructor|eval)|\$\{\s*(T\(|new\s+java|runtime))/i },
+  { type: "metadata_ssrf", regex: /(169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200)/i },
+];
+
+/**
+ * Checks whether an incoming URL path targets known automated scanner and crawler honeypots.
+ */
+export function isHoneypotScanPath(pathname: string): boolean {
+  if (!pathname || typeof pathname !== "string") return false;
+  const clean = pathname.trim().toLowerCase();
+  return HONEYPOT_PATHS.some((pattern) => pattern.test(clean));
+}
+
+/**
+ * Deeply scans the request path, query strings, headers, and payload for zero-day attack vectors.
+ */
+export function inspectPayloadForZeroDayAttacks(req: ExpressRequest): {
+  detected: boolean;
+  attackType?: string;
+  details?: string;
+} {
+  const targets: string[] = [];
+
+  if (req.originalUrl) targets.push(decodeURIComponent(req.originalUrl));
+  if (req.url) targets.push(req.url);
+
+  if (req.query && typeof req.query === "object") {
+    try {
+      targets.push(JSON.stringify(req.query));
+    } catch {}
+  }
+
+  const rawUserAgent = req.headers ? req.headers["user-agent"] : undefined;
+  if (typeof rawUserAgent === "string") {
+    targets.push(rawUserAgent);
+  }
+
+  if (req.body && typeof req.body === "object") {
+    try {
+      targets.push(JSON.stringify(req.body));
+    } catch {}
+  } else if (typeof req.body === "string") {
+    targets.push(req.body);
+  }
+
+  for (const target of targets) {
+    for (const { type, regex } of ATTACK_PATTERNS) {
+      if (regex.test(target)) {
+        return {
+          detected: true,
+          attackType: type,
+          details: `Exploit pattern '${type}' detected in payload`,
+        };
+      }
+    }
+  }
+
+  return { detected: false };
+}
+
+/**
+ * Tarpit Punisher Engine:
+ * When a hostile probe, scanner, or locked attacker is detected, the server engages
+ * a reverse slowloris punishment tarpit. It holds the socket open for 10-12 seconds
+ * while trickling minimal bytes, starving the attacker's automation concurrency and threads.
+ */
+export function executeSocketTarpit(
+  res: ExpressResponse,
+  clientIp: string,
+  reason: string,
+  durationMs = 10000
+): void {
+  console.warn(`[Tarpit Punisher] 🚨 Active attacker from IP ${clientIp} penalized. Engaging socket tarpit (${durationMs}ms delay). Reason: ${reason}`);
+
+  try {
+    res.status(403);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("X-Intrusion-Defense", "Punishment-Tarpit-Engaged");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Connection", "close");
+
+    // Write initial warning byte
+    res.write("# [PROPLE DEFENSE SYSTEM] ACCESS RESTRICTED: Hostile intrusion attempt logged.\n");
+
+    const timer = setTimeout(() => {
+      try {
+        res.end("SECURITY ACCESS TERMINATED: Hostile probe detected and permanently logged to global defense registry.\n");
+      } catch {}
+    }, durationMs);
+
+    res.on("close", () => {
+      clearTimeout(timer);
+    });
+  } catch {
+    try {
+      res.status(403).end("ACCESS DENIED");
+    } catch {}
+  }
+}
+
+/**
+ * Creates the global Intrusion Shield & Honeypot Tarpit Middleware.
+ * Decoupled from direct store dependencies for maximum modularity and zero circular imports.
+ */
+export function createIntrusionShieldMiddleware(options: {
+  db?: any;
+  isIpLocked: (ip: string) => boolean;
+  lockHostileIp: (
+    ip: string,
+    reason: string,
+    details?: { attackType?: string; payload?: string; userAgent?: string },
+    db?: any
+  ) => Promise<void>;
+  getClientIp: (req: ExpressRequest) => string;
+}) {
+  return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+    const clientIp = options.getClientIp(req);
+    const path = req.path || req.url || "";
+
+    // 1. If IP is already jailed/locked, execute immediate socket tarpit punishment
+    if (options.isIpLocked(clientIp)) {
+      executeSocketTarpit(
+        res,
+        clientIp,
+        "IP address is in permanent security jail due to prior hostile attacks"
+      );
+      return;
+    }
+
+    // 2. Check Honeypot Traps
+    if (isHoneypotScanPath(path)) {
+      const reason = `Honeypot trap triggered: unauthorized probe to '${path}'`;
+      await options.lockHostileIp(
+        clientIp,
+        reason,
+        {
+          attackType: "honeypot_probe",
+          payload: path,
+          userAgent: req.headers["user-agent"],
+        },
+        options.db
+      );
+
+      executeSocketTarpit(res, clientIp, reason, 12000);
+      return;
+    }
+
+    // 3. Inspect request for 0-day injection attacks
+    const attackCheck = inspectPayloadForZeroDayAttacks(req);
+    if (attackCheck.detected) {
+      const reason = `Zero-day injection attack detected: ${attackCheck.details}`;
+      await options.lockHostileIp(
+        clientIp,
+        reason,
+        {
+          attackType: attackCheck.attackType,
+          payload: req.originalUrl,
+          userAgent: req.headers["user-agent"],
+        },
+        options.db
+      );
+
+      executeSocketTarpit(res, clientIp, reason, 12000);
+      return;
+    }
+
+    next();
+  };
+}
+
